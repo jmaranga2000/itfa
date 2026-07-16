@@ -23,6 +23,7 @@ import { seedArchiveData } from "@/lib/seed/archive";
 import { seedReportData } from "@/lib/seed/reports";
 import { seedTemplateData } from "@/lib/seed/templates";
 import { seedWorkflowData } from "@/lib/seed/workflows";
+import { seedServiceAndPricingCatalog } from "@/repositories/service-catalog-repository";
 
 type SeedUser = {
   email: string;
@@ -350,6 +351,7 @@ export async function seedFoundation() {
   const templates = await seedTemplateData();
   const reports = await seedReportData();
   const archive = await seedArchiveData();
+  const catalog = await seedServiceAndPricingCatalog();
 
   return {
     permissions: PERMISSIONS.length,
@@ -360,5 +362,6 @@ export async function seedFoundation() {
     templates,
     reports,
     archive,
+    catalog,
   };
 }

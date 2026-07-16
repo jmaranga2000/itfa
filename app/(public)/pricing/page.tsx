@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ArrowRight, Check, Clock3, FileSearch, Gauge, Layers3 } from "lucide-react";
 import { PublicPageIntro } from "@/components/public/public-page-intro";
 import { buttonClassName } from "@/components/ui/button";
-import { pricingOptions } from "@/content/public-site";
+import { listPricingPlans } from "@/repositories/service-catalog-repository";
 
 const feeFactors = [
   { icon: FileSearch, label: "Review depth", copy: "The volume and complexity of evidence that must be assessed." },
@@ -11,7 +11,9 @@ const feeFactors = [
   { icon: Layers3, label: "Delivery model", copy: "A focused opinion, managed engagement or recurring advisory workspace." },
 ] as const;
 
-export default function PricingPage() {
+export default async function PricingPage() {
+  const pricingOptions = await listPricingPlans({ publishedOnly: true });
+
   return (
     <main>
       <PublicPageIntro
@@ -30,7 +32,7 @@ export default function PricingPage() {
                   ? "relative rounded-md border border-primary bg-brand-deep p-6 text-white shadow-xl"
                   : "rounded-md border border-border bg-card p-6 text-card-foreground shadow-sm"
               }
-              key={option.name}
+              key={option.id}
             >
               {option.featured ? (
                 <span className="absolute right-5 top-5 rounded-full bg-brand-mist px-2.5 py-1 text-xs font-bold text-brand-deep">
@@ -41,7 +43,7 @@ export default function PricingPage() {
                 {option.cadence}
               </p>
               <h2 className="mt-5 text-xl font-bold">{option.name}</h2>
-              <p className="mt-3 text-3xl font-bold">{option.price}</p>
+              <p className="mt-3 text-3xl font-bold">{option.priceLabel}</p>
               <p className={option.featured ? "mt-4 min-h-20 text-sm leading-6 text-white/70" : "mt-4 min-h-20 text-sm leading-6 text-muted-foreground"}>
                 {option.description}
               </p>

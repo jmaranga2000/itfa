@@ -2,11 +2,14 @@ import Link from "next/link";
 import { ArrowRight, BarChart3, Check, Scale, ScrollText } from "lucide-react";
 import { PublicPageIntro } from "@/components/public/public-page-intro";
 import { buttonClassName } from "@/components/ui/button";
-import { services, workflowSteps } from "@/content/public-site";
+import { workflowSteps } from "@/content/public-site";
+import { listServices } from "@/repositories/service-catalog-repository";
 
 const serviceIcons = [ScrollText, Scale, BarChart3] as const;
 
-export default function ServicesPage() {
+export default async function ServicesPage() {
+  const services = await listServices({ publishedOnly: true });
+
   return (
     <main>
       <PublicPageIntro
@@ -24,9 +27,9 @@ export default function ServicesPage() {
       <section className="mx-auto max-w-7xl px-5 py-12 md:py-16">
         <div className="divide-y divide-border border-y border-border">
           {services.map((service, index) => {
-            const Icon = serviceIcons[index];
+            const Icon = serviceIcons[index % serviceIcons.length];
             return (
-              <article className="scroll-mt-32 py-10" id={service.id} key={service.id}>
+              <article className="scroll-mt-32 py-10" id={service.slug} key={service.id}>
                 <div className="grid gap-8 lg:grid-cols-[220px_minmax(0,1fr)_280px] lg:gap-12">
                   <div>
                     <span className="grid h-12 w-12 place-items-center rounded-md bg-brand-soft text-brand-deep">
