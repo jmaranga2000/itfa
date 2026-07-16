@@ -14,7 +14,7 @@ export const serverEnvSchema = publicEnvSchema.extend({
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_DEFAULT_MODEL: z.string().optional(),
   GMAIL_SMTP_USER: z.string().email().optional(),
-  GMAIL_SMTP_APP_PASSWORD: z.string().min(1).optional(),
+  GMAIL_SMTP_APP_PASSWORD: z.string().optional(),
   R2_ACCOUNT_ID: z.string().optional(),
   R2_ACCESS_KEY_ID: z.string().optional(),
   R2_SECRET_ACCESS_KEY: z.string().optional(),

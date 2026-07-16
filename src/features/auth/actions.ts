@@ -156,6 +156,8 @@ export async function signUpAction(formData: FormData) {
     authErrorRedirect("/sign-up", "Complete all fields before creating an account.");
   }
 
+  const registrationEmail = parsed.data.email.toLowerCase();
+
   if (!isPasswordPolicySatisfied(parsed.data.password)) {
     authErrorRedirect("/sign-up", `Password must include ${getPasswordPolicyMessage()}.`);
   }
@@ -164,14 +166,14 @@ export async function signUpAction(formData: FormData) {
     authErrorRedirect("/sign-up", "Password confirmation does not match.");
   }
 
-  const existingUser = await findUserByEmailForAuth(parsed.data.email);
+  const existingUser = await findUserByEmailForAuth(registrationEmail);
 
   if (existingUser) {
     authErrorRedirect("/sign-up", "An account already exists for this email address.");
   }
 
   const user = await createUserWithPassword({
-    email: parsed.data.email,
+    email: registrationEmail,
     firstName: parsed.data.firstName,
     lastName: parsed.data.lastName,
     passwordHash: await hashPassword(parsed.data.password),
@@ -186,9 +188,9 @@ export async function signUpAction(formData: FormData) {
     metadata: { roleKeys: ["client"] },
   });
 
-  const verification = await createAndSendVerificationEmail(user._id.toString(), user.email);
+  const verification = await createAndSendVerificationEmail(user._id.toString(), registrationEmail);
 
-  verificationRedirect(user.email, {
+  verificationRedirect(registrationEmail, {
     delivered: verification.delivered,
     verificationUrl: verification.verificationUrl,
   });

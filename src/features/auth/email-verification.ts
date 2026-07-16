@@ -52,6 +52,7 @@ export async function createEmailVerificationToken(userId: string, email: string
 
 export async function sendVerificationEmail(email: string, verificationUrl: string) {
   const env = getServerEnv();
+  const recipient = email.trim().toLowerCase();
 
   if (!env.GMAIL_SMTP_USER || !env.GMAIL_SMTP_APP_PASSWORD) {
     return {
@@ -71,12 +72,12 @@ export async function sendVerificationEmail(email: string, verificationUrl: stri
       },
     });
 
-    await transporter.sendMail({
+    const message = await transporter.sendMail({
       from: {
         name: "IFTA Consulting",
         address: env.GMAIL_SMTP_USER,
       },
-      to: email,
+      to: recipient,
       subject: "Verify your IFTA Consulting portal account",
       html: `
         <div style="font-family: Arial, sans-serif; line-height: 1.6;">
@@ -88,6 +89,13 @@ export async function sendVerificationEmail(email: string, verificationUrl: stri
         </div>
       `,
     });
+
+    if (process.env.NODE_ENV !== "production") {
+      console.info("Gmail accepted a verification email.", {
+        messageId: message.messageId,
+        recipient,
+      });
+    }
 
     return {
       delivered: true,
