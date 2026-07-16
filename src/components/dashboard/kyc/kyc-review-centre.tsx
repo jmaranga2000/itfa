@@ -2,9 +2,7 @@ import Link from "next/link";
 import {
   CalendarClock,
   ClipboardCheck,
-  Download,
   RefreshCw,
-  Search,
   Settings,
   ShieldAlert,
   ShieldCheck,
@@ -28,7 +26,6 @@ import {
 } from "@/components/dashboard/kyc/kyc-badges";
 import {
   getKycClientTypeLabel,
-  getKycProgress,
   type KycDashboardData,
   type KycSubmission,
 } from "@/repositories/kyc-repository";
@@ -85,43 +82,33 @@ export function KycReviewCentre({ data }: { data: KycDashboardData }) {
       <section className="rounded-md border border-border bg-card p-5">
         <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-start">
           <div>
-            <Badge tone="teal">Compliance operations</Badge>
             <h1 className="mt-3 text-2xl font-bold tracking-normal text-foreground">
-              KYC Review Centre
+              Client checks (KYC)
             </h1>
             <p className="mt-2 max-w-4xl text-sm leading-6 text-muted-foreground">
-              Review client identity, company records, declarations, and compliance documents
-              before engagements begin.
+              Check client identity and documents before work begins.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Link className={buttonClassName({ variant: "secondary" })} href="/admin/kyc">
-              <RefreshCw aria-hidden="true" className="h-4 w-4" />
-              Refresh
-            </Link>
             <Link className={buttonClassName({ variant: "secondary" })} href="/admin/kyc/reviewers">
               <UserPlus aria-hidden="true" className="h-4 w-4" />
-              Assign Reviewer
-            </Link>
-            <Link className={buttonClassName({ variant: "secondary" })} href="/admin/kyc/reports">
-              <Download aria-hidden="true" className="h-4 w-4" />
-              Export
+              Reviewers
             </Link>
             <Link className={buttonClassName()} href="/admin/kyc/templates">
               <Settings aria-hidden="true" className="h-4 w-4" />
-              KYC Settings
+              KYC setup
             </Link>
           </div>
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 2xl:grid-cols-6">
+      <section className="grid gap-px overflow-hidden rounded-md border border-border bg-border md:grid-cols-2 2xl:grid-cols-6">
         {data.summaryCards.map((card) => {
           const Icon = summaryIcons[card.key as keyof typeof summaryIcons] ?? ClipboardCheck;
 
           return (
             <Link
-              className="rounded-md border border-border bg-card p-4 shadow-sm transition-colors hover:border-accent"
+              className="bg-card p-4 transition-colors hover:bg-muted/40"
               href={card.href}
               key={card.key}
             >
@@ -129,7 +116,7 @@ export function KycReviewCentre({ data }: { data: KycDashboardData }) {
                 <span className={`grid h-9 w-9 place-items-center rounded-md border ${cardToneClasses[card.tone]}`}>
                   <Icon aria-hidden="true" className="h-4 w-4" />
                 </span>
-                <Badge tone="slate">Open Queue</Badge>
+                <Badge tone="slate">Open</Badge>
               </div>
               <p className="mt-4 text-sm font-semibold text-muted-foreground">{card.label}</p>
               <p className="mt-2 text-2xl font-bold text-foreground">{card.value}</p>
@@ -138,32 +125,6 @@ export function KycReviewCentre({ data }: { data: KycDashboardData }) {
             </Link>
           );
         })}
-      </section>
-
-      <section className="grid gap-3 rounded-md border border-border bg-card p-4 lg:grid-cols-[minmax(0,1.2fr)_repeat(5,minmax(150px,1fr))]">
-        <label className="relative">
-          <span className="sr-only">Search KYC submissions</span>
-          <Search
-            aria-hidden="true"
-            className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-          />
-          <input
-            className="h-10 w-full rounded-md border border-border bg-background pl-9 pr-3 text-sm text-foreground"
-            placeholder="Search client, engagement, KYC reference, tax number..."
-            type="search"
-          />
-        </label>
-        {["Status", "Reviewer", "Risk", "Client Type", "Waiting Time"].map((filter) => (
-          <select
-            className="h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground"
-            key={filter}
-          >
-            <option>{filter}</option>
-            <option>Assigned to me</option>
-            <option>Overdue</option>
-            <option>Missing documents</option>
-          </select>
-        ))}
       </section>
 
       <section className="flex flex-wrap gap-2">

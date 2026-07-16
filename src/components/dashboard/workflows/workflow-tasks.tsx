@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertTriangle, ArrowUpRight, CheckCircle2, Clock, Link2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock, Link2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { buttonClassName } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -86,33 +86,31 @@ export function WorkflowTasks({ tasks }: { tasks: WorkflowTaskListItem[] }) {
   return (
     <div className="grid gap-5">
       <section className="rounded-md border border-border bg-card p-5">
-        <Badge tone="red">Task execution</Badge>
         <h1 className="mt-3 text-2xl font-bold tracking-normal text-foreground">
-          Workflow Tasks
+          Tasks
         </h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-          Manage task readiness, dependencies, client-action requests, approvals, blockers and
-          deadlines across active workflows.
+          See what needs doing, who is responsible and which tasks are delayed or blocked.
         </p>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-4">
+      <section className="grid gap-px overflow-hidden rounded-md border border-border bg-border md:grid-cols-4">
         {[
           ["Open tasks", tasks.filter((task) => !["completed", "cancelled"].includes(task.status)).length],
           ["Overdue", overdue.length],
           ["Blocked", blocked.length],
           ["Waiting", waiting.length],
         ].map(([label, value]) => (
-          <Card key={label}>
-            <CardHeader>
+          <Card className="rounded-none border-0 shadow-none" key={label}>
+            <CardHeader className="p-4">
               <CardDescription>{label}</CardDescription>
-              <CardTitle className="text-3xl font-bold">{value}</CardTitle>
+              <CardTitle className="text-2xl font-bold">{value}</CardTitle>
             </CardHeader>
           </Card>
         ))}
       </section>
 
-      <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <section>
         <Card>
           <CardHeader>
             <CardTitle>Task queue</CardTitle>
@@ -170,7 +168,7 @@ export function WorkflowTasks({ tasks }: { tasks: WorkflowTaskListItem[] }) {
           </CardContent>
         </Card>
 
-        <div className="grid content-start gap-5">
+        <div className="hidden">
           <Card>
             <CardHeader>
               <CardTitle>Overdue task cards</CardTitle>

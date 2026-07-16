@@ -1,10 +1,7 @@
 import {
   CalendarDays,
   Download,
-  FilePlus2,
   Filter,
-  RefreshCcw,
-  Save,
 } from "lucide-react";
 import Link from "next/link";
 import { ReportCategoryIcon } from "@/components/dashboard/reports/report-category-icon";
@@ -51,13 +48,11 @@ export function ReportsLanding({
       <section className="rounded-md border border-border bg-card p-5">
         <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-start">
           <div>
-            <Badge tone="teal">Reports</Badge>
             <h1 className="mt-3 text-2xl font-bold tracking-normal text-foreground">
-              Reports and Analytics
+              Reports
             </h1>
             <p className="mt-2 max-w-4xl text-sm leading-6 text-muted-foreground">
-              Monitor business performance, engagement delivery, compliance, finance, staff
-              capacity and operational risk.
+              Review client work, finance, compliance and team performance in one place.
             </p>
             <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold text-muted-foreground">
               <span className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1">
@@ -70,14 +65,6 @@ export function ReportsLanding({
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button className={buttonClassName({ variant: "secondary" })} type="button">
-              <RefreshCcw aria-hidden="true" className="h-4 w-4" />
-              Refresh
-            </button>
-            <button className={buttonClassName({ variant: "secondary" })} type="button">
-              <Save aria-hidden="true" className="h-4 w-4" />
-              Saved reports
-            </button>
             <a
               className={buttonClassName({ variant: "secondary" })}
               download="ifta-report-summary.csv"
@@ -86,10 +73,6 @@ export function ReportsLanding({
               <Download aria-hidden="true" className="h-4 w-4" />
               Export summary
             </a>
-            <Link className={buttonClassName()} href="#report-builder">
-              <FilePlus2 aria-hidden="true" className="h-4 w-4" />
-              Create custom report
-            </Link>
           </div>
         </div>
       </section>
@@ -133,9 +116,9 @@ export function ReportsLanding({
         </Link>
       </form>
 
-      <section className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+      <section className="grid gap-px overflow-hidden rounded-md border border-border bg-border md:grid-cols-2 2xl:grid-cols-3">
         {data.summary.map((kpi) => (
-          <ReportKpiCard key={kpi.key} kpi={kpi} />
+          <ReportKpiCard compact key={kpi.key} kpi={kpi} />
         ))}
       </section>
 
@@ -191,22 +174,6 @@ export function ReportsLanding({
             </CardContent>
           </Card>
 
-          <Card id="report-builder">
-            <CardHeader>
-              <CardTitle>Report builder workflow</CardTitle>
-              <CardDescription>Controlled custom report creation for authorized users.</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-2 md:grid-cols-4">
-              {data.builderSteps.map((step, index) => (
-                <div className="rounded-md border border-border px-3 py-3 text-sm" key={step}>
-                  <span className="font-mono text-xs font-semibold text-muted-foreground">
-                    {String(index + 1).padStart(2, "0")}
-                  </span>
-                  <p className="mt-1 font-semibold text-foreground">{step}</p>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
         </div>
 
         <div className="grid gap-5">

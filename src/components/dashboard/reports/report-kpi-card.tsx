@@ -16,10 +16,10 @@ function TrendIcon({ direction }: { direction: ReportKpi["comparison"]["directio
   return <ArrowRight aria-hidden="true" className="h-4 w-4" />;
 }
 
-export function ReportKpiCard({ kpi }: { kpi: ReportKpi }) {
+export function ReportKpiCard({ kpi, compact = false }: { kpi: ReportKpi; compact?: boolean }) {
   return (
-    <Card>
-      <CardHeader className="pb-3">
+    <Card className={compact ? "rounded-none border-0 shadow-none" : undefined}>
+      <CardHeader className={compact ? "p-4 pb-2" : "pb-3"}>
         <div className="flex items-start justify-between gap-3">
           <CardTitle className="text-sm">{kpi.label}</CardTitle>
           <span
@@ -38,14 +38,19 @@ export function ReportKpiCard({ kpi }: { kpi: ReportKpi }) {
           </span>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className={compact ? "p-4 pt-0" : undefined}>
         <p className="text-2xl font-bold text-foreground">{kpi.value}</p>
-        <p className="mt-2 min-h-10 text-sm leading-5 text-muted-foreground">{kpi.explanation}</p>
+        {!compact ? (
+          <p className="mt-2 min-h-10 text-sm leading-5 text-muted-foreground">{kpi.explanation}</p>
+        ) : null}
         <Link
-          className="mt-3 inline-flex text-sm font-semibold text-primary hover:text-foreground"
+          className={cn(
+            "inline-flex text-sm font-semibold text-primary hover:text-foreground",
+            compact ? "mt-2" : "mt-3",
+          )}
           href={kpi.drillDownHref}
         >
-          Drill down
+          Open report
         </Link>
       </CardContent>
     </Card>

@@ -1,5 +1,8 @@
+import Link from "next/link";
+import { Briefcase, ShieldCheck, UserCheck, UserCog, Users } from "lucide-react";
+import { AdminPageSurface } from "@/components/dashboard/admin/admin-page-surface";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { buttonClassName } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -14,6 +17,10 @@ import { listStaffForAdmin, type AdminDirectoryUser } from "@/repositories/user-
 function displayName(user: AdminDirectoryUser) {
   const name = `${user.firstName} ${user.lastName}`.trim();
   return name || "Unnamed staff member";
+}
+
+function initials(user: AdminDirectoryUser) {
+  return `${user.firstName.at(0) ?? ""}${user.lastName.at(0) ?? ""}` || "S";
 }
 
 function dateLabel(value: string | null) {
@@ -68,99 +75,56 @@ export async function AdminStaff() {
     (total, member) => total + member.assignedEngagementCount,
     0,
   );
+  const roleCoverage = new Set(staff.flatMap((member) => member.roleKeys)).size;
 
   return (
-    <div className="grid min-w-0 gap-5">
-      <section className="rounded-md border border-border border-l-4 border-l-primary bg-card p-5">
-        <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
-          <div>
-            <Badge tone="teal">Admin staff</Badge>
-            <h1 className="mt-3 text-2xl font-bold tracking-normal text-foreground">
-              Staff directory and access detail
-            </h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-              Review staff accounts with roles, permission reach, account state, verification,
-              assigned work and recent activity from registered user records.
-            </p>
-          </div>
-          <div className="rounded-md border border-brand-mist-strong bg-brand-soft px-4 py-3">
-            <p className="font-mono text-xs font-semibold text-muted-foreground">Team members</p>
-            <p className="mt-1 text-sm font-semibold text-foreground">{staff.length} listed</p>
-          </div>
-        </div>
-      </section>
-
-      <section className="grid gap-4 sm:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardDescription>Staff accounts</CardDescription>
-            <CardTitle className="text-2xl font-bold">{staff.length}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm leading-6 text-muted-foreground">
-              Admin, consultant, reviewer, finance, support and audit roles.
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardDescription>Active staff</CardDescription>
-            <CardTitle className="text-2xl font-bold">{activeStaff}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm leading-6 text-muted-foreground">
-              Accounts currently allowed into staff and admin portals.
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardDescription>Assigned work</CardDescription>
-            <CardTitle className="text-2xl font-bold">{assignedWork}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm leading-6 text-muted-foreground">
-              Engagement references attached to staff user records.
-            </p>
-          </CardContent>
-        </Card>
-      </section>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Full staff details</CardTitle>
-          <CardDescription>
-            Roles, permissions, account health, assigned work and activity details.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {staff.length > 0 ? (
-            <div className="overflow-x-auto">
+    <AdminPageSurface
+      actions={
+        <Link className={buttonClassName({ variant: "secondary" })} href="/admin/permissions">
+          <ShieldCheck aria-hidden="true" className="h-4 w-4" />
+          Manage access
+        </Link>
+      }
+      description="Find staff members, check their role and see whether they can access the portal."
+      icon={UserCog}
+      summary={[
+        { label: "Team members", value: staff.length, helper: "Staff accounts", icon: Users },
+        { label: "Active", value: activeStaff, helper: "Can sign in", icon: UserCheck },
+        { label: "Assigned work", value: assignedWork, helper: "Linked engagements", icon: Briefcase },
+        { label: "Roles covered", value: roleCoverage, helper: `${suspendedStaff} suspended`, icon: ShieldCheck },
+      ]}
+      title="Staff directory"
+    >
+      {staff.length > 0 ? (
+        <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Staff member</TableHead>
-                    <TableHead>Roles</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Permissions</TableHead>
-                    <TableHead>Assigned</TableHead>
-                    <TableHead>Joined</TableHead>
-                    <TableHead>Last login</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Portal access</TableHead>
+                    <TableHead>Assigned work</TableHead>
+                    <TableHead>Last activity</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {staff.map((member) => (
                     <TableRow key={member.id}>
                       <TableCell>
-                        <div className="min-w-56">
-                          <p className="font-semibold text-foreground">{displayName(member)}</p>
-                          <p className="text-xs font-medium text-muted-foreground">
-                            {member.email}
-                          </p>
+                        <div className="flex min-w-60 items-center gap-3">
+                          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-primary text-sm font-bold text-primary-foreground">
+                            {initials(member)}
+                          </span>
+                          <div>
+                            <p className="font-semibold text-foreground">{displayName(member)}</p>
+                            <p className="text-xs font-medium text-muted-foreground">
+                              {member.email}
+                            </p>
+                          </div>
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="flex min-w-52 flex-wrap gap-1.5">
+                        <div className="flex min-w-44 flex-wrap gap-1.5">
                           {roleLabels(member).map((role) => (
                             <Badge key={role} tone="teal">
                               {role}
@@ -169,7 +133,7 @@ export async function AdminStaff() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="grid gap-2">
+                        <div className="grid justify-items-start gap-1.5">
                           <Badge tone={statusTone(member.status)}>{member.status}</Badge>
                           <span className="text-xs text-muted-foreground">
                             {member.emailVerifiedAt ? "Email verified" : "Email pending"}
@@ -177,52 +141,25 @@ export async function AdminStaff() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <p className="font-semibold text-foreground">{permissionCount(member)}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {member.directPermissions.length} direct
+                        <p className="font-semibold text-foreground">
+                          {member.assignedEngagementCount} engagements
                         </p>
+                        <p className="text-xs text-muted-foreground">{permissionCount(member)} access rights</p>
                       </TableCell>
-                      <TableCell>{member.assignedEngagementCount}</TableCell>
-                      <TableCell>{dateLabel(member.createdAt)}</TableCell>
-                      <TableCell>{dateLabel(member.lastLoginAt)}</TableCell>
+                      <TableCell>
+                        <p>{dateLabel(member.lastLoginAt)}</p>
+                        <p className="text-xs text-muted-foreground">Joined {dateLabel(member.createdAt)}</p>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
-            </div>
-          ) : (
-            <div className="rounded-md border border-border bg-muted/40 px-4 py-6 text-sm text-muted-foreground">
-              No staff accounts are available yet.
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <section className="grid gap-4 md:grid-cols-3">
-        {[
-          {
-            label: "Access review",
-            value: `${suspendedStaff} suspended`,
-            helper: "Suspended or archived records should be reviewed before production use.",
-          },
-          {
-            label: "Role coverage",
-            value: `${new Set(staff.flatMap((member) => member.roleKeys)).size} roles`,
-            helper: "Distinct role types currently represented in the staff directory.",
-          },
-          {
-            label: "Direct grants",
-            value: `${staff.reduce((total, member) => total + member.directPermissions.length, 0)}`,
-            helper: "Direct permission overrides outside role defaults.",
-          },
-        ].map((item) => (
-          <div className="rounded-md border border-border bg-card p-4" key={item.label}>
-            <p className="text-sm font-semibold text-muted-foreground">{item.label}</p>
-            <p className="mt-2 text-xl font-bold text-foreground">{item.value}</p>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.helper}</p>
-          </div>
-        ))}
-      </section>
-    </div>
+        </div>
+      ) : (
+        <div className="p-8 text-center text-sm text-muted-foreground">
+          No staff accounts are available yet.
+        </div>
+      )}
+    </AdminPageSurface>
   );
 }

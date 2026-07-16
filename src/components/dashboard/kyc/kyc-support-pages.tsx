@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { Badge } from "@/components/ui/badge";
+import { ArrowLeft, FileCheck2 } from "lucide-react";
+import { AdminPageSurface } from "@/components/dashboard/admin/admin-page-surface";
 import { buttonClassName } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -27,61 +27,56 @@ export function KycSimpleTablePage({
   backHref?: string;
 }) {
   return (
-    <div className="grid gap-5">
-      <section className="rounded-md border border-border bg-card p-5">
-        <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
-          <div>
-            <Badge tone="teal">{eyebrow}</Badge>
-            <h1 className="mt-3 text-2xl font-bold tracking-normal text-foreground">{title}</h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-              {description}
-            </p>
-          </div>
-          <Link className={buttonClassName({ variant: "secondary" })} href={backHref}>
-            Back to KYC centre
-          </Link>
-        </div>
-      </section>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{title}</CardTitle>
-          <CardDescription>{rows.length} records</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  {columns.map((column) => (
-                    <TableHead key={column}>{column}</TableHead>
-                  ))}
-                  <TableHead>Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((row, index) => (
-                  <TableRow key={`${title}-${index}`}>
-                    {columns.map((column) => (
-                      <TableCell
-                        className={column === columns[0] ? "font-semibold text-foreground" : undefined}
-                        key={column}
-                      >
-                        {row[column] ?? ""}
-                      </TableCell>
-                    ))}
-                    <TableCell>
-                      <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href="/admin/kyc">
-                        View queue
-                      </Link>
-                    </TableCell>
-                  </TableRow>
+    <AdminPageSurface
+      actions={
+        <Link className={buttonClassName({ variant: "secondary" })} href={backHref}>
+          <ArrowLeft aria-hidden="true" className="h-4 w-4" />
+          KYC centre
+        </Link>
+      }
+      description={description}
+      icon={FileCheck2}
+      summary={[
+        {
+          label: eyebrow,
+          value: rows.length,
+          helper: rows.length === 1 ? "Record shown" : "Records shown",
+          icon: FileCheck2,
+        },
+      ]}
+      title={title}
+    >
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              {columns.map((column) => (
+                <TableHead key={column}>{column.replace(/([A-Z])/g, " $1").trim()}</TableHead>
+              ))}
+              <TableHead className="text-right">Action</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((row, index) => (
+              <TableRow key={`${title}-${index}`}>
+                {columns.map((column) => (
+                  <TableCell
+                    className={column === columns[0] ? "font-semibold text-foreground" : undefined}
+                    key={column}
+                  >
+                    {row[column] ?? ""}
+                  </TableCell>
                 ))}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+                <TableCell className="text-right">
+                  <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href="/admin/kyc">
+                    Open queue
+                  </Link>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </AdminPageSurface>
   );
 }

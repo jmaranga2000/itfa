@@ -1,14 +1,8 @@
 import Link from "next/link";
 import {
   AlertTriangle,
-  ArrowUpRight,
-  CalendarDays,
   CheckCircle2,
   Clock,
-  Columns3,
-  GanttChartSquare,
-  ListFilter,
-  Table2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { buttonClassName } from "@/components/ui/button";
@@ -131,36 +125,34 @@ export function WorkflowDashboard({ data }: { data: WorkflowDashboardData }) {
       <section className="min-w-0 rounded-md border border-border bg-card p-5">
         <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-start">
           <div>
-            <Badge tone="red">Workflow operations</Badge>
             <h1 className="mt-3 text-2xl font-bold tracking-normal text-foreground">
-              Workflow Dashboard
+              Workflows
             </h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-              Track engagement stages, approvals, client actions, overdue work, staff workload and
-              archive readiness from one operational view.
+              See where each client engagement is, what needs attention and who is responsible.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            {["Active Workflows", "Waiting for Client", "At Risk", "Overdue"].map((view) => (
-              <button className={buttonClassName({ variant: "secondary", size: "sm" })} key={view} type="button">
-                <ListFilter aria-hidden="true" className="h-4 w-4" />
-                {view}
-              </button>
-            ))}
+            <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href="/admin/tasks">
+              Tasks
+            </Link>
+            <Link className={buttonClassName({ size: "sm" })} href="/admin/workflow-templates">
+              Workflow templates
+            </Link>
           </div>
         </div>
       </section>
 
-      <section className="grid min-w-0 gap-4 md:grid-cols-2 2xl:grid-cols-3">
+      <section className="grid min-w-0 gap-px overflow-hidden rounded-md border border-border bg-border md:grid-cols-2 2xl:grid-cols-3">
         {data.summary.map((metric) => (
           <Link href={metric.href} key={metric.label}>
-            <Card className="h-full transition-colors hover:border-accent">
-              <CardHeader>
+            <Card className="h-full rounded-none border-0 shadow-none transition-colors hover:bg-muted/40">
+              <CardHeader className="p-4 pb-2">
                 <CardDescription>{metric.label}</CardDescription>
-                <CardTitle className="text-3xl font-bold">{metric.value}</CardTitle>
+                <CardTitle className="text-2xl font-bold">{metric.value}</CardTitle>
               </CardHeader>
-              <CardContent>
-                <p className="text-sm leading-6 text-muted-foreground">{metric.helper}</p>
+              <CardContent className="p-4 pt-0">
+                <p className="text-xs leading-5 text-muted-foreground">{metric.helper}</p>
               </CardContent>
             </Card>
           </Link>
@@ -224,41 +216,23 @@ export function WorkflowDashboard({ data }: { data: WorkflowDashboardData }) {
         </Card>
       </section>
 
-      <section className="grid min-w-0 gap-5 2xl:grid-cols-[minmax(0,1fr)_minmax(320px,400px)]">
+      <section className="min-w-0">
         <Card className="min-w-0">
-          <CardHeader className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
-            <div>
-              <CardTitle>Workflow list</CardTitle>
-              <CardDescription>Table, Kanban, timeline and calendar views share this workflow data.</CardDescription>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {[
-                ["Table", Table2],
-                ["Kanban", Columns3],
-                ["Timeline", GanttChartSquare],
-                ["Calendar", CalendarDays],
-              ].map(([label, Icon]) => (
-                <button className={buttonClassName({ variant: label === "Table" ? "primary" : "secondary", size: "sm" })} key={String(label)} type="button">
-                  <Icon aria-hidden="true" className="h-4 w-4" />
-                  {String(label)}
-                </button>
-              ))}
-            </div>
+          <CardHeader>
+            <CardTitle>Workflow list</CardTitle>
+            <CardDescription>Open a workflow to review its stages, tasks and client actions.</CardDescription>
           </CardHeader>
           <CardContent className="min-w-0">
             <div className="max-w-full overflow-x-auto">
-              <Table className="min-w-[1080px]">
+              <Table className="min-w-[840px]">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Engagement</TableHead>
-                    <TableHead>Client</TableHead>
-                    <TableHead>Service</TableHead>
-                    <TableHead>Stage</TableHead>
+                    <TableHead>Client work</TableHead>
+                    <TableHead>Service and stage</TableHead>
                     <TableHead>Progress</TableHead>
-                    <TableHead>Manager</TableHead>
+                    <TableHead>Responsible person</TableHead>
                     <TableHead>Next action</TableHead>
-                    <TableHead>Due</TableHead>
-                    <TableHead>Risk</TableHead>
+                    <TableHead>Due and risk</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -266,12 +240,14 @@ export function WorkflowDashboard({ data }: { data: WorkflowDashboardData }) {
                     <TableRow key={workflow.id}>
                       <TableCell>
                         <Link className="font-semibold text-accent hover:underline" href={`/admin/workflows/${workflow.id}`}>
-                          {workflow.reference}
+                          {workflow.clientName}
                         </Link>
+                        <p className="text-xs text-muted-foreground">{workflow.reference}</p>
                       </TableCell>
-                      <TableCell className="font-medium text-foreground">{workflow.clientName}</TableCell>
-                      <TableCell>{workflow.serviceName}</TableCell>
-                      <TableCell>{workflow.currentStageName}</TableCell>
+                      <TableCell>
+                        <p className="font-medium text-foreground">{workflow.serviceName}</p>
+                        <p className="text-xs text-muted-foreground">{workflow.currentStageName}</p>
+                      </TableCell>
                       <TableCell>
                         <div className="min-w-28">
                           <ProgressBar value={workflow.progress.overall} />
@@ -280,8 +256,8 @@ export function WorkflowDashboard({ data }: { data: WorkflowDashboardData }) {
                       </TableCell>
                       <TableCell>{workflow.responsibleUserName}</TableCell>
                       <TableCell className="max-w-64 truncate">{workflow.nextAction}</TableCell>
-                      <TableCell>{dateLabel(workflow.dueDate)}</TableCell>
                       <TableCell>
+                        <p>{dateLabel(workflow.dueDate)}</p>
                         <Badge tone={riskTone(workflow.riskLevel)}>{workflow.riskLevel}</Badge>
                       </TableCell>
                     </TableRow>
@@ -292,7 +268,7 @@ export function WorkflowDashboard({ data }: { data: WorkflowDashboardData }) {
           </CardContent>
         </Card>
 
-        <div className="grid min-w-0 gap-5">
+        <div className="hidden">
           <Card className="min-w-0">
             <CardHeader>
               <CardTitle>Kanban preview</CardTitle>

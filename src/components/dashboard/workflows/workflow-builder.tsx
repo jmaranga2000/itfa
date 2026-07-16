@@ -1,6 +1,5 @@
-import { CheckCircle2, Circle, GripVertical, Plus, ShieldCheck, Workflow } from "lucide-react";
+import { CheckCircle2, Circle, GripVertical, ShieldCheck, Workflow } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { buttonClassName } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { WorkflowTemplateRecord } from "@/repositories/workflow-repository";
 
@@ -25,27 +24,17 @@ export function WorkflowBuilder({ templates }: { templates: WorkflowTemplateReco
       <section className="rounded-md border border-border bg-card p-5">
         <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-start">
           <div>
-            <Badge tone="red">Workflow builder</Badge>
             <h1 className="mt-3 text-2xl font-bold tracking-normal text-foreground">
-              Workflow Template Builder
+              Workflow templates
             </h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-              Configure stages, tasks, dependencies, approval gates, notifications, escalation
-              rules and client-visible labels before publishing workflow versions.
+              Review the standard stages and tasks used when new client work begins.
             </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button className={buttonClassName({ variant: "secondary" })} type="button">
-              Save draft
-            </button>
-            <button className={buttonClassName()} type="button">
-              Publish version
-            </button>
           </div>
         </div>
       </section>
 
-      <section className="grid gap-5 xl:grid-cols-[320px_minmax(0,1fr)_360px]">
+      <section className="grid gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
         <Card>
           <CardHeader>
             <CardTitle>Workflow structure</CardTitle>
@@ -84,21 +73,10 @@ export function WorkflowBuilder({ templates }: { templates: WorkflowTemplateReco
                 ))}
               </div>
             ) : null}
-
-            <div className="grid grid-cols-2 gap-2">
-              <button className={buttonClassName({ variant: "secondary", size: "sm" })} type="button">
-                <Plus aria-hidden="true" className="h-4 w-4" />
-                Stage
-              </button>
-              <button className={buttonClassName({ variant: "secondary", size: "sm" })} type="button">
-                <Plus aria-hidden="true" className="h-4 w-4" />
-                Task
-              </button>
-            </div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="hidden">
           <CardHeader>
             <CardTitle>Visual canvas</CardTitle>
             <CardDescription>Connected stage cards show progression and validation gates.</CardDescription>

@@ -12,7 +12,6 @@ import {
   ArchiveStatusBadge,
   LegalHoldBadge,
 } from "@/components/dashboard/archive/archive-status-badge";
-import { Badge } from "@/components/ui/badge";
 import { buttonClassName } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -35,8 +34,6 @@ import {
   getArchiveRecordTypeLabel,
   getArchiveStatusLabel,
   type ArchiveCategory,
-  type ArchiveRecordType,
-  type ArchiveStatus,
 } from "@/features/archive/types";
 import type {
   ArchiveDashboardData,
@@ -102,13 +99,11 @@ export function ArchiveDashboard({
       <section className="rounded-md border border-border bg-card p-5">
         <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-start">
           <div>
-            <Badge tone="teal">Records management</Badge>
             <h1 className="mt-3 text-2xl font-bold tracking-normal text-foreground">
-              Archive and Records Management
+              Archive
             </h1>
             <p className="mt-2 max-w-4xl text-sm leading-6 text-muted-foreground">
-              Preserve completed, inactive, superseded and retired records with retention,
-              legal-hold, restore and deletion controls.
+              Find completed or inactive records and manage retention, restore and deletion requests.
             </p>
             <p className="mt-3 text-xs font-semibold text-muted-foreground">
               Data current as of {formatDate(data.dataFreshness)}
@@ -127,16 +122,16 @@ export function ArchiveDashboard({
         </div>
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-px overflow-hidden rounded-md border border-border bg-border sm:grid-cols-2 xl:grid-cols-4">
         {data.summary.map((item) => (
           <Link
-            className="rounded-md border border-border bg-card p-5 shadow-sm hover:border-accent"
+            className="bg-card p-4 transition-colors hover:bg-muted/40"
             href={item.href}
             key={item.label}
           >
             <p className="text-sm font-semibold text-muted-foreground">{item.label}</p>
             <p className="mt-2 text-2xl font-bold text-foreground">{item.value}</p>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.helper}</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.helper}</p>
           </Link>
         ))}
       </section>

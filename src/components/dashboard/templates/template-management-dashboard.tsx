@@ -35,7 +35,7 @@ import {
   restoreTemplateAction,
   submitTemplateForReviewAction,
 } from "@/features/templates/actions";
-import { TEMPLATE_CATEGORY_META, type TemplateCategory } from "@/features/templates/types";
+import { TEMPLATE_CATEGORY_META } from "@/features/templates/types";
 import type {
   TemplateListFilters,
   TemplateManagementData,
@@ -134,14 +134,13 @@ export function TemplateManagementDashboard({
       <section className="rounded-md border border-border bg-card p-5">
         <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-start">
           <div>
-            <Badge tone="teal">Admin templates</Badge>
             <h1 className="mt-3 text-2xl font-bold tracking-normal text-foreground">
               {activeCategory ? activeCategory.label : "Templates"}
             </h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
               {activeCategory
                 ? activeCategory.description
-                : "Manage reusable content, workflows, documents, messages, and system-generated outputs."}
+                : "Find, create and update reusable documents and workflow content."}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -161,15 +160,15 @@ export function TemplateManagementDashboard({
         </div>
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-px overflow-hidden rounded-md border border-border bg-border sm:grid-cols-2 xl:grid-cols-4">
         {data.summary.map((item) => (
-          <Card key={item.label}>
-            <CardHeader>
+          <Card className="rounded-none border-0 shadow-none" key={item.label}>
+            <CardHeader className="p-4 pb-2">
               <CardDescription>{item.label}</CardDescription>
               <CardTitle className="text-2xl font-bold">{item.value}</CardTitle>
             </CardHeader>
-            <CardContent>
-              <p className="text-sm leading-6 text-muted-foreground">{item.helper}</p>
+            <CardContent className="p-4 pt-0">
+              <p className="text-xs leading-5 text-muted-foreground">{item.helper}</p>
             </CardContent>
           </Card>
         ))}
@@ -305,13 +304,6 @@ export function TemplateManagementDashboard({
                   Search, filter, version, publish, archive, duplicate and compare templates.
                 </CardDescription>
               </div>
-              <button
-                className={buttonClassName({ variant: "secondary", size: "sm" })}
-                type="button"
-              >
-                <Archive aria-hidden="true" className="h-4 w-4" />
-                Bulk archive
-              </button>
             </div>
             <form className="grid gap-3 pt-3 md:grid-cols-[minmax(0,1.3fr)_repeat(4,minmax(140px,1fr))_auto]">
               <label className="relative">

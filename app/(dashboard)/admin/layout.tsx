@@ -16,11 +16,11 @@ export default async function AdminDashboardLayout({
       homeHref="/admin/dashboard"
       navItems={adminNavItems}
       roleLabel="Admin Portal"
-      subtitle="Operations, permissions, reporting and audit"
+      subtitle="Clients, work, money and settings"
       title="Admin Portal"
       variant="admin"
     >
-      {children}
+      <div className="admin-content-simple">{children}</div>
     </DashboardShell>
   );
 }

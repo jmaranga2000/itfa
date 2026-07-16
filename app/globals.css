@@ -398,6 +398,52 @@ summary {
   }
 }
 
+/* Keep admin pages calm and readable, including the more detailed review workspaces. */
+.admin-content-simple {
+  min-width: 0;
+}
+
+.admin-content-simple > .grid,
+.admin-content-simple > div > .grid {
+  gap: 1rem;
+}
+
+.admin-content-simple .shadow-sm {
+  box-shadow: none;
+}
+
+.admin-content-simple :is(h1, h2, h3) {
+  letter-spacing: 0;
+}
+
+.admin-content-simple table {
+  font-size: 0.875rem;
+}
+
+.admin-content-simple thead {
+  background: color-mix(in srgb, var(--muted) 55%, transparent);
+}
+
+.admin-content-simple th {
+  white-space: nowrap;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.admin-content-simple tbody tr {
+  transition: background-color 120ms ease;
+}
+
+.admin-content-simple tbody tr:hover {
+  background: color-mix(in srgb, var(--muted) 45%, transparent);
+}
+
+.admin-content-simple [class*="border-l-4"] {
+  border-left-width: 1px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

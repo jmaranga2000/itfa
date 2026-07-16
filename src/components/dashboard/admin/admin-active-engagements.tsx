@@ -1,7 +1,8 @@
 import Link from "next/link";
+import { AlertTriangle, ArrowUpRight, BarChart3, Briefcase, CalendarClock } from "lucide-react";
+import { AdminPageSurface } from "@/components/dashboard/admin/admin-page-surface";
 import { Badge } from "@/components/ui/badge";
 import { buttonClassName } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -73,145 +74,84 @@ export function AdminActiveEngagements() {
   );
 
   return (
-    <div className="grid min-w-0 gap-5">
-      <section className="rounded-md border border-border border-l-4 border-l-primary bg-card p-5">
-        <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
-          <div>
-            <Badge tone="teal">Client work</Badge>
-            <h1 className="mt-3 text-2xl font-bold tracking-normal text-foreground">
-              Active client work
-            </h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-              See work in progress, who is responsible, what is delayed and what is due next.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Link className={buttonClassName({ variant: "secondary" })} href="/admin/requests">
-              New requests
-            </Link>
-            <Link className={buttonClassName()} href="/admin/tasks">
-              Review tasks
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      <section className="grid gap-4 sm:grid-cols-4">
-        {[
-          ["In progress", engagementRows.length, "Client work currently being delivered."],
-          ["Needs attention", blocked.length, "Work waiting for a client or staff action."],
-          ["Due soon", dueSoon.length, "Milestones requiring attention this week."],
-          ["Overall progress", "64%", "Average progress across current client work."],
-        ].map(([label, value, helper]) => (
-          <Card key={label}>
-            <CardHeader>
-              <CardDescription>{label}</CardDescription>
-              <CardTitle className="text-2xl font-bold">{value}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm leading-6 text-muted-foreground">{helper}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </section>
-
-      <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <Card>
-          <CardHeader>
-            <CardTitle>Current client work</CardTitle>
-            <CardDescription>Status, person responsible, progress and anything causing a delay.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Engagement</TableHead>
-                    <TableHead>Client</TableHead>
-                    <TableHead>Service</TableHead>
-                    <TableHead>Stage</TableHead>
-                    <TableHead>Progress</TableHead>
-                    <TableHead>Owner</TableHead>
-                    <TableHead>Next due</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {engagementRows.map((engagement) => (
-                    <TableRow key={engagement.reference}>
-                      <TableCell className="min-w-44">
-                        <p className="font-semibold text-foreground">{engagement.reference}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Blocker: {engagement.blocker}
-                        </p>
-                      </TableCell>
-                      <TableCell>{engagement.client}</TableCell>
-                      <TableCell>{engagement.service}</TableCell>
-                      <TableCell>
-                        <Badge tone={stageTone(engagement.stage)}>{engagement.stage}</Badge>
-                      </TableCell>
-                      <TableCell className="min-w-40">
-                        <div className="flex items-center gap-2">
-                          <div className="h-2 w-24 rounded-sm bg-muted">
-                            <div
-                              className="h-2 rounded-sm bg-accent"
-                              style={{ width: `${engagement.progress}%` }}
-                            />
-                          </div>
-                          <span className="font-mono text-xs text-muted-foreground">
-                            {engagement.progress}%
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>{engagement.owner}</TableCell>
-                      <TableCell>{engagement.due}</TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-2">
-                          <Link
-                            className={buttonClassName({ variant: "secondary", size: "sm" })}
-                            href="/admin/workflows"
-                          >
-                            Workflow
-                          </Link>
-                          <Link
-                            className={buttonClassName({ size: "sm" })}
-                            href="/admin/tasks"
-                          >
-                            Tasks
-                          </Link>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Delivery controls</CardTitle>
-            <CardDescription>Admin checks for live engagements.</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3">
-            {[
-              "Confirm stage transition owner",
-              "Resolve blockers before due dates",
-              "Review client-visible deliverables",
-              "Approve invoice or closeout readiness",
-              "Move completed work to archive",
-            ].map((item, index) => (
-              <div className="rounded-md border border-border px-3 py-3" key={item}>
-                <p className="font-mono text-xs font-semibold text-primary">
-                  {String(index + 1).padStart(2, "0")}
-                </p>
-                <p className="mt-2 text-sm font-semibold text-foreground">{item}</p>
-              </div>
+    <AdminPageSurface
+      actions={
+        <>
+          <Link className={buttonClassName({ variant: "secondary" })} href="/admin/requests">
+            Requests
+          </Link>
+          <Link className={buttonClassName()} href="/admin/tasks">
+            Review tasks
+          </Link>
+        </>
+      }
+      description="See what is being delivered, who owns it, what is delayed and what is due next."
+      icon={Briefcase}
+      summary={[
+        { label: "In progress", value: engagementRows.length, helper: "Current client work", icon: Briefcase },
+        { label: "Needs attention", value: blocked.length, helper: "Waiting on an action", icon: AlertTriangle },
+        { label: "Due soon", value: dueSoon.length, helper: "Due this week", icon: CalendarClock },
+        { label: "Progress", value: "64%", helper: "Average completion", icon: BarChart3 },
+      ]}
+      title="Active client work"
+    >
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Client work</TableHead>
+              <TableHead>Stage and progress</TableHead>
+              <TableHead>Responsible person</TableHead>
+              <TableHead>Needs attention</TableHead>
+              <TableHead>Next due</TableHead>
+              <TableHead className="text-right">Action</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {engagementRows.map((engagement) => (
+              <TableRow key={engagement.reference}>
+                <TableCell>
+                  <div className="min-w-56">
+                    <p className="font-semibold text-foreground">{engagement.client}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">{engagement.service}</p>
+                    <p className="mt-1 font-mono text-xs text-primary">{engagement.reference}</p>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div className="grid min-w-44 gap-2">
+                    <Badge tone={stageTone(engagement.stage)}>{engagement.stage}</Badge>
+                    <div className="flex items-center gap-2">
+                      <div className="h-2 w-24 rounded-sm bg-muted">
+                        <div
+                          className="h-2 rounded-sm bg-accent"
+                          style={{ width: `${engagement.progress}%` }}
+                        />
+                      </div>
+                      <span className="text-xs text-muted-foreground">{engagement.progress}%</span>
+                    </div>
+                  </div>
+                </TableCell>
+                <TableCell>{engagement.owner}</TableCell>
+                <TableCell>
+                  <span className={engagement.blocker === "None" ? "text-muted-foreground" : "font-semibold text-foreground"}>
+                    {engagement.blocker}
+                  </span>
+                </TableCell>
+                <TableCell>{engagement.due}</TableCell>
+                <TableCell className="text-right">
+                  <Link
+                    className={buttonClassName({ variant: "secondary", size: "sm" })}
+                    href="/admin/workflows"
+                  >
+                    Open
+                    <ArrowUpRight aria-hidden="true" className="h-4 w-4" />
+                  </Link>
+                </TableCell>
+              </TableRow>
             ))}
-          </CardContent>
-        </Card>
-      </section>
-    </div>
+          </TableBody>
+        </Table>
+      </div>
+    </AdminPageSurface>
   );
 }

@@ -2,7 +2,7 @@
 
 import type { CSSProperties } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
@@ -113,33 +113,6 @@ function isHrefActive(href: string, pathname: string, homeHref: string) {
   return href === homeHref ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
 }
 
-function collectActiveGroups(
-  items: DashboardNavItem[],
-  pathname: string,
-  homeHref: string,
-  trail: string[] = [],
-) {
-  const activeGroups = new Set<string>();
-
-  for (const item of items) {
-    const itemTrail = [...trail, item.label];
-
-    if (item.children?.length) {
-      const nestedGroups = collectActiveGroups(item.children, pathname, homeHref, itemTrail);
-      if (nestedGroups.size > 0) {
-        activeGroups.add(item.label);
-        nestedGroups.forEach((group) => activeGroups.add(group));
-      }
-    }
-
-    if (item.href && isHrefActive(item.href, pathname, homeHref)) {
-      trail.forEach((group) => activeGroups.add(group));
-    }
-  }
-
-  return activeGroups;
-}
-
 function findActiveTrail(
   items: DashboardNavItem[],
   pathname: string,
@@ -236,6 +209,7 @@ export function DashboardShell({
   variant = "default",
 }: DashboardShellProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const portal = getPortalKind(homeHref, variant);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
@@ -263,22 +237,15 @@ export function DashboardShell({
   const RoleIcon = portal === "admin" ? ShieldCheck : portal === "staff" ? UserCog : CircleUserRound;
 
   useEffect(() => {
-    const activeGroups = collectActiveGroups(navItems, pathname, homeHref);
-    if (activeGroups.size > 0) {
-      setOpenGroups((current) => {
-        const next = { ...current };
-        activeGroups.forEach((group) => {
-          next[group] = true;
-        });
-        return next;
-      });
-    }
+    const frame = window.requestAnimationFrame(() => {
+      setMobileOpen(false);
+      setQuickCreateOpen(false);
+      setNotificationsOpen(false);
+      setProfileOpen(false);
+    });
 
-    setMobileOpen(false);
-    setQuickCreateOpen(false);
-    setNotificationsOpen(false);
-    setProfileOpen(false);
-  }, [homeHref, navItems, pathname]);
+    return () => window.cancelAnimationFrame(frame);
+  }, [pathname]);
 
   useEffect(() => {
     function closeMenus(event: KeyboardEvent) {
@@ -321,7 +288,7 @@ export function DashboardShell({
         {items.map((item) => {
           const active = item.href ? isHrefActive(item.href, pathname, homeHref) : false;
           const childActive = hasActiveChild(item, pathname, homeHref);
-          const groupOpen = openGroups[item.label] ?? item.defaultOpen ?? childActive;
+          const groupOpen = childActive || (openGroups[item.label] ?? item.defaultOpen ?? false);
 
           if (item.children?.length) {
             return (
@@ -475,13 +442,29 @@ export function DashboardShell({
 
             <div className="hidden min-w-0 flex-1 justify-center px-4 xl:flex">
               <label className="relative w-full max-w-xl">
-                <span className="sr-only">Search {roleLabel}</span>
+                <span className="sr-only">Go to a page in {roleLabel}</span>
                 <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  className="h-10 w-full rounded-md border border-border bg-background pl-9 pr-3 text-sm outline-none placeholder:text-muted-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                  placeholder="Search clients, engagements, invoices, documents..."
-                  type="search"
-                />
+                <select
+                  className="h-10 w-full appearance-none rounded-md border border-border bg-background pl-9 pr-8 text-sm text-foreground outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                  onChange={(event) => {
+                    if (event.target.value) {
+                      router.push(event.target.value);
+                    }
+                  }}
+                  value=""
+                >
+                  <option value="">Go to a page...</option>
+                  {navItems.map((group) => (
+                    <optgroup key={group.label} label={group.label}>
+                      {(group.children ?? []).filter((item) => item.href).map((item) => (
+                        <option key={item.href} value={item.href}>
+                          {item.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+                <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               </label>
             </div>
 

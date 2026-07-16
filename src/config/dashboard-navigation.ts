@@ -76,7 +76,7 @@ export const staffNavItems: DashboardNavItem[] = [
 
 export const adminNavItems: DashboardNavItem[] = [
   {
-    label: "Overview",
+    label: "Home",
     icon: "operations",
     defaultOpen: true,
     children: [
@@ -85,50 +85,51 @@ export const adminNavItems: DashboardNavItem[] = [
     ],
   },
   {
-    label: "Client work",
+    label: "Clients and work",
     icon: "users",
     defaultOpen: true,
     children: [
       { label: "Clients", href: "/admin/clients", icon: "users", symbol: "C" },
       {
-        label: "New requests",
+        label: "Requests",
         href: "/admin/requests",
         icon: "inbox",
         symbol: "ER",
-        badge: "6",
       },
       {
-        label: "Active client work",
+        label: "Active work",
         href: "/admin/active-engagements",
         icon: "briefcase",
         symbol: "AE",
       },
-      { label: "Client verification (KYC)", href: "/admin/kyc", icon: "fileCheck", symbol: "K" },
+      { label: "Client checks (KYC)", href: "/admin/kyc", icon: "fileCheck", symbol: "K" },
       { label: "Messages", href: "/admin/messages", icon: "message", symbol: "M" },
     ],
   },
   {
-    label: "Tasks and workflows",
+    label: "Daily work",
     icon: "workflow",
     defaultOpen: false,
     children: [
+      { label: "Tasks", href: "/admin/tasks", icon: "listTodo", symbol: "T" },
       { label: "Workflows", href: "/admin/workflows", icon: "workflow", symbol: "W" },
+      { label: "Documents", href: "/admin/documents", icon: "documents", symbol: "F" },
+    ],
+  },
+  {
+    label: "Services and templates",
+    icon: "documents",
+    defaultOpen: false,
+    children: [
+      { label: "Services", href: "/admin/services", icon: "briefcase", symbol: "SV" },
+      { label: "Pricing", href: "/admin/pricing", icon: "money", symbol: "PR" },
+      { label: "All templates", href: "/admin/templates", icon: "fileText", symbol: "T" },
       {
         label: "Workflow templates",
         href: "/admin/workflow-templates",
         icon: "workflow",
         symbol: "WT",
       },
-      { label: "Tasks", href: "/admin/tasks", icon: "listTodo", symbol: "T" },
-    ],
-  },
-  {
-    label: "Documents and templates",
-    icon: "documents",
-    defaultOpen: false,
-    children: [
-      { label: "Documents", href: "/admin/documents", icon: "documents", symbol: "F" },
-      { label: "Templates", href: "/admin/templates", icon: "fileText", symbol: "T" },
       {
         label: "Letter templates",
         href: "/admin/letter-templates",
@@ -141,29 +142,21 @@ export const adminNavItems: DashboardNavItem[] = [
         icon: "invoice",
         symbol: "IT",
       },
+    ],
+  },
+  {
+    label: "Money and reports",
+    icon: "finance",
+    defaultOpen: false,
+    children: [
+      { label: "Invoices", href: "/admin/invoices", icon: "invoice", symbol: "I" },
+      { label: "Payments", href: "/admin/payments", icon: "creditCard", symbol: "P" },
+      { label: "Reports", href: "/admin/reports", icon: "reports", symbol: "R" },
       { label: "Archive", href: "/admin/archive", icon: "archive", symbol: "A" },
     ],
   },
   {
-    label: "Services and payments",
-    icon: "finance",
-    defaultOpen: false,
-    children: [
-      { label: "Services", href: "/admin/services", icon: "briefcase", symbol: "SV" },
-      { label: "Pricing", href: "/admin/pricing", icon: "money", symbol: "PR" },
-      { label: "Invoices", href: "/admin/invoices", icon: "invoice", symbol: "I" },
-      { label: "Payments", href: "/admin/payments", icon: "creditCard", symbol: "P" },
-      { label: "Reports", href: "/admin/reports", icon: "reports", symbol: "R" },
-    ],
-  },
-  {
-    label: "AI tools",
-    icon: "sparkles",
-    defaultOpen: false,
-    children: [{ label: "AI activity", href: "/admin/ai-usage", icon: "sparkles", symbol: "AI" }],
-  },
-  {
-    label: "Team and settings",
+    label: "Team and system",
     icon: "settings",
     defaultOpen: false,
     children: [
@@ -174,8 +167,9 @@ export const adminNavItems: DashboardNavItem[] = [
         icon: "permissions",
         symbol: "RP",
       },
-      { label: "Activity history", href: "/admin/audit", icon: "activity", symbol: "AL" },
-      { label: "Connected services", href: "/admin/integrations", icon: "lock", symbol: "IN" },
+      { label: "AI activity", href: "/admin/ai-usage", icon: "sparkles", symbol: "AI" },
+      { label: "Activity log", href: "/admin/audit", icon: "activity", symbol: "AL" },
+      { label: "Connections", href: "/admin/integrations", icon: "lock", symbol: "IN" },
       { label: "Settings", href: "/admin/settings", icon: "settings", symbol: "ST" },
     ],
   },
