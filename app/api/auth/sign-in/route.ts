@@ -33,6 +33,10 @@ function verificationRedirect(
     params.set("resent", "1");
   }
 
+  if (options.delivered === false) {
+    params.set("delivery", "failed");
+  }
+
   if (options.delivered === false && options.verificationUrl && process.env.NODE_ENV !== "production") {
     params.set("preview", options.verificationUrl);
   }

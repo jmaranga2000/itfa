@@ -9,6 +9,7 @@ export default async function VerifyEmailSentPage({
   searchParams?: Promise<{
     email?: string;
     error?: string;
+    delivery?: string;
     preview?: string;
     resent?: string;
     sent?: string;
@@ -30,6 +31,13 @@ export default async function VerifyEmailSentPage({
         {params?.resent ? (
           <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800">
             A new verification link has been prepared.
+          </div>
+        ) : null}
+
+        {params?.delivery === "failed" ? (
+          <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm leading-6 text-red-800">
+            We could not send the verification email. Check the Resend API key and use an address from
+            a verified Resend domain, then try again.
           </div>
         ) : null}
 

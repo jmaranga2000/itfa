@@ -59,29 +59,45 @@ export async function sendVerificationEmail(email: string, verificationUrl: stri
     };
   }
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: env.RESEND_FROM_EMAIL,
-      to: email,
-      subject: "Verify your IFTA Consulting portal account",
-      html: `
-        <div style="font-family: Arial, sans-serif; line-height: 1.6;">
-          <h1>Verify your email</h1>
-          <p>Use the button below to verify your IFTA Consulting client portal account.</p>
-          <p><a href="${verificationUrl}" style="display:inline-block;background:#0f172a;color:#fff;padding:12px 16px;border-radius:6px;text-decoration:none;">Verify email</a></p>
-          <p>If the button does not work, copy this link into your browser:</p>
-          <p>${verificationUrl}</p>
-        </div>
-      `,
-    }),
-  });
+  let response: Response;
+
+  try {
+    response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: env.RESEND_FROM_EMAIL,
+        to: email,
+        subject: "Verify your IFTA Consulting portal account",
+        html: `
+          <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+            <h1>Verify your email</h1>
+            <p>Use the button below to verify your IFTA Consulting client portal account.</p>
+            <p><a href="${verificationUrl}" style="display:inline-block;background:#0f172a;color:#fff;padding:12px 16px;border-radius:6px;text-decoration:none;">Verify email</a></p>
+            <p>If the button does not work, copy this link into your browser:</p>
+            <p>${verificationUrl}</p>
+          </div>
+        `,
+      }),
+    });
+  } catch (error) {
+    console.error("Unable to reach Resend while sending a verification email.", error);
+
+    return {
+      delivered: false,
+      reason: "Email provider could not be reached.",
+    };
+  }
 
   if (!response.ok) {
+    console.error("Resend rejected a verification email.", {
+      status: response.status,
+      statusText: response.statusText,
+    });
+
     return {
       delivered: false,
       reason: "Email provider rejected the message.",

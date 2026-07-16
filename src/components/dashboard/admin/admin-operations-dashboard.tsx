@@ -15,7 +15,6 @@ import {
   ReceiptText,
   RefreshCw,
   ShieldCheck,
-  SlidersHorizontal,
   SlidersHorizontalIcon,
   UserCheck,
   Users,
