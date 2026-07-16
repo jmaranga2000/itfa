@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 export default async function SignInPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ error?: string; verified?: string }>;
+  searchParams?: Promise<{ error?: string; reset?: string; verified?: string }>;
 }) {
   const params = await searchParams;
 
@@ -28,8 +28,19 @@ export default async function SignInPage({
             Your email is verified. You can sign in now.
           </div>
         ) : null}
+        {params?.reset ? (
+          <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800">
+            Your password has been updated. Sign in with your new password.
+          </div>
+        ) : null}
 
         <SignInForm />
+
+        <div className="mt-4 text-right">
+          <Link className="text-sm font-semibold text-primary hover:underline" href="/forgot-password">
+            Forgot password?
+          </Link>
+        </div>
 
         <p className="mt-5 text-sm leading-6 text-muted-foreground">
           New client?{" "}

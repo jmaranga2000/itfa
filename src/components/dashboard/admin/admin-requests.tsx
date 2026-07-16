@@ -1,4 +1,12 @@
 import Link from "next/link";
+import {
+  AlertTriangle,
+  ArrowUpRight,
+  CheckCircle2,
+  Clock,
+  Inbox,
+  Users,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { buttonClassName } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,49 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-
-const requestRows = [
-  {
-    reference: "REQ-2026-014",
-    client: "Amani Holdings",
-    service: "Corporate tax planning",
-    status: "Admin review",
-    priority: "High",
-    owner: "Engagement manager",
-    submitted: "Jul 15, 2026",
-    nextAction: "Confirm scope and assign reviewer",
-  },
-  {
-    reference: "REQ-2026-013",
-    client: "Nairobi Trade Co.",
-    service: "Transfer pricing review",
-    status: "Clarification",
-    priority: "Medium",
-    owner: "Consultant",
-    submitted: "Jul 14, 2026",
-    nextAction: "Request missing entity structure",
-  },
-  {
-    reference: "REQ-2026-012",
-    client: "Kilele Foods",
-    service: "Payroll compliance",
-    status: "Ready to convert",
-    priority: "Medium",
-    owner: "Reviewer",
-    submitted: "Jul 13, 2026",
-    nextAction: "Open active engagement workspace",
-  },
-  {
-    reference: "REQ-2026-011",
-    client: "Blue Rift Advisory",
-    service: "KRA notice response",
-    status: "KYC required",
-    priority: "High",
-    owner: "Support staff",
-    submitted: "Jul 12, 2026",
-    nextAction: "Trigger KYC review checklist",
-  },
-];
+import { adminRequests } from "@/content/admin-requests";
 
 function statusTone(status: string) {
   if (status === "Ready to convert") {
@@ -71,141 +37,157 @@ function priorityTone(priority: string) {
 }
 
 export function AdminRequests() {
-  const readyToConvert = requestRows.filter((request) => request.status === "Ready to convert");
-  const needsClient = requestRows.filter(
+  const readyToConvert = adminRequests.filter((request) => request.status === "Ready to convert");
+  const needsClient = adminRequests.filter(
     (request) => request.status === "Clarification" || request.status === "KYC required",
   );
+  const highPriority = adminRequests.filter((request) => request.priority === "High");
+  const summary = [
+    {
+      label: "Open",
+      value: adminRequests.length,
+      helper: "Awaiting a decision",
+      icon: Inbox,
+    },
+    {
+      label: "Ready to begin",
+      value: readyToConvert.length,
+      helper: "Can become active work",
+      icon: CheckCircle2,
+    },
+    {
+      label: "Need client input",
+      value: needsClient.length,
+      helper: "Clarification or KYC",
+      icon: Clock,
+    },
+    {
+      label: "High priority",
+      value: highPriority.length,
+      helper: "Needs prompt attention",
+      icon: AlertTriangle,
+    },
+  ];
 
   return (
-    <div className="grid min-w-0 gap-5">
-      <section className="rounded-md border border-border border-l-4 border-l-primary bg-card p-5">
-        <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
-          <div>
-            <Badge tone="teal">New requests</Badge>
-            <h1 className="mt-3 text-2xl font-bold tracking-normal text-foreground">
-              Client requests
-            </h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-              Review what clients need, ask for missing information and approve work that is ready to begin.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Link className={buttonClassName({ variant: "secondary" })} href="/admin/clients">
-              View clients
-            </Link>
-            <Link className={buttonClassName()} href="/admin/active-engagements">
-              Active client work
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      <section className="grid gap-4 sm:grid-cols-4">
-        {[
-          ["Open requests", requestRows.length, "Requests waiting for admin movement."],
-          ["Ready to start", readyToConvert.length, "Requests that can move into active work."],
-          ["Waiting for client", needsClient.length, "Requests needing more information or verification."],
-          ["High priority", requestRows.filter((request) => request.priority === "High").length, "Items requiring quick review."],
-        ].map(([label, value, helper]) => (
-          <Card key={label}>
-            <CardHeader>
-              <CardDescription>{label}</CardDescription>
-              <CardTitle className="text-2xl font-bold">{value}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm leading-6 text-muted-foreground">{helper}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </section>
-
-      <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <Card>
-          <CardHeader>
-            <CardTitle>Requests</CardTitle>
-            <CardDescription>What was requested, its status and what to do next.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Request</TableHead>
-                    <TableHead>Client</TableHead>
-                    <TableHead>Service</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Priority</TableHead>
-                    <TableHead>Owner</TableHead>
-                    <TableHead>Submitted</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {requestRows.map((request) => (
-                    <TableRow key={request.reference}>
-                      <TableCell className="min-w-44">
-                        <p className="font-semibold text-foreground">{request.reference}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {request.nextAction}
-                        </p>
-                      </TableCell>
-                      <TableCell>{request.client}</TableCell>
-                      <TableCell>{request.service}</TableCell>
-                      <TableCell>
-                        <Badge tone={statusTone(request.status)}>{request.status}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge tone={priorityTone(request.priority)}>{request.priority}</Badge>
-                      </TableCell>
-                      <TableCell>{request.owner}</TableCell>
-                      <TableCell>{request.submitted}</TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-2">
-                          <Link
-                            className={buttonClassName({ variant: "secondary", size: "sm" })}
-                            href="/admin/clients"
-                          >
-                            Review
-                          </Link>
-                          <Link
-                            className={buttonClassName({ size: "sm" })}
-                            href="/admin/workflows"
-                          >
-                            Convert
-                          </Link>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Intake controls</CardTitle>
-            <CardDescription>Checks before a request becomes active work.</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3">
-            {[
-              "Confirm service scope and pricing",
-              "Check client organization and representative access",
-              "Trigger or review KYC requirements",
-              "Assign staff owner before conversion",
-              "Create workspace and first workflow tasks",
-            ].map((item, index) => (
-              <div className="rounded-md border border-border px-3 py-3" key={item}>
-                <p className="font-mono text-xs font-semibold text-primary">
-                  {String(index + 1).padStart(2, "0")}
-                </p>
-                <p className="mt-2 text-sm font-semibold text-foreground">{item}</p>
+    <div className="min-w-0">
+      <Card className="overflow-hidden">
+        <CardHeader className="gap-5 border-b border-border bg-card">
+          <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
+            <div className="flex min-w-0 items-start gap-3">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-brand-soft text-primary">
+                <Inbox aria-hidden="true" className="h-5 w-5" />
+              </span>
+              <div>
+                <CardTitle className="text-2xl">Engagement requests</CardTitle>
+                <CardDescription className="mt-1 max-w-2xl leading-6">
+                  Review incoming client needs and move complete requests into active work.
+                </CardDescription>
               </div>
-            ))}
-          </CardContent>
-        </Card>
-      </section>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Link className={buttonClassName({ variant: "secondary" })} href="/admin/clients">
+                <Users aria-hidden="true" className="h-4 w-4" />
+                View clients
+              </Link>
+              <Link className={buttonClassName()} href="/admin/active-engagements">
+                <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
+                Active work
+              </Link>
+            </div>
+          </div>
+
+          <div className="grid overflow-hidden rounded-md border border-border bg-background sm:grid-cols-2 xl:grid-cols-4">
+            {summary.map((item, index) => {
+              const Icon = item.icon;
+
+              return (
+                <div
+                  className={[
+                    "flex min-w-0 items-center gap-3 px-4 py-3",
+                    index > 0 ? "border-t border-border sm:border-t-0" : "",
+                    index % 2 === 1 ? "sm:border-l sm:border-border" : "",
+                    index > 1 ? "sm:border-t xl:border-t-0" : "",
+                    index > 0 ? "xl:border-l xl:border-border" : "",
+                  ].join(" ")}
+                  key={item.label}
+                >
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-brand-soft text-primary">
+                    <Icon aria-hidden="true" className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-xl font-bold text-foreground">{item.value}</span>
+                      <span className="truncate text-sm font-semibold text-foreground">
+                        {item.label}
+                      </span>
+                    </div>
+                    <p className="truncate text-xs text-muted-foreground">{item.helper}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </CardHeader>
+
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Request</TableHead>
+                  <TableHead>Service and next step</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Owner</TableHead>
+                  <TableHead>Submitted</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {adminRequests.map((request) => (
+                  <TableRow key={request.reference}>
+                    <TableCell>
+                      <div className="min-w-48">
+                        <p className="font-semibold text-foreground">{request.client}</p>
+                        <p className="mt-1 font-mono text-xs font-semibold text-primary">
+                          {request.reference}
+                        </p>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="min-w-64 max-w-md">
+                        <p className="font-semibold text-foreground">{request.service}</p>
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                          Next: {request.nextAction}
+                        </p>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="grid justify-items-start gap-1.5">
+                        <Badge tone={statusTone(request.status)}>{request.status}</Badge>
+                        <Badge tone={priorityTone(request.priority)}>
+                          {request.priority} priority
+                        </Badge>
+                      </div>
+                    </TableCell>
+                    <TableCell>{request.owner}</TableCell>
+                    <TableCell>{request.submitted}</TableCell>
+                    <TableCell className="text-right">
+                      <Link
+                        className={buttonClassName({ variant: "secondary", size: "sm" })}
+                        href={`/admin/requests/${request.id}`}
+                      >
+                        Open
+                        <ArrowUpRight aria-hidden="true" className="h-4 w-4" />
+                      </Link>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

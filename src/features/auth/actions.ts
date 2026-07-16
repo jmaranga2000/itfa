@@ -7,6 +7,7 @@ import type { AppRole } from "@/features/authorization/roles";
 import { writeAuditLog } from "@/features/audit/audit-service";
 import { createSession, destroyCurrentSession } from "@/features/auth/session";
 import { hashPassword, verifyPassword } from "@/features/auth/password";
+import { requestPasswordReset, resetPasswordWithToken } from "@/features/auth/password-reset";
 import { createAndSendVerificationEmail } from "@/features/auth/email-verification";
 import {
   getPasswordPolicyMessage,
@@ -231,4 +232,47 @@ export async function resendVerificationEmailAction(formData: FormData) {
 export async function signOutAction() {
   await destroyCurrentSession();
   redirect("/");
+}
+
+export async function requestPasswordResetAction(formData: FormData) {
+  const parsed = z.object({ email: z.string().trim().email() }).safeParse({
+    email: formData.get("email"),
+  });
+
+  if (!parsed.success) {
+    redirect("/forgot-password?error=invalid-email");
+  }
+
+  await requestPasswordReset(parsed.data.email);
+  redirect("/forgot-password?sent=1");
+}
+
+export async function resetPasswordAction(formData: FormData) {
+  const parsed = z
+    .object({
+      token: z.string().min(1),
+      password: z.string().min(1).max(128),
+      confirmPassword: z.string().min(1).max(128),
+    })
+    .safeParse({
+      token: formData.get("token"),
+      password: formData.get("password"),
+      confirmPassword: formData.get("confirmPassword"),
+    });
+
+  if (!parsed.success || !isPasswordPolicySatisfied(parsed.data.password)) {
+    redirect(`/reset-password?token=${encodeURIComponent(String(formData.get("token") ?? ""))}&error=invalid-password`);
+  }
+
+  if (parsed.data.password !== parsed.data.confirmPassword) {
+    redirect(`/reset-password?token=${encodeURIComponent(parsed.data.token)}&error=password-mismatch`);
+  }
+
+  const reset = await resetPasswordWithToken(parsed.data.token, parsed.data.password);
+
+  if (!reset) {
+    redirect("/forgot-password?error=expired-link");
+  }
+
+  redirect("/sign-in?reset=1");
 }
