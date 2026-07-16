@@ -21,6 +21,7 @@ const communicationNotificationSchema = new Schema(
     createdByUserId: { type: Schema.Types.ObjectId, default: null, index: true },
     announcementId: { type: Schema.Types.ObjectId, default: null, index: true },
     readAt: { type: Date, default: null, index: true },
+    expiresAt: { type: Date, default: null, index: true },
     archivedAt: { type: Date, default: null, index: true },
   },
   {

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowUpRight, Bell, Check } from "lucide-react";
+import { ArrowUpRight, Check } from "lucide-react";
 import {
   markAllNotificationsReadAction,
   markNotificationReadAction,
@@ -59,6 +59,9 @@ export function NotificationCentre({
   const actionRequired = data.notifications.filter(
     (notification) => notification.type === "action_required" && !notification.readAt,
   );
+  const information = data.notifications.filter(
+    (notification) => notification.type === "announcement",
+  );
 
   return (
     <Card className="overflow-hidden shadow-none">
@@ -81,8 +84,8 @@ export function NotificationCentre({
           {[
             ["Unread", unread.length],
             ["Action needed", actionRequired.length],
-            ["Announcements", data.announcements.length],
-            ["All messages", data.notifications.length],
+            ["Information", information.length],
+            ["All notifications", data.notifications.length],
           ].map(([label, value], index) => (
             <div
               className={[
@@ -143,22 +146,6 @@ export function NotificationCentre({
         )}
       </CardContent>
 
-      {data.announcements.length > 0 ? (
-        <div className="border-t border-border bg-muted/20 px-5 py-4">
-          <p className="mb-3 text-sm font-semibold text-foreground">Announcements</p>
-          <div className="grid gap-3 md:grid-cols-2">
-            {data.announcements.slice(0, 2).map((announcement) => (
-              <Link className="flex items-start gap-2 text-sm" href={announcement.actionUrl} key={announcement.id}>
-                <Bell aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                <span>
-                  <span className="block font-semibold text-foreground">{announcement.title}</span>
-                  <span className="mt-1 block text-xs leading-5 text-muted-foreground">{announcement.body}</span>
-                </span>
-              </Link>
-            ))}
-          </div>
-        </div>
-      ) : null}
     </Card>
   );
 }

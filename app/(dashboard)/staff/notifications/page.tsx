@@ -6,5 +6,5 @@ export default async function StaffNotificationsPage() {
   const principal = await requireUser();
   const data = await getCommunicationHubData(principal);
 
-  return <NotificationCentre data={data} />;
+  return <NotificationCentre data={data} detailBaseHref="/staff/notifications" />;
 }

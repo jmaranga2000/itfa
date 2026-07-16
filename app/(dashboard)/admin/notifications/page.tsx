@@ -1,10 +1,22 @@
-import { NotificationCentre } from "@/components/dashboard/communication/notification-centre";
-import { requireUser } from "@/features/auth/server";
-import { getCommunicationHubData } from "@/repositories/communication-repository";
+import { AdminNotificationManager } from "@/components/dashboard/admin/admin-notification-manager";
+import { requirePermission } from "@/features/auth/server";
+import { listAdminNotifications } from "@/repositories/admin-notification-repository";
 
-export default async function AdminNotificationsPage() {
-  const principal = await requireUser();
-  const data = await getCommunicationHubData(principal);
+export default async function AdminNotificationsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ deleted?: string }>;
+}) {
+  await requirePermission("settings.manage");
+  const [notifications, query] = await Promise.all([
+    listAdminNotifications(),
+    searchParams,
+  ]);
 
-  return <NotificationCentre data={data} detailBaseHref="/admin/notifications" />;
+  return (
+    <AdminNotificationManager
+      deleted={query.deleted === "1"}
+      notifications={notifications}
+    />
+  );
 }

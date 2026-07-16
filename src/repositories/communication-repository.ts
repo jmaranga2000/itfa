@@ -440,6 +440,7 @@ export async function listNotificationsForPrincipal(principal: Principal, limit 
   const notifications = await CommunicationNotificationModel.find({
     recipientUserId: principalId,
     archivedAt: null,
+    $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
   })
     .sort({ createdAt: -1 })
     .limit(limit)
@@ -466,6 +467,7 @@ export async function getNotificationForPrincipal(
     _id: objectId,
     recipientUserId: principalId,
     archivedAt: null,
+    $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
   })
     .lean()
     .exec();

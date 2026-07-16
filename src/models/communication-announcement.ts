@@ -1,5 +1,9 @@
 import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
-import { ANNOUNCEMENT_AUDIENCES } from "@/features/communication/types";
+import {
+  ANNOUNCEMENT_AUDIENCES,
+  COMMUNICATION_MODULES,
+  NOTIFICATION_TYPES,
+} from "@/features/communication/types";
 
 const communicationAnnouncementSchema = new Schema(
   {
@@ -12,6 +16,21 @@ const communicationAnnouncementSchema = new Schema(
       default: "everyone",
       index: true,
     },
+    notificationType: {
+      type: String,
+      required: true,
+      enum: NOTIFICATION_TYPES,
+      default: "announcement",
+      index: true,
+    },
+    relatedModule: {
+      type: String,
+      required: true,
+      enum: COMMUNICATION_MODULES,
+      default: "announcements",
+      index: true,
+    },
+    relatedRecordId: { type: String, default: null, index: true },
     selectedUserIds: { type: [Schema.Types.ObjectId], default: [], index: true },
     actionUrl: { type: String, default: "/notifications" },
     sendEmail: { type: Boolean, default: false },
