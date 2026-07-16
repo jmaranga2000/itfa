@@ -296,10 +296,13 @@ export async function seedFoundation() {
   );
 
   const seedPassword = process.env.SEED_USER_PASSWORD ?? "ChangeMe!12345";
+  const adminSeedPassword = process.env.SEED_ADMIN_PASSWORD ?? seedPassword;
   const seededUsers = await Promise.all(
     seedUsers.map(async (user) => ({
       ...user,
-      passwordHash: await hashPassword(seedPassword),
+      passwordHash: await hashPassword(
+        user.roleKeys.includes("admin") ? adminSeedPassword : seedPassword,
+      ),
     })),
   );
 
