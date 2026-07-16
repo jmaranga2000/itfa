@@ -15,6 +15,8 @@ import {
   ReceiptText,
   RefreshCw,
   ShieldCheck,
+  SlidersHorizontal,
+  SlidersHorizontalIcon,
   UserCheck,
   Users,
 } from "lucide-react";
@@ -494,7 +496,7 @@ export function AdminOperationsDashboard({ data }: { data: OperationsDashboardDa
                 type="button"
               >
                 {item}
-                <SlidersHorizontal aria-hidden="true" className="h-4 w-4 text-muted-foreground" />
+                <SlidersHorizontalIcon aria-hidden="true" className="h-4 w-4 text-muted-foreground" />
               </button>
             ))}
           </CardContent>
