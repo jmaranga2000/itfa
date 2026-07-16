@@ -36,8 +36,8 @@ export default async function VerifyEmailSentPage({
 
         {params?.delivery === "failed" ? (
           <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm leading-6 text-red-800">
-            We could not send the verification email. Check the Resend API key and use an address from
-            a verified Resend domain, then try again.
+            We could not send the verification email. Check the Gmail address and App Password in
+            the environment settings, then try again.
           </div>
         ) : null}
 

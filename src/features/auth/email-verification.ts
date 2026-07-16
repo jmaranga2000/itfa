@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { Types } from "mongoose";
+import { createTransport } from "nodemailer";
 import { writeAuditLog } from "@/features/audit/audit-service";
 import { connectToDatabase } from "@/lib/db/mongoose";
 import { getServerEnv } from "@/lib/env";
@@ -52,61 +53,53 @@ export async function createEmailVerificationToken(userId: string, email: string
 export async function sendVerificationEmail(email: string, verificationUrl: string) {
   const env = getServerEnv();
 
-  if (!env.RESEND_API_KEY || !env.RESEND_FROM_EMAIL) {
+  if (!env.GMAIL_SMTP_USER || !env.GMAIL_SMTP_APP_PASSWORD) {
     return {
       delivered: false,
-      reason: "Email provider is not configured.",
+      reason: "Gmail SMTP is not configured.",
     };
   }
-
-  let response: Response;
 
   try {
-    response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${env.RESEND_API_KEY}`,
-        "Content-Type": "application/json",
+    const transporter = createTransport({
+      host: "smtp.gmail.com",
+      port: 465,
+      secure: true,
+      auth: {
+        user: env.GMAIL_SMTP_USER,
+        pass: env.GMAIL_SMTP_APP_PASSWORD,
       },
-      body: JSON.stringify({
-        from: env.RESEND_FROM_EMAIL,
-        to: email,
-        subject: "Verify your IFTA Consulting portal account",
-        html: `
-          <div style="font-family: Arial, sans-serif; line-height: 1.6;">
-            <h1>Verify your email</h1>
-            <p>Use the button below to verify your IFTA Consulting client portal account.</p>
-            <p><a href="${verificationUrl}" style="display:inline-block;background:#0f172a;color:#fff;padding:12px 16px;border-radius:6px;text-decoration:none;">Verify email</a></p>
-            <p>If the button does not work, copy this link into your browser:</p>
-            <p>${verificationUrl}</p>
-          </div>
-        `,
-      }),
     });
+
+    await transporter.sendMail({
+      from: {
+        name: "IFTA Consulting",
+        address: env.GMAIL_SMTP_USER,
+      },
+      to: email,
+      subject: "Verify your IFTA Consulting portal account",
+      html: `
+        <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+          <h1>Verify your email</h1>
+          <p>Use the button below to verify your IFTA Consulting client portal account.</p>
+          <p><a href="${verificationUrl}" style="display:inline-block;background:#0f172a;color:#fff;padding:12px 16px;border-radius:6px;text-decoration:none;">Verify email</a></p>
+          <p>If the button does not work, copy this link into your browser:</p>
+          <p>${verificationUrl}</p>
+        </div>
+      `,
+    });
+
+    return {
+      delivered: true,
+    };
   } catch (error) {
-    console.error("Unable to reach Resend while sending a verification email.", error);
+    console.error("Gmail rejected a verification email.", error);
 
     return {
       delivered: false,
-      reason: "Email provider could not be reached.",
+      reason: "Gmail rejected the message.",
     };
   }
-
-  if (!response.ok) {
-    console.error("Resend rejected a verification email.", {
-      status: response.status,
-      statusText: response.statusText,
-    });
-
-    return {
-      delivered: false,
-      reason: "Email provider rejected the message.",
-    };
-  }
-
-  return {
-    delivered: true,
-  };
 }
 
 export async function createAndSendVerificationEmail(userId: string, email: string) {
