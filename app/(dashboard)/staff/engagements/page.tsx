@@ -1,7 +1,9 @@
 import { StaffEngagements } from "@/components/dashboard/staff/staff-engagements";
 import { requireStaffRoute } from "@/features/staff/server";
+import { getStaffWorkData } from "@/repositories/staff-work-repository";
 
 export default async function StaffEngagementsPage() {
-  await requireStaffRoute("engagements");
-  return <StaffEngagements />;
+  const { principal } = await requireStaffRoute("engagements");
+  const data = await getStaffWorkData(principal);
+  return <StaffEngagements requests={data.requests} workflows={data.workflows} />;
 }

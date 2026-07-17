@@ -636,18 +636,45 @@ export async function createConversationMessage(input: CreateMessageInput) {
   );
 
   if (isAdminPrincipal(input.sender)) {
+    const clientRecipients = recipients.filter(
+      (participant) => participant.role === "client",
+    );
+    const clientUserIds = clientRecipients
+      .map((participant) => toObjectId(participant.userId.toString()))
+      .filter(isObjectId);
+    const registeredClients = (await UserModel.find({
+      _id: { $in: clientUserIds },
+      roleKeys: { $in: ["client", "client_representative"] },
+      status: "active",
+    })
+      .select("email firstName lastName roleKeys")
+      .lean()
+      .exec()) as RawDirectoryUser[];
+    const registeredClientsById = new Map(
+      registeredClients.map((client) => [client._id.toString(), client]),
+    );
+
     await Promise.all(
-      recipients
-        .filter((participant) => participant.role === "client")
-        .map((participant) =>
-          sendNewPortalMessageEmail({
-            recipientEmail: participant.email,
-            recipientName: participant.displayName,
+      clientRecipients.map((participant) => {
+        const registeredClient = registeredClientsById.get(
+          participant.userId.toString(),
+        );
+
+        if (!registeredClient) {
+          return Promise.resolve({
+            delivered: false,
+            reason: "The registered client account is not active.",
+          });
+        }
+
+        return sendNewPortalMessageEmail({
+            recipientEmail: registeredClient.email,
+            recipientName: displayName(registeredClient),
             conversationId: conversation._id.toString(),
             subject: conversation.title,
             messagePreview: input.body,
-          }),
-        ),
+          });
+      }),
     );
   }
 

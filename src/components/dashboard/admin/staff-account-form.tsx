@@ -6,6 +6,7 @@ import { SubmitButton } from "@/components/ui/submit-button";
 import { buttonClassName } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Select } from "@/components/ui/select";
 import type { AdminDirectoryUser } from "@/repositories/user-repository";
 
@@ -65,12 +66,11 @@ export function StaffAccountForm({
             <Label htmlFor="password">
               {staff ? "Reset password" : "Temporary password"}
             </Label>
-            <Input
+            <PasswordInput
               id="password"
               name="password"
               placeholder={staff ? "Leave blank to keep the current password" : "At least 12 characters"}
               required={!staff}
-              type="password"
             />
             <p className="text-xs leading-5 text-muted-foreground">
               Use at least 12 characters with uppercase, lowercase, a number and a symbol.

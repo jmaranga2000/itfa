@@ -1,19 +1,9 @@
-import { StaffSpecialistArea } from "@/components/dashboard/staff/staff-specialist-area";
+import { StaffFinance } from "@/components/dashboard/staff/staff-operational-pages";
 import { requireStaffRoute } from "@/features/staff/server";
-import { getStaffWorkspace } from "@/features/staff/workspace";
+import { getStaffWorkData } from "@/repositories/staff-work-repository";
 
 export default async function StaffPaymentsPage() {
-  const { role } = await requireStaffRoute("payments");
-  return (
-    <StaffSpecialistArea
-      description="Record incoming client payments and reconcile them against issued invoices."
-      roleLabel={getStaffWorkspace(role).roleLabel}
-      title="Payments"
-      items={[
-        { title: "Unmatched payments", description: "Match incoming funds to the correct client invoice.", status: "Needs review" },
-        { title: "Part payments", description: "Track balances where clients have paid only part of an invoice.", status: "Open balance" },
-        { title: "Reconciled payments", description: "Review completed payment and invoice matches.", href: "/staff/reports" },
-      ]}
-    />
-  );
+  const { principal } = await requireStaffRoute("payments");
+  const data = await getStaffWorkData(principal);
+  return <StaffFinance mode="payments" workflows={data.workflows} />;
 }

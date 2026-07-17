@@ -1,103 +1,108 @@
+import Link from "next/link";
+import { ArrowRight, BriefcaseBusiness, CirclePause, ClipboardList } from "lucide-react";
+import { AdminPageSurface } from "@/components/dashboard/admin/admin-page-surface";
+import { StaffEmptyState, staffDate, staffStatusLabel, staffStatusTone } from "@/components/dashboard/staff/staff-work-ui";
 import { Badge } from "@/components/ui/badge";
 import { buttonClassName } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { staffModules } from "@/constants/dashboard-modules";
-import { getModuleCode, getPrimaryAction } from "@/lib/dashboard/module-page-utils";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
+import type { StaffAssignedRequest } from "@/repositories/staff-work-repository";
+import type { WorkflowInstanceRecord } from "@/repositories/workflow-repository";
 
-const pageModule = staffModules.engagements;
+export function StaffEngagements({
+  workflows,
+  requests,
+}: {
+  workflows: WorkflowInstanceRecord[];
+  requests: StaffAssignedRequest[];
+}) {
+  const active = workflows.filter((workflow) => workflow.status === "active").length;
+  const paused = workflows.filter((workflow) => workflow.status === "on_hold").length;
 
-export function StaffEngagements() {
   return (
-    <div className="grid min-w-0 gap-5">
-      <section className="rounded-md border border-border border-l-4 border-l-primary bg-card p-5">
-        <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
-          <div>
-            <Badge tone="gold">{pageModule.eyebrow}</Badge>
-            <h1 className="mt-3 text-2xl font-bold tracking-normal text-foreground">
-              {pageModule.title}
-            </h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-              {pageModule.description}
-            </p>
-          </div>
-          <div className="rounded-md border border-border px-4 py-3">
-            <p className="font-mono text-xs font-semibold text-muted-foreground">
-              {getModuleCode(pageModule)}
-            </p>
-            <p className="mt-1 text-sm font-semibold text-foreground">
-              {getPrimaryAction(pageModule)}
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <section className="grid gap-4 sm:grid-cols-3">
-        {pageModule.metrics.map((metric) => (
-          <Card key={metric.label}>
-            <CardHeader>
-              <CardDescription>{metric.label}</CardDescription>
-              <CardTitle className="text-2xl font-bold">{metric.value}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm leading-6 text-muted-foreground">{metric.helper}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </section>
-
-      <section className="grid gap-5 xl:grid-cols-[1fr_360px]">
-        <Card>
-          <CardHeader>
-            <CardTitle>{pageModule.title} services</CardTitle>
-            <CardDescription>Available tools and information for this area.</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3">
-            {pageModule.services.map((service) => (
-              <div className="rounded-md border border-border bg-muted/40 px-3 py-3 text-sm font-medium text-foreground" key={service}>
-                {service}
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>{pageModule.title} actions</CardTitle>
-            <CardDescription>Actions available for the current portal role.</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-2">
-            {pageModule.actions.map((action, index) => (
-              <button
-                className={buttonClassName({
-                  variant: index === 0 ? "primary" : "secondary",
-                  className: "w-full",
-                })}
-                key={action}
-                type="button"
-              >
-                {action}
-              </button>
-            ))}
-          </CardContent>
-        </Card>
-      </section>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{pageModule.title} workflow</CardTitle>
-          <CardDescription>How work moves through this area.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-2 md:grid-cols-4">
-          {pageModule.workflow.map((step, index) => (
-            <div className="border-t-2 border-primary pt-3" key={step}>
-              <p className="font-mono text-xs font-semibold text-primary">
-                {String(index + 1).padStart(2, "0")}
-              </p>
-              <p className="mt-2 text-sm font-semibold text-foreground">{step}</p>
+    <AdminPageSurface
+      description="Open your assigned client work, see what comes next and follow deadlines."
+      icon={BriefcaseBusiness}
+      summary={[
+        { label: "Active", value: active, helper: "Work currently moving", icon: BriefcaseBusiness },
+        { label: "On hold", value: paused, helper: "Waiting for a resolution", icon: CirclePause },
+        { label: "Assigned requests", value: requests.length, helper: "Waiting to become engagements", icon: ClipboardList },
+      ]}
+      title="My engagements"
+    >
+      {workflows.length === 0 && requests.length === 0 ? (
+        <StaffEmptyState
+          description="Assigned requests and engagements will appear here automatically."
+          title="No work assigned yet"
+        />
+      ) : (
+        <div className="divide-y divide-border">
+          {workflows.length > 0 ? (
+            <div className="overflow-x-auto">
+              <Table className="min-w-[880px]">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Engagement</TableHead>
+                    <TableHead>Client</TableHead>
+                    <TableHead>Current stage</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Due</TableHead>
+                    <TableHead>Progress</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {workflows.map((workflow) => (
+                    <TableRow key={workflow.id}>
+                      <TableCell>
+                        <p className="font-semibold text-foreground">{workflow.reference}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">{workflow.serviceName}</p>
+                      </TableCell>
+                      <TableCell>{workflow.clientName}</TableCell>
+                      <TableCell>{workflow.currentStageName}</TableCell>
+                      <TableCell><Badge tone={staffStatusTone(workflow.status)}>{staffStatusLabel(workflow.status)}</Badge></TableCell>
+                      <TableCell>{staffDate(workflow.dueDate)}</TableCell>
+                      <TableCell>{workflow.progress.overall}%</TableCell>
+                      <TableCell className="text-right">
+                        <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={`/staff/engagements/${workflow.id}`}>
+                          Open
+                          <ArrowRight aria-hidden="true" className="h-4 w-4" />
+                        </Link>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
-          ))}
-        </CardContent>
-      </Card>
-    </div>
+          ) : null}
+
+          {requests.length > 0 ? (
+            <section className="p-5">
+              <h2 className="font-semibold text-foreground">Assigned requests</h2>
+              <p className="mt-1 text-sm text-muted-foreground">These have been assigned to you but are not active engagements yet.</p>
+              <div className="mt-4 grid gap-3">
+                {requests.map((request) => (
+                  <div className="flex flex-col justify-between gap-3 rounded-md border border-border p-4 sm:flex-row sm:items-center" key={request.id}>
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-foreground">{request.clientName}</p>
+                        <Badge tone={staffStatusTone(request.status)}>{staffStatusLabel(request.status)}</Badge>
+                      </div>
+                      <p className="mt-1 text-sm text-muted-foreground">{request.reference} · {request.serviceName}</p>
+                      <p className="mt-2 text-sm text-foreground">Next: {request.nextAction}</p>
+                    </div>
+                    <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={`/staff/clients/${encodeURIComponent(`request-${request.id}`)}`}>
+                      Client details
+                      <ArrowRight aria-hidden="true" className="h-4 w-4" />
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
+        </div>
+      )}
+    </AdminPageSurface>
   );
 }

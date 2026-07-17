@@ -6,5 +6,5 @@ export default async function StaffTasksPage() {
   const { principal } = await requireStaffRoute("tasks");
   const tasks = await listWorkflowTasksForPrincipal(principal);
 
-  return <WorkflowTasks tasks={tasks.map((task) => ({ ...task, href: "/staff/tasks" }))} />;
+  return <WorkflowTasks tasks={tasks.map((task) => ({ ...task, href: `/staff/engagements/${task.workflowId}` }))} />;
 }

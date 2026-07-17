@@ -7,6 +7,7 @@ import {
 
 export type StaffRouteKey =
   | "dashboard"
+  | "profile"
   | "notifications"
   | "calendar"
   | "messages"
@@ -250,6 +251,10 @@ export function getPrimaryStaffRole(roleKeys: readonly AppRole[]) {
 }
 
 export function canAccessStaffRoute(roleKeys: readonly AppRole[], route: StaffRouteKey) {
+  if (route === "profile") {
+    return Boolean(getPrimaryStaffRole(roleKeys));
+  }
+
   return roleKeys.some(
     (role) => STAFF_ACCOUNT_ROLES.includes(role as StaffAccountRole) && routeAccess[role as StaffAccountRole].includes(route),
   );
@@ -269,6 +274,7 @@ export function getStaffNavItems(role: StaffAccountRole): DashboardNavItem[] {
       link("Dashboard", "/staff", "gauge", "D"),
       link("Notifications", "/staff/notifications", "bell", "N"),
       link("Calendar", "/staff/calendar", "calendar", "CA"),
+      link("My profile", "/staff/profile", "profile", "P"),
       ...(canMessage ? [link("Messages", "/staff/messages", "message", "M")] : []),
     ],
   };

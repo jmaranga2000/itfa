@@ -1,103 +1,69 @@
+import Link from "next/link";
+import { ArrowRight, CheckCircle2, Files, ScanSearch } from "lucide-react";
+import { AdminPageSurface } from "@/components/dashboard/admin/admin-page-surface";
+import { StaffEmptyState, staffDate, staffStatusLabel, staffStatusTone } from "@/components/dashboard/staff/staff-work-ui";
 import { Badge } from "@/components/ui/badge";
 import { buttonClassName } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { staffModules } from "@/constants/dashboard-modules";
-import { getModuleCode, getPrimaryAction } from "@/lib/dashboard/module-page-utils";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
+import type { StaffDocumentRecord } from "@/repositories/staff-work-repository";
 
-const pageModule = staffModules.documents;
+export function StaffDocuments({ documents }: { documents: StaffDocumentRecord[] }) {
+  const awaitingReview = documents.filter((document) => document.status === "pending_review").length;
+  const approved = documents.filter((document) => ["approved", "final"].includes(document.status)).length;
 
-export function StaffDocuments() {
   return (
-    <div className="grid min-w-0 gap-5">
-      <section className="rounded-md border border-border border-l-4 border-l-primary bg-card p-5">
-        <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
-          <div>
-            <Badge tone="gold">{pageModule.eyebrow}</Badge>
-            <h1 className="mt-3 text-2xl font-bold tracking-normal text-foreground">
-              {pageModule.title}
-            </h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-              {pageModule.description}
-            </p>
-          </div>
-          <div className="rounded-md border border-border px-4 py-3">
-            <p className="font-mono text-xs font-semibold text-muted-foreground">
-              {getModuleCode(pageModule)}
-            </p>
-            <p className="mt-1 text-sm font-semibold text-foreground">
-              {getPrimaryAction(pageModule)}
-            </p>
-          </div>
+    <AdminPageSurface
+      description="Documents attached to the client work you can access."
+      icon={Files}
+      summary={[
+        { label: "Documents", value: documents.length, helper: "Across assigned engagements", icon: Files },
+        { label: "Awaiting review", value: awaitingReview, helper: "Need a decision", icon: ScanSearch },
+        { label: "Approved", value: approved, helper: "Ready or final", icon: CheckCircle2 },
+      ]}
+      title="Documents"
+    >
+      {documents.length === 0 ? (
+        <StaffEmptyState description="Files will appear here when they are added to your assigned engagements." title="No documents available" />
+      ) : (
+        <div className="overflow-x-auto">
+          <Table className="min-w-[800px]">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Document</TableHead>
+                <TableHead>Client</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Version</TableHead>
+                <TableHead>Visibility</TableHead>
+                <TableHead>Added</TableHead>
+                <TableHead className="text-right">Engagement</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {documents.map((document) => (
+                <TableRow key={`${document.workflowId}-${document.id}`}>
+                  <TableCell>
+                    <p className="font-semibold text-foreground">{document.name}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{document.reference}</p>
+                  </TableCell>
+                  <TableCell>{document.clientName}</TableCell>
+                  <TableCell><Badge tone={staffStatusTone(document.status)}>{staffStatusLabel(document.status)}</Badge></TableCell>
+                  <TableCell>v{document.version}</TableCell>
+                  <TableCell>{staffStatusLabel(document.visibility)}</TableCell>
+                  <TableCell>{staffDate(document.uploadedAt)}</TableCell>
+                  <TableCell className="text-right">
+                    <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={`/staff/engagements/${document.workflowId}`}>
+                      Open
+                      <ArrowRight aria-hidden="true" className="h-4 w-4" />
+                    </Link>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
-      </section>
-
-      <section className="grid gap-4 sm:grid-cols-3">
-        {pageModule.metrics.map((metric) => (
-          <Card key={metric.label}>
-            <CardHeader>
-              <CardDescription>{metric.label}</CardDescription>
-              <CardTitle className="text-2xl font-bold">{metric.value}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm leading-6 text-muted-foreground">{metric.helper}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </section>
-
-      <section className="grid gap-5 xl:grid-cols-[1fr_360px]">
-        <Card>
-          <CardHeader>
-            <CardTitle>{pageModule.title} services</CardTitle>
-            <CardDescription>Available tools and information for this area.</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3">
-            {pageModule.services.map((service) => (
-              <div className="rounded-md border border-border bg-muted/40 px-3 py-3 text-sm font-medium text-foreground" key={service}>
-                {service}
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>{pageModule.title} actions</CardTitle>
-            <CardDescription>Actions available for the current portal role.</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-2">
-            {pageModule.actions.map((action, index) => (
-              <button
-                className={buttonClassName({
-                  variant: index === 0 ? "primary" : "secondary",
-                  className: "w-full",
-                })}
-                key={action}
-                type="button"
-              >
-                {action}
-              </button>
-            ))}
-          </CardContent>
-        </Card>
-      </section>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{pageModule.title} workflow</CardTitle>
-          <CardDescription>How work moves through this area.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-2 md:grid-cols-4">
-          {pageModule.workflow.map((step, index) => (
-            <div className="border-t-2 border-primary pt-3" key={step}>
-              <p className="font-mono text-xs font-semibold text-primary">
-                {String(index + 1).padStart(2, "0")}
-              </p>
-              <p className="mt-2 text-sm font-semibold text-foreground">{step}</p>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-    </div>
+      )}
+    </AdminPageSurface>
   );
 }

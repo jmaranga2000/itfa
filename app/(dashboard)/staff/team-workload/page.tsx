@@ -1,19 +1,12 @@
-import { StaffSpecialistArea } from "@/components/dashboard/staff/staff-specialist-area";
+import { StaffTeamWorkload } from "@/components/dashboard/staff/staff-operational-pages";
 import { requireStaffRoute } from "@/features/staff/server";
-import { getStaffWorkspace } from "@/features/staff/workspace";
+import { STAFF_ACCOUNT_ROLES } from "@/features/staff/types";
+import { listStaffWorkloadForAdmin } from "@/repositories/staff-assignment-repository";
 
 export default async function StaffTeamWorkloadPage() {
-  const { role } = await requireStaffRoute("team-workload");
-  return (
-    <StaffSpecialistArea
-      description="Balance new assignments against active engagements, due tasks and review responsibilities."
-      roleLabel={getStaffWorkspace(role).roleLabel}
-      title="Team workload"
-      items={[
-        { title: "Available staff", description: "Team members without active requests or engagements.", status: "Available" },
-        { title: "Assigned engagements", description: "Review current ownership before assigning new work.", href: "/staff/engagements" },
-        { title: "Due tasks", description: "Check deadlines and blockers affecting staff capacity.", href: "/staff/tasks" },
-      ]}
-    />
+  await requireStaffRoute("team-workload");
+  const members = (await listStaffWorkloadForAdmin()).filter((member) =>
+    member.roleKeys.some((role) => STAFF_ACCOUNT_ROLES.includes(role as (typeof STAFF_ACCOUNT_ROLES)[number])),
   );
+  return <StaffTeamWorkload members={members} />;
 }

@@ -1,19 +1,9 @@
-import { StaffSpecialistArea } from "@/components/dashboard/staff/staff-specialist-area";
+import { StaffRequests } from "@/components/dashboard/staff/staff-operational-pages";
 import { requireStaffRoute } from "@/features/staff/server";
-import { getStaffWorkspace } from "@/features/staff/workspace";
+import { getStaffWorkData } from "@/repositories/staff-work-repository";
 
 export default async function StaffRequestsPage() {
-  const { role } = await requireStaffRoute("requests");
-  return (
-    <StaffSpecialistArea
-      description="Review incoming client requests, confirm scope and decide how approved work should begin."
-      roleLabel={getStaffWorkspace(role).roleLabel}
-      title="Engagement requests"
-      items={[
-        { title: "New requests", description: "Review service, client and scope details before making a decision.", status: "Manager review" },
-        { title: "Clarifications", description: "Follow up requests that need more client information.", href: "/staff/messages" },
-        { title: "Approved work", description: "Assign an owner and move accepted requests into active engagements.", href: "/staff/team-workload" },
-      ]}
-    />
-  );
+  const { principal } = await requireStaffRoute("requests");
+  const data = await getStaffWorkData(principal);
+  return <StaffRequests requests={data.requests} />;
 }
