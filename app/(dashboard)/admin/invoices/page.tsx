@@ -1,5 +1,7 @@
-import { AdminInvoices } from "@/components/dashboard/admin/admin-invoices";
+import { AdminInvoicesRegister } from "@/components/dashboard/admin/admin-record-registers";
+import { getAdminInvoicesData } from "@/repositories/admin-records-repository";
 
-export default function AdminInvoicesPage() {
-  return <AdminInvoices />;
+export default async function AdminInvoicesPage() {
+  const data = await getAdminInvoicesData();
+  return <AdminInvoicesRegister data={data} />;
 }

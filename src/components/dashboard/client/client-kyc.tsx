@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CheckCircle2, ClipboardList, FileUp, Send, ShieldCheck } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ClipboardList, FileUp, Send, ShieldCheck } from "lucide-react";
 import { submitClientKycForReviewAction } from "@/features/kyc/client-actions";
 import type { ClientKycSubmission } from "@/repositories/client-kyc-repository";
 import { buttonClassName } from "@/components/ui/button";
@@ -33,8 +33,9 @@ export function ClientKyc({
   submitted: boolean;
   uploaded: boolean;
 }) {
-  const readyForReview = submission.questionnaire.complete && submission.documents.length > 0;
-  const reviewSubmitted = submission.status === "submitted" || submission.status === "under_review";
+  const readyForReview = submission.questionnaire.complete;
+  const reviewSubmitted = ["submitted", "under_review", "approved"].includes(submission.status);
+  const documentsMissing = submission.documents.length === 0;
 
   return (
     <div className="grid min-w-0 gap-5">
@@ -44,7 +45,7 @@ export function ClientKyc({
             <p className="text-sm font-semibold text-primary">Client verification</p>
             <h1 className="mt-2 text-2xl font-bold text-foreground">Complete your KYC</h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-              Answer the questionnaire, upload a clear supporting document, then send everything to our review team.
+              Complete the questionnaire and submit it for review. You may add supporting documents now or while the review is in progress.
             </p>
           </div>
           <Link className={buttonClassName({ className: "shrink-0" })} href="/client/kyc/questionnaire">
@@ -68,9 +69,24 @@ export function ClientKyc({
         </div>
       ) : null}
 
-      {error === "complete-questionnaire-and-upload" ? (
+      {error === "complete-questionnaire" ? (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
-          Complete every required questionnaire answer and upload a document before submitting for review.
+          Complete every required questionnaire answer before submitting for review.
+        </div>
+      ) : null}
+
+      {documentsMissing ? (
+        <div className="flex items-start gap-3 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-amber-950" role="status">
+          <AlertTriangle aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0" />
+          <div className="min-w-0">
+            <p className="text-sm font-semibold">Supporting documents are still needed</p>
+            <p className="mt-1 text-sm leading-6">
+              You can submit the questionnaire without a file, but the review may pause until you upload the requested evidence.
+            </p>
+            <Link className="mt-2 inline-flex text-sm font-semibold underline underline-offset-4" href="/client/kyc/upload-replacement">
+              Upload a document
+            </Link>
+          </div>
         </div>
       ) : null}
 
@@ -95,7 +111,7 @@ export function ClientKyc({
           </CardHeader>
           <CardContent>
             <p className="text-sm leading-6 text-muted-foreground">
-              {submission.documents.length ? "Document uploaded to the protected vault." : "Upload one PDF, JPG, or PNG document."}
+              {submission.documents.length ? "Document uploaded to the protected vault." : "Not uploaded yet. We will keep reminding you during review."}
             </p>
           </CardContent>
         </Card>
@@ -106,7 +122,13 @@ export function ClientKyc({
           </CardHeader>
           <CardContent>
             <p className="text-sm leading-6 text-muted-foreground">
-              {readyForReview ? "Your KYC is ready to submit." : "Finish both required steps to submit for review."}
+              {reviewSubmitted
+                ? documentsMissing
+                  ? "Submitted. Supporting documents are still outstanding."
+                  : "Your KYC is with the review team."
+                : readyForReview
+                  ? "Your questionnaire is ready to submit."
+                  : "Complete the questionnaire to submit for review."}
             </p>
           </CardContent>
         </Card>
@@ -130,7 +152,7 @@ export function ClientKyc({
               <FileUp aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
               <div>
                 <p className="text-sm font-semibold text-foreground">2. Upload a supporting document</p>
-                <p className="mt-1 text-sm leading-6 text-muted-foreground">Upload a clear replacement PDF, JPG, or PNG file.</p>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">Upload a clear PDF, JPG, or PNG file as soon as it is available.</p>
               </div>
             </div>
             <div className="flex gap-3 border-l-2 border-primary pl-4">
@@ -162,7 +184,7 @@ export function ClientKyc({
                 className="w-full"
                 disabled={!readyForReview || reviewSubmitted}
                 pendingText="Submitting for review..."
-                title={!readyForReview ? "Complete the questionnaire and upload a document first." : undefined}
+                title={!readyForReview ? "Complete the questionnaire first." : undefined}
               >
                 <Send aria-hidden="true" className="h-4 w-4" />
                 {reviewSubmitted ? "Submitted for review" : "Submit for review"}

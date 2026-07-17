@@ -1,5 +1,6 @@
 import { createTransport } from "nodemailer";
 import { getServerEnv } from "@/lib/env";
+import { validateExternalRecipient } from "@/lib/client-recipient";
 
 function escapeHtml(value: string) {
   return value
@@ -23,6 +24,12 @@ export async function sendNewPortalMessageEmail(input: {
     return { delivered: false, reason: "Gmail SMTP is not configured." };
   }
 
+  const recipient = validateExternalRecipient(input.recipientEmail, env.GMAIL_SMTP_USER);
+
+  if (!recipient.valid) {
+    return { delivered: false, reason: recipient.reason };
+  }
+
   const portalUrl = `${env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "")}/client/messages?conversation=${encodeURIComponent(input.conversationId)}`;
   const recipientName = escapeHtml(input.recipientName || "Client");
   const subject = escapeHtml(input.subject);
@@ -44,7 +51,11 @@ export async function sendNewPortalMessageEmail(input: {
         name: "IFTA Consulting",
         address: env.GMAIL_SMTP_USER,
       },
-      to: input.recipientEmail.trim().toLowerCase(),
+      to: recipient.recipient,
+      envelope: {
+        from: env.GMAIL_SMTP_USER,
+        to: [recipient.recipient],
+      },
       subject: `New portal message: ${input.subject}`,
       html: `
         <!doctype html>

@@ -153,6 +153,26 @@ async function seedCommunicationData() {
     };
   }
 
+  if (/@[^@]+\.test$/i.test(client.email)) {
+    await Promise.all([
+      CommunicationConversationModel.updateMany(
+        { relatedRecordId: "seed-kyc-001" },
+        { $set: { archivedAt: new Date() } },
+      ).exec(),
+      CommunicationNotificationModel.updateMany(
+        { relatedRecordId: "seed-kyc-001" },
+        { $set: { archivedAt: new Date() } },
+      ).exec(),
+    ]);
+
+    return {
+      conversations: 0,
+      messages: 0,
+      notifications: 0,
+      announcements: 0,
+    };
+  }
+
   const announcement = await CommunicationAnnouncementModel.findOneAndUpdate(
     { title: "IFTA portal communication centre is live" },
     {

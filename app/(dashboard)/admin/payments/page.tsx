@@ -1,6 +1,7 @@
-import { AdminPortalSection } from "@/components/dashboard/admin/admin-portal-section";
-import { adminPortalSections } from "@/content/admin-portal-sections";
+import { AdminPaymentsRegister } from "@/components/dashboard/admin/admin-record-registers";
+import { getAdminPaymentsData } from "@/repositories/admin-records-repository";
 
-export default function AdminPaymentsPage() {
-  return <AdminPortalSection section={adminPortalSections.payments} />;
+export default async function AdminPaymentsPage() {
+  const data = await getAdminPaymentsData();
+  return <AdminPaymentsRegister data={data} />;
 }

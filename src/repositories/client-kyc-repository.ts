@@ -178,12 +178,16 @@ export async function addClientKycDocument(
 export async function submitClientKycForReview(userId: string) {
   const submission = await getClientKycSubmission(userId);
 
-  if (!submission.questionnaire.complete || submission.documents.length === 0) {
+  if (!submission.questionnaire.complete) {
     return { submitted: false, reason: "incomplete" as const };
   }
 
-  if (submission.status === "submitted" || submission.status === "under_review") {
-    return { submitted: true, reason: "already-submitted" as const };
+  if (["submitted", "under_review", "approved"].includes(submission.status)) {
+    return {
+      submitted: true,
+      reason: "already-submitted" as const,
+      documentsMissing: submission.documents.length === 0,
+    };
   }
 
   await ClientKycSubmissionModel.updateOne(
@@ -191,5 +195,9 @@ export async function submitClientKycForReview(userId: string) {
     { $set: { status: "submitted", submittedAt: new Date() } },
   ).exec();
 
-  return { submitted: true, reason: "submitted" as const };
+  return {
+    submitted: true,
+    reason: "submitted" as const,
+    documentsMissing: submission.documents.length === 0,
+  };
 }

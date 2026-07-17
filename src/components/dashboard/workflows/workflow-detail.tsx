@@ -175,13 +175,57 @@ function TransitionPanel({ workflow }: { workflow: WorkflowInstanceRecord }) {
   );
 }
 
-export function WorkflowDetail({ workflow }: { workflow: WorkflowInstanceRecord }) {
+export function WorkflowDetail({
+  workflow,
+  transitionError,
+  transitioned = false,
+}: {
+  workflow: WorkflowInstanceRecord;
+  transitionError?: string;
+  transitioned?: boolean;
+}) {
   const messageHref = workflow.clientUserId
     ? `/admin/messages/new?clientId=${encodeURIComponent(workflow.clientUserId)}`
     : "/admin/messages";
 
   return (
     <div className="grid w-full min-w-0 max-w-full gap-5 overflow-x-hidden">
+      {transitionError ? (
+        <section
+          aria-labelledby="workflow-transition-error-title"
+          aria-modal="true"
+          className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4"
+          role="alertdialog"
+        >
+          <div className="w-full max-w-lg rounded-md border border-red-200 bg-card p-5 shadow-xl">
+            <div className="flex items-start gap-3">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-red-50 text-red-700">
+                <AlertTriangle aria-hidden="true" className="h-5 w-5" />
+              </span>
+              <div className="min-w-0">
+                <h2 className="text-lg font-bold text-foreground" id="workflow-transition-error-title">
+                  Workflow could not advance
+                </h2>
+                <p className="mt-2 break-words text-sm leading-6 text-muted-foreground">
+                  {transitionError}
+                </p>
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end">
+              <Link className={buttonClassName()} href={`/admin/workflows/${workflow.id}`}>
+                Back to workflow
+              </Link>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {transitioned ? (
+        <div className="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900">
+          <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
+          Workflow advanced successfully.
+        </div>
+      ) : null}
       <section className="min-w-0 rounded-md border border-border bg-card p-5">
         <div className="grid min-w-0 gap-4">
           <div className="min-w-0">

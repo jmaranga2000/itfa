@@ -1,8 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { requireUser } from "@/features/auth/server";
 import { transitionWorkflowStage } from "@/features/workflows/transition-service";
+import { AppError } from "@/lib/errors";
 
 export async function transitionWorkflowStageAction(formData: FormData) {
   const actor = await requireUser();
@@ -11,16 +13,32 @@ export async function transitionWorkflowStageAction(formData: FormData) {
   const reason = String(formData.get("reason") ?? "");
   const override = formData.get("override") === "on";
 
-  await transitionWorkflowStage({
-    workflowId,
-    nextStageKey,
-    actor,
-    reason,
-    override,
-  });
+  let transitionError = "";
+
+  try {
+    await transitionWorkflowStage({
+      workflowId,
+      nextStageKey,
+      actor,
+      reason,
+      override,
+    });
+  } catch (error) {
+    if (error instanceof AppError && error.status < 500) {
+      transitionError = error.message;
+    } else {
+      console.error("Unable to advance workflow stage.", error);
+      transitionError = "The workflow could not be advanced right now. Review the required items and try again.";
+    }
+  }
+
+  if (transitionError) {
+    redirect(`/admin/workflows/${workflowId}?transitionError=${encodeURIComponent(transitionError)}`);
+  }
 
   revalidatePath("/admin/workflows");
   revalidatePath(`/admin/workflows/${workflowId}`);
   revalidatePath("/staff/tasks");
   revalidatePath("/client");
+  redirect(`/admin/workflows/${workflowId}?transitioned=1`);
 }

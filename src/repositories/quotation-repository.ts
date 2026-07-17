@@ -4,9 +4,11 @@ import type { Principal } from "@/features/authorization/access-control";
 import { sendQuotationEmail } from "@/features/quotations/quotation-email";
 import { writeAuditLog } from "@/features/audit/audit-service";
 import { connectToDatabase } from "@/lib/db/mongoose";
+import { clientRecipientName, normalizeRecipientEmail } from "@/lib/client-recipient";
 import { AuthorizationError } from "@/lib/errors";
 import { EngagementRequestModel } from "@/models/engagement-request";
 import { QuotationModel } from "@/models/quotation";
+import { UserModel } from "@/models/user";
 import { createCommunicationNotification } from "@/repositories/communication-repository";
 import {
   getEngagementRequestForAdmin,
@@ -66,6 +68,12 @@ type RawQuotation = {
   createdByName: string;
   sentAt?: Date | null;
   acceptedAt?: Date | null;
+};
+
+type RawClientRecipient = {
+  email: string;
+  firstName?: string;
+  lastName?: string;
 };
 
 function isQuotationManager(principal: Principal) {
@@ -153,6 +161,17 @@ export async function saveAndSendQuotation(input: {
   await connectToDatabase();
   const request = await EngagementRequestModel.findOne({ _id: input.requestId, requestType: "quotation", status: { $nin: ["converted", "rejected"] } }).exec();
   if (!request || input.lines.length === 0) return null;
+  const registeredClient = (await UserModel.findOne({
+    _id: request.clientUserId,
+    roleKeys: { $in: ["client", "client_representative"] },
+    status: "active",
+  })
+    .select("email firstName lastName")
+    .lean()
+    .exec()) as RawClientRecipient | null;
+  if (!registeredClient) return null;
+  const recipientEmail = normalizeRecipientEmail(registeredClient.email);
+  const recipientName = clientRecipientName(registeredClient, request.clientName);
   const lines = input.lines.map((line) => ({
     serviceId: line.serviceId && Types.ObjectId.isValid(line.serviceId) ? new Types.ObjectId(line.serviceId) : null,
     description: line.description.trim(),
@@ -173,8 +192,8 @@ export async function saveAndSendQuotation(input: {
     {
       $set: {
         clientUserId: request.clientUserId,
-        clientName: request.clientName,
-        clientEmail: request.clientEmail,
+        clientName: recipientName,
+        clientEmail: recipientEmail,
         status: "sent",
         currency: input.currency.trim().toUpperCase().slice(0, 3) || "KES",
         issueDate,
@@ -197,6 +216,8 @@ export async function saveAndSendQuotation(input: {
   if (!quotation) return null;
 
   request.status = "quotation_sent";
+  request.clientName = recipientName;
+  request.clientEmail = recipientEmail;
   request.quotationAmount = total;
   request.quotationCurrency = quotation.currency;
   request.reviewedAt = issueDate;

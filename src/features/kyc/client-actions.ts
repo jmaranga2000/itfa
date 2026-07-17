@@ -91,8 +91,8 @@ export async function submitClientKycForReviewAction() {
   const result = await submitClientKycForReview(principal.id);
 
   if (!result.submitted) {
-    redirect("/client/kyc?error=complete-questionnaire-and-upload");
+    redirect("/client/kyc?error=complete-questionnaire");
   }
 
-  redirect("/client/kyc?submitted=1");
+  redirect(`/client/kyc?submitted=1${result.documentsMissing ? "&documents=missing" : ""}`);
 }

@@ -16,6 +16,7 @@ import type {
 } from "@/features/communication/types";
 import { connectToDatabase } from "@/lib/db/mongoose";
 import { AuthorizationError } from "@/lib/errors";
+import { clientRecipientName } from "@/lib/client-recipient";
 import { CommunicationAnnouncementModel } from "@/models/communication-announcement";
 import { CommunicationConversationModel } from "@/models/communication-conversation";
 import { CommunicationMessageModel } from "@/models/communication-message";
@@ -697,7 +698,10 @@ export async function createConversationMessage(input: CreateMessageInput) {
 
         return sendNewPortalMessageEmail({
             recipientEmail: registeredClient.email,
-            recipientName: displayName(registeredClient),
+            recipientName: clientRecipientName(
+              registeredClient,
+              participant.displayName,
+            ),
             conversationId: conversation._id.toString(),
             subject: conversation.title,
             messagePreview: input.body,

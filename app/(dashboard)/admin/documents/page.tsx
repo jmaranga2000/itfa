@@ -1,6 +1,7 @@
-import { AdminPortalSection } from "@/components/dashboard/admin/admin-portal-section";
-import { adminPortalSections } from "@/content/admin-portal-sections";
+import { AdminDocumentsRegister } from "@/components/dashboard/admin/admin-record-registers";
+import { getAdminDocumentsData } from "@/repositories/admin-records-repository";
 
-export default function AdminDocumentsPage() {
-  return <AdminPortalSection section={adminPortalSections.documents} />;
+export default async function AdminDocumentsPage() {
+  const data = await getAdminDocumentsData();
+  return <AdminDocumentsRegister data={data} />;
 }
