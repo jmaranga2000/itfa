@@ -9,6 +9,7 @@ import {
   CircleAlert,
   Clock3,
   FileText,
+  FileSignature,
   MessageSquareText,
   ShieldCheck,
   UserRound,
@@ -23,6 +24,8 @@ import { requirePermission } from "@/features/auth/server";
 import {
   convertEngagementRequestAction,
 } from "@/features/client/request-admin-actions";
+import { prepareEngagementLetterAction } from "@/features/engagement-letters/actions";
+import { getEngagementLetterForRequest } from "@/repositories/engagement-letter-repository";
 import { engagementRequestToAdminRecord, getEngagementRequestForAdmin } from "@/repositories/engagement-request-repository";
 import { getRequestStaffAssignment } from "@/repositories/staff-assignment-repository";
 
@@ -80,7 +83,10 @@ export default async function AdminRequestDetailPage({
   const request = databaseRequest ? engagementRequestToAdminRecord(databaseRequest) : getAdminRequest(requestId);
 
   if (!request) notFound();
-  const assignment = await getRequestStaffAssignment(requestId);
+  const [assignment, engagementLetter] = await Promise.all([
+    getRequestStaffAssignment(requestId),
+    getEngagementLetterForRequest(requestId),
+  ]);
 
   const receivedDocuments = request.documents.filter(
     (document) => document.status === "Received",
@@ -99,6 +105,16 @@ export default async function AdminRequestDetailPage({
       {query.quoted === "1" ? (
         <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
           The quotation was sent to the client for acceptance.
+        </p>
+      ) : null}
+      {query.error === "letter-required" ? (
+        <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+          Prepare and complete the engagement letter before activating client work.
+        </p>
+      ) : null}
+      {query.error === "letter" ? (
+        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">
+          The engagement letter could not be prepared. Confirm the request and letter-template details.
         </p>
       ) : null}
       <section className="overflow-hidden rounded-md border border-border bg-card">
@@ -139,12 +155,17 @@ export default async function AdminRequestDetailPage({
                   <BadgeDollarSign aria-hidden="true" className="h-4 w-4" />
                   {databaseRequest.status === "quotation_sent" ? "Open quotation" : "Prepare quotation"}
                 </Link>
+              ) : engagementLetter ? (
+                <Link className={buttonClassName()} href={`/admin/engagement-letters/${engagementLetter.id}`}>
+                  <FileSignature aria-hidden="true" className="h-4 w-4" />
+                  Open engagement letter
+                </Link>
               ) : request.source === "database" && !request.workflowId ? (
                 <form action={convertEngagementRequestAction}>
                   <input name="requestId" type="hidden" value={request.id} />
-                  <SubmitButton pendingText="Activating client work...">
-                    <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
-                    Approve and activate work
+                  <SubmitButton pendingText="Preparing engagement letter...">
+                    <FileSignature aria-hidden="true" className="h-4 w-4" />
+                    Approve and prepare letter
                   </SubmitButton>
                 </form>
               ) : (
@@ -350,12 +371,46 @@ export default async function AdminRequestDetailPage({
                     </p>
                   </div>
                 </div>
+                <div className="flex items-start gap-3">
+                  {engagementLetter?.status === "completed" ? (
+                    <CheckCircle2 aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+                  ) : engagementLetter ? (
+                    <Clock3 aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+                  ) : (
+                    <FileSignature aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                  )}
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Engagement letter</p>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                      {engagementLetter?.status === "completed"
+                        ? "All required electronic signatures are complete."
+                        : engagementLetter
+                          ? "The letter is being reviewed or signed."
+                          : "A customized letter will be prepared before activation."}
+                    </p>
+                  </div>
+                </div>
               </div>
 
-              <Link className={buttonClassName({ className: "w-full" })} href={action.href}>
-                <ActionIcon aria-hidden="true" className="h-4 w-4" />
-                {action.label}
-              </Link>
+              {engagementLetter ? (
+                <Link className={buttonClassName({ className: "w-full" })} href={`/admin/engagement-letters/${engagementLetter.id}`}>
+                  <FileSignature aria-hidden="true" className="h-4 w-4" />
+                  Review engagement letter
+                </Link>
+              ) : databaseRequest ? (
+                <form action={prepareEngagementLetterAction}>
+                  <input name="requestId" type="hidden" value={request.id} />
+                  <SubmitButton className="w-full" pendingText="Preparing letter...">
+                    <FileSignature aria-hidden="true" className="h-4 w-4" />
+                    Prepare engagement letter
+                  </SubmitButton>
+                </form>
+              ) : (
+                <Link className={buttonClassName({ className: "w-full" })} href={action.href}>
+                  <ActionIcon aria-hidden="true" className="h-4 w-4" />
+                  {action.label}
+                </Link>
+              )}
               <Link
                 className={buttonClassName({
                   className: "w-full",

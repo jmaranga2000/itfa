@@ -18,6 +18,7 @@ export function getClientNavItems(cartCount = 0): DashboardNavItem[] {
     children: [
       { label: "Browse services", href: "/client/services", icon: "briefcase", symbol: "S" },
       { label: "My engagements", href: "/client/engagements", icon: "briefcase", symbol: "E" },
+      { label: "Engagement letters", href: "/client/engagement-letters", icon: "fileText", symbol: "EL" },
       { label: "Service cart", href: "/client/cart", icon: "creditCard", symbol: "C", ...(cartCount > 0 ? { badge: String(cartCount) } : {}) },
       { label: "KYC", href: "/client/kyc", icon: "fileCheck", symbol: "K", badge: "Open" },
     ],
@@ -118,6 +119,7 @@ export const adminNavItems: DashboardNavItem[] = [
       { label: "Tasks", href: "/admin/tasks", icon: "listTodo", symbol: "T" },
       { label: "Workflows", href: "/admin/workflows", icon: "workflow", symbol: "W" },
       { label: "Documents", href: "/admin/documents", icon: "documents", symbol: "F" },
+      { label: "Engagement letters", href: "/admin/engagement-letters", icon: "fileText", symbol: "EL" },
     ],
   },
   {

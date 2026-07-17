@@ -57,6 +57,7 @@ const engagementRequestSchema = new Schema(
     adminNotes: { type: String, default: "" },
     quotationAmount: { type: Number, default: null },
     quotationCurrency: { type: String, default: "KES" },
+    engagementLetterId: { type: Schema.Types.ObjectId, default: null, index: true },
     workflowId: { type: Schema.Types.ObjectId, default: null, index: true },
     submittedAt: { type: Date, default: Date.now, index: true },
     reviewedAt: { type: Date, default: null },
