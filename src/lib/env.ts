@@ -4,6 +4,7 @@ import { ConfigurationError } from "@/lib/errors";
 export const publicEnvSchema = z.object({
   NEXT_PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
   NEXT_PUBLIC_APP_NAME: z.string().min(1).default("IFTA Consulting Client Portal"),
+  NEXT_PUBLIC_VAPID_PUBLIC_KEY: z.string().optional(),
 });
 
 export const serverEnvSchema = publicEnvSchema.extend({
@@ -23,6 +24,8 @@ export const serverEnvSchema = publicEnvSchema.extend({
   CRON_SECRET: z.string().optional(),
   ENCRYPTION_KEY: z.string().optional(),
   WEBHOOK_SIGNING_SECRET: z.string().optional(),
+  VAPID_PRIVATE_KEY: z.string().optional(),
+  VAPID_SUBJECT: z.string().optional(),
 });
 
 export type PublicEnv = z.infer<typeof publicEnvSchema>;

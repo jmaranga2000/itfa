@@ -18,6 +18,8 @@ export default async function StaffMessagesPage({
       audienceLabel="Assigned client and staff conversations"
       baseHref="/staff/messages"
       data={data}
+      newMessageHref="/staff/messages/new"
+      principalId={principal.id}
     />
   );
 }

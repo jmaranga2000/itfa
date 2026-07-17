@@ -15,16 +15,23 @@ export function PricingPlanForm({
   action,
   plan,
   services,
+  selectedServiceId,
   submitLabel,
 }: {
   action: (formData: FormData) => Promise<void>;
   plan?: PricingPlanRecord;
   services: ServiceCatalogRecord[];
+  selectedServiceId?: string;
   submitLabel: string;
 }) {
+  const setupService = selectedServiceId
+    ? services.find((service) => service.id === selectedServiceId)
+    : null;
+
   return (
     <form action={action}>
       {plan ? <input name="planId" type="hidden" value={plan.id} /> : null}
+      {setupService ? <input name="returnToServiceId" type="hidden" value={setupService.id} /> : null}
 
       <div className="grid gap-6 p-5 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="grid gap-6">
@@ -120,7 +127,12 @@ export function PricingPlanForm({
 
           <div className="grid gap-2">
             <Label htmlFor="serviceId">Related service</Label>
-            <Select defaultValue={plan?.serviceId ?? ""} id="serviceId" name="serviceId">
+            <Select
+              defaultValue={plan?.serviceId ?? setupService?.id ?? ""}
+              id="serviceId"
+              name="serviceId"
+              required={Boolean(setupService)}
+            >
               <option value="">All services</option>
               {services.map((service) => (
                 <option key={service.id} value={service.id}>
@@ -132,7 +144,11 @@ export function PricingPlanForm({
 
           <div className="grid gap-2">
             <Label htmlFor="status">Status</Label>
-            <Select defaultValue={plan?.status ?? "draft"} id="status" name="status">
+            <Select
+              defaultValue={plan?.status ?? (setupService ? "published" : "draft")}
+              id="status"
+              name="status"
+            >
               <option value="draft">Draft - admin only</option>
               <option value="published">Published - visible publicly</option>
               <option value="archived">Archived - hidden publicly</option>

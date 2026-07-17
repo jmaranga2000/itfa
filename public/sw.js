@@ -1,4 +1,4 @@
-const CACHE_VERSION = "ifta-pwa-v1";
+const CACHE_VERSION = "ifta-pwa-v2";
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const ASSET_CACHE = `${CACHE_VERSION}-assets`;
 const APP_SHELL = [
@@ -107,4 +107,35 @@ self.addEventListener("fetch", (event) => {
   if (isStaticAsset(url.pathname)) {
     event.respondWith(cacheFirst(request));
   }
+});
+
+self.addEventListener("push", (event) => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch {
+    payload = { title: "IFTA Consulting", body: event.data?.text() || "You have a new portal update." };
+  }
+
+  event.waitUntil(self.registration.showNotification(payload.title || "IFTA Consulting", {
+    body: payload.body || "You have a new portal update.",
+    icon: "/icons/icon-192.png",
+    badge: "/icons/icon-192.png",
+    tag: payload.tag || `ifta-${payload.notificationId || "notification"}`,
+    renotify: true,
+    requireInteraction: true,
+    data: {
+      url: payload.actionUrl || "/staff/notifications",
+      notificationId: payload.notificationId || null,
+    },
+  }));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const targetUrl = new URL(event.notification.data?.url || "/", self.location.origin).href;
+  event.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((windowClients) => {
+    const existing = windowClients.find((client) => client.url === targetUrl);
+    return existing ? existing.focus() : self.clients.openWindow(targetUrl);
+  }));
 });

@@ -6,6 +6,7 @@ import {
   type Principal,
 } from "@/features/authorization/access-control";
 import { sendNewPortalMessageEmail } from "@/features/communication/message-email";
+import { sendPushNotificationToUser } from "@/features/communication/push-notifications";
 import type {
   AnnouncementAudience,
   CommunicationModule,
@@ -20,7 +21,10 @@ import { CommunicationAnnouncementModel } from "@/models/communication-announcem
 import { CommunicationConversationModel } from "@/models/communication-conversation";
 import { CommunicationMessageModel } from "@/models/communication-message";
 import { CommunicationNotificationModel } from "@/models/communication-notification";
+import { EngagementRequestModel } from "@/models/engagement-request";
+import { RequestStaffAssignmentModel } from "@/models/request-staff-assignment";
 import { UserModel } from "@/models/user";
+import { WorkflowInstanceModel } from "@/models/workflow-instance";
 
 export type CommunicationParticipant = {
   userId: string;
@@ -464,6 +468,23 @@ export async function listNotificationsForPrincipal(principal: Principal, limit 
   return (notifications as RawNotification[]).map(serializeNotification);
 }
 
+export async function listUnreadNotificationsForPrincipal(principal: Principal, limit = 12) {
+  await connectToDatabase();
+  const principalId = toObjectId(principal.id);
+  if (!principalId) return [];
+  const notifications = await CommunicationNotificationModel.find({
+    recipientUserId: principalId,
+    archivedAt: null,
+    readAt: null,
+    $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
+  })
+    .sort({ createdAt: -1 })
+    .limit(limit)
+    .lean()
+    .exec();
+  return (notifications as RawNotification[]).map(serializeNotification);
+}
+
 export async function getNotificationForPrincipal(
   principal: Principal,
   notificationId: string,
@@ -566,7 +587,7 @@ export async function createCommunicationNotification(input: CreateNotificationI
     throw new Error("Cannot create notification for an invalid recipient.");
   }
 
-  return CommunicationNotificationModel.create({
+  const notification = await CommunicationNotificationModel.create({
     recipientUserId,
     type: input.type,
     title: input.title,
@@ -579,6 +600,14 @@ export async function createCommunicationNotification(input: CreateNotificationI
     readAt: null,
     archivedAt: null,
   });
+  await sendPushNotificationToUser(recipientUserId.toString(), {
+    notificationId: notification._id.toString(),
+    title: input.title,
+    body: input.description,
+    actionUrl: input.actionUrl,
+    tag: `${input.type}-${input.relatedRecordId ?? notification._id.toString()}`,
+  });
+  return notification;
 }
 
 export async function createConversationMessage(input: CreateMessageInput) {
@@ -635,7 +664,7 @@ export async function createConversationMessage(input: CreateMessageInput) {
     ),
   );
 
-  if (isAdminPrincipal(input.sender)) {
+  if (participantRoleForPrincipal(input.sender) !== "client") {
     const clientRecipients = recipients.filter(
       (participant) => participant.role === "client",
     );
@@ -682,14 +711,37 @@ export async function createConversationMessage(input: CreateMessageInput) {
 }
 
 export async function createDirectClientConversation(input: CreateDirectConversationInput) {
-  assertPermission(input.sender, "messages.send");
   await connectToDatabase();
 
   const senderId = toObjectId(input.sender.id);
   const clientId = toObjectId(input.clientUserId);
 
-  if (!senderId || !clientId || !isAdminPrincipal(input.sender)) {
-    throw new AuthorizationError("Only administrators can start client conversations.");
+  const senderRole = participantRoleForPrincipal(input.sender);
+  if (!senderId || !clientId || senderRole === "client") {
+    throw new AuthorizationError("Only IFTA team members can start client conversations.");
+  }
+
+  if (!isAdminPrincipal(input.sender)) {
+    const assignedRequestIds = (await RequestStaffAssignmentModel.find({ staffUserId: senderId })
+      .distinct("requestId")
+      .exec()) as string[];
+    const [workflowAccess, requestAccess] = await Promise.all([
+      WorkflowInstanceModel.exists({
+        clientUserId: clientId,
+        $or: [
+          { responsibleUserId: senderId },
+          { "team.userId": senderId },
+          { "tasks.assignedUserId": senderId },
+        ],
+      }),
+      EngagementRequestModel.exists({
+        _id: { $in: assignedRequestIds.filter((requestId) => Types.ObjectId.isValid(requestId)) },
+        clientUserId: clientId,
+      }),
+    ]);
+    if (!workflowAccess && !requestAccess) {
+      throw new AuthorizationError("Staff can only message clients assigned to their work.");
+    }
   }
 
   const client = (await UserModel.findOne({
@@ -713,7 +765,7 @@ export async function createDirectClientConversation(input: CreateDirectConversa
     participants: [
       {
         userId: senderId,
-        role: "admin",
+        role: senderRole,
         displayName: input.sender.email,
         email: input.sender.email,
         lastReadAt: now,
@@ -772,6 +824,16 @@ export async function markAllNotificationsRead(principal: Principal) {
 
   return CommunicationNotificationModel.updateMany(
     { recipientUserId: principalId, readAt: null },
+    { $set: { readAt: new Date() } },
+  ).exec();
+}
+
+export async function markRelatedNotificationsRead(principal: Principal, relatedRecordId: string) {
+  await connectToDatabase();
+  const principalId = toObjectId(principal.id);
+  if (!principalId || !relatedRecordId) return null;
+  return CommunicationNotificationModel.updateMany(
+    { recipientUserId: principalId, relatedRecordId, readAt: null },
     { $set: { readAt: new Date() } },
   ).exec();
 }

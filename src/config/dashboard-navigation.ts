@@ -36,6 +36,7 @@ export function getClientNavItems(cartCount = 0): DashboardNavItem[] {
     icon: "finance",
     children: [
       { label: "Invoices", href: "/client/invoices", icon: "invoice", symbol: "I" },
+      { label: "Quotations", href: "/client/quotations", icon: "money", symbol: "Q" },
       { label: "Payments", href: "/client/payments", icon: "money", symbol: "P" },
       { label: "Archive", href: "/client/archive", icon: "archive", symbol: "A" },
     ],
@@ -153,6 +154,7 @@ export const adminNavItems: DashboardNavItem[] = [
     defaultOpen: false,
     children: [
       { label: "Invoices", href: "/admin/invoices", icon: "invoice", symbol: "I" },
+      { label: "Quotations", href: "/admin/quotations", icon: "money", symbol: "Q" },
       { label: "Payments", href: "/admin/payments", icon: "creditCard", symbol: "P" },
       { label: "Reports", href: "/admin/reports", icon: "reports", symbol: "R" },
       { label: "Archive", href: "/admin/archive", icon: "archive", symbol: "A" },

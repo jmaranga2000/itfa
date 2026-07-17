@@ -88,11 +88,13 @@ export function CommunicationConsole({
   audienceLabel,
   baseHref,
   newMessageHref,
+  principalId,
 }: {
   data: CommunicationHubData;
   audienceLabel: string;
   baseHref: string;
   newMessageHref?: string;
+  principalId: string;
 }) {
   const activeConversation = data.activeConversation;
 
@@ -204,23 +206,26 @@ export function CommunicationConsole({
                   No messages have been sent in this conversation.
                 </div>
               ) : (
-                data.messages.map((message) => (
-                  <article className="rounded-md border border-border p-4" key={message.id}>
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="font-semibold text-foreground">{message.senderName}</p>
-                      <span className="text-xs text-muted-foreground">
+                data.messages.map((message) => {
+                  const mine = message.senderUserId === principalId;
+                  return <div className={cn("flex", mine ? "justify-end" : "justify-start")} key={message.id}>
+                  <article className={cn("max-w-[85%] rounded-md border p-4 md:max-w-[72%]", mine ? "border-brand-deep bg-brand-deep text-white" : "border-brand-mist bg-brand-soft text-brand-deep")}>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="font-semibold">{mine ? "You" : message.senderName}</p>
+                      <span className={cn("text-xs", mine ? "text-white/70" : "text-brand-deep/65")}>
                         {dateLabel(message.createdAt)}
                       </span>
                     </div>
-                    <p className="mt-3 text-sm leading-6 text-foreground">{message.body}</p>
+                    <p className="mt-3 whitespace-pre-wrap text-sm leading-6">{message.body}</p>
                     {message.attachmentCount > 0 ? (
-                      <p className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+                      <p className={cn("mt-3 inline-flex items-center gap-2 text-xs font-semibold", mine ? "text-white/70" : "text-brand-deep/65")}>
                         <Paperclip aria-hidden="true" className="h-3.5 w-3.5" />
                         {message.attachmentCount} attachment{message.attachmentCount === 1 ? "" : "s"}
                       </p>
                     ) : null}
                   </article>
-                ))
+                  </div>;
+                })
               )}
 
               <form

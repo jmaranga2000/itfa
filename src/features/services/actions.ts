@@ -86,10 +86,10 @@ export async function createServiceAction(formData: FormData) {
   const actor = await requirePermission("services.manage");
   const input = serviceInput(formData);
   if (!input) redirect("/admin/services/new?error=invalid");
-  const id = await createService({ ...input, status: catalogStatus(input.status) }, actor);
+  const id = await createService({ ...input, status: "draft" }, actor);
   revalidatePath("/admin/services");
   revalidatePath("/services");
-  redirect(`/admin/services/${id}?created=1`);
+  redirect(`/admin/pricing/new?serviceId=${id}&fromService=1`);
 }
 
 export async function updateServiceAction(formData: FormData) {
@@ -102,6 +102,9 @@ export async function updateServiceAction(formData: FormData) {
     { ...input, status: catalogStatus(input.status) },
     actor,
   );
+  if (updated === "pricing_required") {
+    redirect(`/admin/services/${serviceId}?error=pricing-required`);
+  }
   if (!updated) redirect("/admin/services");
   revalidatePath("/admin/services");
   revalidatePath(`/admin/services/${serviceId}`);
@@ -114,8 +117,13 @@ export async function createPricingPlanAction(formData: FormData) {
   const input = pricingInput(formData);
   if (!input) redirect("/admin/pricing/new?error=invalid");
   const id = await createPricingPlan({ ...input, status: catalogStatus(input.status) }, actor);
+  const returnToServiceId = String(formData.get("returnToServiceId") ?? "");
   revalidatePath("/admin/pricing");
   revalidatePath("/pricing");
+  if (returnToServiceId && returnToServiceId === input.serviceId) {
+    revalidatePath(`/admin/services/${returnToServiceId}`);
+    redirect(`/admin/services/${returnToServiceId}?pricingCreated=1`);
+  }
   redirect(`/admin/pricing/${id}?created=1`);
 }
 

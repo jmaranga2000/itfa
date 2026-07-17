@@ -45,6 +45,7 @@ import {
   X,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
+import { LiveNotificationBell } from "@/components/dashboard/communication/live-notification-bell";
 import { buttonClassName } from "@/components/ui/button";
 import { signOutAction } from "@/features/auth/actions";
 import { cn } from "@/lib/utils";
@@ -214,7 +215,6 @@ export function DashboardShell({
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [quickCreateOpen, setQuickCreateOpen] = useState(false);
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(
@@ -240,7 +240,6 @@ export function DashboardShell({
     const frame = window.requestAnimationFrame(() => {
       setMobileOpen(false);
       setQuickCreateOpen(false);
-      setNotificationsOpen(false);
       setProfileOpen(false);
     });
 
@@ -252,7 +251,6 @@ export function DashboardShell({
       if (event.key === "Escape") {
         setMobileOpen(false);
         setQuickCreateOpen(false);
-        setNotificationsOpen(false);
         setProfileOpen(false);
       }
     }
@@ -475,7 +473,6 @@ export function DashboardShell({
                   className={buttonClassName({ size: "sm" })}
                   onClick={() => {
                     setQuickCreateOpen((current) => !current);
-                    setNotificationsOpen(false);
                     setProfileOpen(false);
                   }}
                   type="button"
@@ -499,42 +496,7 @@ export function DashboardShell({
                 ) : null}
               </div>
 
-              <div className="relative">
-                <button
-                  aria-label="Open notifications"
-                  aria-expanded={notificationsOpen}
-                  className="relative grid h-10 w-10 place-items-center rounded-md border border-border bg-secondary text-secondary-foreground hover:bg-muted"
-                  onClick={() => {
-                    setNotificationsOpen((current) => !current);
-                    setQuickCreateOpen(false);
-                    setProfileOpen(false);
-                  }}
-                  type="button"
-                >
-                  <Bell aria-hidden="true" className="h-4 w-4" />
-                  <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-success" />
-                </button>
-                {notificationsOpen ? (
-                  <div className="absolute right-0 top-11 z-40 w-[min(320px,calc(100vw-2rem))] rounded-md border border-border bg-card p-2 shadow-xl">
-                    <div className="flex items-center justify-between px-3 py-2">
-                      <p className="text-xs font-bold uppercase text-muted-foreground">Notifications</p>
-                      <Link className="text-xs font-semibold text-primary" href={notificationsHref}>View all</Link>
-                    </div>
-                    {["Review waiting", "Document action due", "Engagement update available"].map((item) => (
-                      <Link
-                        className="flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-foreground hover:bg-muted"
-                        href={notificationsHref}
-                        key={item}
-                      >
-                        <span className="grid h-7 w-7 place-items-center rounded-md bg-brand-soft text-brand-deep">
-                          <Bell aria-hidden="true" className="h-3.5 w-3.5" />
-                        </span>
-                        {item}
-                      </Link>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
+              <LiveNotificationBell notificationsHref={notificationsHref} />
 
               <ThemeToggle className="hidden lg:inline-flex" />
               <Link
@@ -553,7 +515,6 @@ export function DashboardShell({
                   onClick={() => {
                     setProfileOpen((current) => !current);
                     setQuickCreateOpen(false);
-                    setNotificationsOpen(false);
                   }}
                   type="button"
                 >

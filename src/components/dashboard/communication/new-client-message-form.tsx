@@ -6,19 +6,26 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import type { AdminDirectoryUser } from "@/repositories/user-repository";
+export type ClientMessageRecipient = {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+};
 
-function displayName(client: AdminDirectoryUser) {
+function displayName(client: ClientMessageRecipient) {
   const name = `${client.firstName} ${client.lastName}`.trim();
   return name || client.email;
 }
 
 export function NewClientMessageForm({
   action,
+  cancelHref = "/admin/messages",
   clients,
 }: {
   action: (formData: FormData) => Promise<void>;
-  clients: AdminDirectoryUser[];
+  cancelHref?: string;
+  clients: ClientMessageRecipient[];
 }) {
   return (
     <form action={action}>
@@ -66,7 +73,7 @@ export function NewClientMessageForm({
       <div className="flex flex-col-reverse gap-2 border-t border-border bg-muted/20 p-4 sm:flex-row sm:justify-end">
         <Link
           className={buttonClassName({ className: "w-full sm:w-auto", variant: "secondary" })}
-          href="/admin/messages"
+          href={cancelHref}
         >
           Cancel
         </Link>

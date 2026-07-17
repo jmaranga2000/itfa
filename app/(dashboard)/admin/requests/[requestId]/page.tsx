@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   ArrowLeft,
+  BadgeDollarSign,
   BriefcaseBusiness,
   Check,
   CheckCircle2,
@@ -15,15 +16,12 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { buttonClassName } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getAdminRequest } from "@/content/admin-requests";
 import { requirePermission } from "@/features/auth/server";
 import {
   convertEngagementRequestAction,
-  sendEngagementQuotationAction,
 } from "@/features/client/request-admin-actions";
 import { engagementRequestToAdminRecord, getEngagementRequestForAdmin } from "@/repositories/engagement-request-repository";
 import { getRequestStaffAssignment } from "@/repositories/staff-assignment-repository";
@@ -136,7 +134,12 @@ export default async function AdminRequestDetailPage({
                 <UserRound aria-hidden="true" className="h-4 w-4" />
                 Client directory
               </Link>
-              {databaseRequest && ["quotation_requested", "quotation_preparing", "quotation_sent"].includes(databaseRequest.status) ? null : request.source === "database" && !request.workflowId ? (
+              {databaseRequest && ["quotation_requested", "quotation_preparing", "quotation_sent"].includes(databaseRequest.status) ? (
+                <Link className={buttonClassName()} href={`/admin/quotations/${request.id}`}>
+                  <BadgeDollarSign aria-hidden="true" className="h-4 w-4" />
+                  {databaseRequest.status === "quotation_sent" ? "Open quotation" : "Prepare quotation"}
+                </Link>
+              ) : request.source === "database" && !request.workflowId ? (
                 <form action={convertEngagementRequestAction}>
                   <input name="requestId" type="hidden" value={request.id} />
                   <SubmitButton pendingText="Creating engagement...">
@@ -153,21 +156,6 @@ export default async function AdminRequestDetailPage({
             </div>
           </div>
         </div>
-
-        {databaseRequest && ["quotation_requested", "quotation_preparing"].includes(databaseRequest.status) ? (
-          <form action={sendEngagementQuotationAction} className="grid gap-4 border-t border-border bg-muted/20 p-5 md:grid-cols-[1fr_160px_auto] md:items-end">
-            <input name="requestId" type="hidden" value={request.id} />
-            <div className="grid gap-2">
-              <Label htmlFor="quotation-amount">Quotation amount</Label>
-              <Input id="quotation-amount" min="1" name="amount" placeholder="e.g. 150000" required step="0.01" type="number" />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="quotation-currency">Currency</Label>
-              <Input defaultValue="KES" id="quotation-currency" maxLength={3} name="currency" required />
-            </div>
-            <SubmitButton pendingText="Sending quotation...">Send quotation</SubmitButton>
-          </form>
-        ) : null}
 
         <div className="grid border-t border-border bg-muted/20 sm:grid-cols-2 xl:grid-cols-4">
           {[

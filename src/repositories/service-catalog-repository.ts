@@ -287,16 +287,17 @@ export async function createService(input: ServiceCatalogInput, actor: Principal
   const service = await ServiceCatalogModel.create({
     ...input,
     slug,
+    status: "draft",
     createdByUserId: actor.id,
     updatedByUserId: actor.id,
-    archivedAt: input.status === "archived" ? new Date() : null,
+    archivedAt: null,
   });
   await writeAuditLog({
     actor,
     action: "service.created",
     resourceType: "Service",
     resourceId: service._id.toString(),
-    newValues: input,
+    newValues: { ...input, status: "draft" },
   });
   return service._id.toString();
 }
@@ -307,6 +308,14 @@ export async function updateService(serviceId: string, input: ServiceCatalogInpu
   await connectToDatabase();
   const previous = await ServiceCatalogModel.findById(serviceId).lean().exec();
   if (!previous) return false;
+  if (input.status === "published") {
+    const publishedPrice = await PricingPlanModel.exists({
+      serviceId: new Types.ObjectId(serviceId),
+      status: "published",
+      archivedAt: null,
+    }).exec();
+    if (!publishedPrice) return "pricing_required" as const;
+  }
   const slug = await uniqueSlug(
     (filter) => ServiceCatalogModel.exists(filter).exec(),
     input.slug,

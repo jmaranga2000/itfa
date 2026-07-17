@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requirePermission, requireUser } from "@/features/auth/server";
+import { requireStaffRoute } from "@/features/staff/server";
 import {
   COMMUNICATION_MODULES,
 } from "@/features/communication/types";
@@ -174,4 +175,20 @@ export async function createClientConversationAction(formData: FormData) {
   revalidatePath("/client/messages");
   revalidatePath("/client/notifications");
   redirect(`/admin/messages?conversation=${conversationId}&sent=1`);
+}
+
+export async function createStaffClientConversationAction(formData: FormData) {
+  const { principal: sender } = await requireStaffRoute("messages");
+  const parsed = directMessageSchema.safeParse({
+    clientUserId: formData.get("clientUserId"),
+    subject: formData.get("subject"),
+    body: formData.get("body"),
+  });
+  if (!parsed.success) redirect("/staff/messages/new?error=invalid");
+
+  const conversationId = await createDirectClientConversation({ ...parsed.data, sender });
+  revalidatePath("/staff/messages");
+  revalidatePath("/client/messages");
+  revalidatePath("/client/notifications");
+  redirect(`/staff/messages?conversation=${conversationId}&sent=1`);
 }

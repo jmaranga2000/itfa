@@ -4,7 +4,11 @@ import { assertPermission } from "@/features/authorization/access-control";
 import { writeAuditLog } from "@/features/audit/audit-service";
 import { STAFF_ACCOUNT_ROLES } from "@/features/staff/types";
 import { getAdminRequest } from "@/content/admin-requests";
-import { engagementRequestExists } from "@/repositories/engagement-request-repository";
+import {
+  engagementRequestExists,
+  getEngagementRequestForAdmin,
+} from "@/repositories/engagement-request-repository";
+import { createCommunicationNotification } from "@/repositories/communication-repository";
 import { connectToDatabase } from "@/lib/db/mongoose";
 import { RequestStaffAssignmentModel } from "@/models/request-staff-assignment";
 import { UserModel } from "@/models/user";
@@ -136,6 +140,23 @@ export async function assignStaffToRequest(
       staffName: staffName(staff),
       assignedAt,
     },
+  });
+
+  const databaseRequest = await getEngagementRequestForAdmin(requestId);
+  const seededRequest = getAdminRequest(requestId);
+  const reference = databaseRequest?.reference ?? seededRequest?.reference ?? "Client request";
+  const service = databaseRequest?.items.map((item) => item.serviceTitle).join(", ")
+    ?? seededRequest?.service
+    ?? "Consulting service";
+  await createCommunicationNotification({
+    recipientUserId: staffUserId,
+    type: "task_assigned",
+    title: "New client request assigned",
+    description: `${reference}: ${service}. Open the request to review the client details and next action.`,
+    relatedModule: "engagements",
+    relatedRecordId: requestId,
+    actionUrl: `/staff/requests/${requestId}`,
+    createdByUserId: actor.id,
   });
 
   return true;

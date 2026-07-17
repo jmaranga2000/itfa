@@ -122,18 +122,32 @@ export function ServiceCatalogForm({
           <div>
             <h2 className="text-base font-bold text-foreground">Publishing</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Control when this service appears on the public website.
+              {service
+                ? "Control when this service appears on the public website."
+                : "The service starts as a draft. You will add its price next."}
             </p>
           </div>
 
-          <div className="grid gap-2">
-            <Label htmlFor="status">Status</Label>
-            <Select defaultValue={service?.status ?? "draft"} id="status" name="status">
-              <option value="draft">Draft - admin only</option>
-              <option value="published">Published - visible publicly</option>
-              <option value="archived">Archived - hidden publicly</option>
-            </Select>
-          </div>
+          {service ? (
+            <div className="grid gap-2">
+              <Label htmlFor="status">Status</Label>
+              <Select defaultValue={service.status} id="status" name="status">
+                <option value="draft">Draft - admin only</option>
+                <option value="published">Published - visible publicly</option>
+                <option value="archived">Archived - hidden publicly</option>
+              </Select>
+              <p className="text-xs leading-5 text-muted-foreground">
+                A published price linked to this service is required before it can go live.
+              </p>
+            </div>
+          ) : (
+            <>
+              <input name="status" type="hidden" value="draft" />
+              <div className="rounded-md border border-primary/25 bg-brand-soft p-3 text-sm leading-6 text-foreground">
+                Step 1 of 2: save the service details. The pricing form opens next.
+              </div>
+            </>
+          )}
 
           <div className="grid gap-2">
             <Label htmlFor="displayOrder">Display order</Label>

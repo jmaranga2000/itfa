@@ -14,7 +14,7 @@ export default async function AdminServiceDetailPage({
   searchParams,
 }: {
   params: Promise<{ serviceId: string }>;
-  searchParams: Promise<{ created?: string; error?: string; saved?: string }>;
+  searchParams: Promise<{ created?: string; error?: string; pricingCreated?: string; saved?: string }>;
 }) {
   await requirePermission("services.manage");
   const [{ serviceId }, query] = await Promise.all([params, searchParams]);
@@ -49,15 +49,19 @@ export default async function AdminServiceDetailPage({
       icon={ListChecks}
       title={service.title}
     >
-      {query.created || query.saved ? (
+      {query.created || query.saved || query.pricingCreated ? (
         <div className="flex items-center gap-2 border-b border-emerald-200 bg-emerald-50 px-5 py-3 text-sm font-semibold text-emerald-800">
-          <Badge tone="green">{query.created ? "Created" : "Saved"}</Badge>
-          The service record is up to date.
+          <Badge tone="green">{query.pricingCreated ? "Price added" : query.created ? "Created" : "Saved"}</Badge>
+          {query.pricingCreated
+            ? "The price is ready. Review the service and publish it when you are satisfied."
+            : "The service record is up to date."}
         </div>
       ) : null}
       {query.error ? (
         <p className="border-b border-red-200 bg-red-50 px-5 py-3 text-sm font-semibold text-red-800">
-          Check the required fields and try again.
+          {query.error === "pricing-required"
+            ? "Add and publish a price for this service before publishing it."
+            : "Check the required fields and try again."}
         </p>
       ) : null}
       <ServiceCatalogForm

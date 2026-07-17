@@ -22,6 +22,7 @@ export type StaffRouteKey =
   | "notes"
   | "ai"
   | "invoices"
+  | "quotations"
   | "payments"
   | "reports"
   | "templates"
@@ -61,10 +62,10 @@ const routeAccess: Record<StaffAccountRole, readonly StaffRouteKey[]> = {
   ],
   finance_officer: [
     "dashboard", "notifications", "calendar", "messages", "engagements", "clients", "invoices",
-    "payments", "reports", "templates", "archive",
+    "quotations", "payments", "reports", "templates", "archive",
   ],
   document_controller: [
-    "dashboard", "notifications", "calendar", "engagements", "clients", "documents", "reports",
+    "dashboard", "notifications", "calendar", "messages", "engagements", "clients", "documents", "reports",
     "templates", "archive",
   ],
   support_staff: [
@@ -72,7 +73,7 @@ const routeAccess: Record<StaffAccountRole, readonly StaffRouteKey[]> = {
     "documents",
   ],
   auditor: [
-    "dashboard", "notifications", "calendar", "engagements", "clients", "kyc", "documents",
+    "dashboard", "notifications", "calendar", "messages", "engagements", "clients", "kyc", "documents",
     "invoices", "reports", "templates", "archive", "audit", "team",
   ],
 };
@@ -117,6 +118,7 @@ const workspaceDetails: Record<StaffAccountRole, Omit<StaffWorkspace, "role" | "
     description: "Prepare invoices, record client payments and keep financial records reconciled.",
     priorities: ["Prepare approved invoices", "Record incoming payments", "Resolve reconciliation differences"],
     primaryLinks: [
+      { label: "Quotations", href: "/staff/quotations", description: "Prepare and send pricing for client requests." },
       { label: "Invoices", href: "/staff/invoices", description: "Create, review and issue client invoices." },
       { label: "Payments", href: "/staff/payments", description: "Record and reconcile client payments." },
       { label: "Finance reports", href: "/staff/reports", description: "Review billing and payment summaries." },
@@ -200,6 +202,7 @@ const roleNavigation: Record<StaffAccountRole, DashboardNavItem> = {
   finance_officer: {
     label: "Finance work", icon: "finance", defaultOpen: true,
     children: [
+      link("Quotations", "/staff/quotations", "money", "Q"),
       link("Invoices", "/staff/invoices", "invoice", "I"),
       link("Payments", "/staff/payments", "money", "P"),
       link("Finance reports", "/staff/reports", "reports", "R"),

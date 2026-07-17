@@ -11,10 +11,8 @@ import {
   updateCartItems,
   type CommerceIdentity,
 } from "@/repositories/client-commerce-repository";
-import {
-  acceptEngagementQuotation,
-  createEngagementRequestFromCart,
-} from "@/repositories/engagement-request-repository";
+import { createEngagementRequestFromCart } from "@/repositories/engagement-request-repository";
+import { acceptQuotationForClientByRequest } from "@/repositories/quotation-repository";
 
 const GUEST_CART_COOKIE = "ifta_guest_cart";
 
@@ -91,7 +89,7 @@ export async function requestQuotationAction(formData: FormData) {
     expectedOutcome: String(formData.get("expectedOutcome") ?? ""),
   });
   revalidateCommerce();
-  redirect(`/client/engagements?quotation=${requestId}`);
+  redirect(`/client/quotations/request/${requestId}`);
 }
 
 export async function submitCheckoutAction(formData: FormData) {
@@ -111,8 +109,9 @@ export async function submitCheckoutAction(formData: FormData) {
 export async function acceptQuotationAction(formData: FormData) {
   const principal = await requireUser();
   const requestId = String(formData.get("requestId") ?? "");
-  const accepted = await acceptEngagementQuotation(requestId, principal);
+  const accepted = await acceptQuotationForClientByRequest(requestId, principal);
   revalidatePath("/client/engagements");
   revalidatePath("/admin/requests");
-  redirect(`/client/engagements?${accepted ? "accepted=1" : "error=quotation"}`);
+  const quotationId = String(formData.get("quotationId") ?? "");
+  redirect(accepted && quotationId ? `/client/quotations/${quotationId}?accepted=1` : `/client/engagements?${accepted ? "accepted=1" : "error=quotation"}`);
 }

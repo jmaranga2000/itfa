@@ -16,6 +16,7 @@ export default async function AdminMessagesPage({
       baseHref="/admin/messages"
       data={data}
       newMessageHref="/admin/messages/new"
+      principalId={principal.id}
     />
   );
 }

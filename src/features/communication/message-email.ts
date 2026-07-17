@@ -63,7 +63,7 @@ export async function sendNewPortalMessageEmail(input: {
                     <tr>
                       <td style="padding:28px;">
                         <p style="margin:0 0 18px;font-size:16px;line-height:1.6;">Hello ${recipientName},</p>
-                        <p style="margin:0 0 20px;font-size:15px;line-height:1.7;color:#38585c;">An IFTA Consulting administrator sent you a message in your secure client portal.</p>
+                        <p style="margin:0 0 20px;font-size:15px;line-height:1.7;color:#38585c;">An IFTA Consulting team member sent you a message in your secure client portal.</p>
                         <div style="border-left:4px solid #BDD9D7;background:#f5f9f9;padding:16px 18px;">
                           <p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#03363D;">${subject}</p>
                           <p style="margin:0;font-size:14px;line-height:1.7;color:#4b6568;">${preview}</p>

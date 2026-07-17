@@ -42,8 +42,8 @@ export function StaffRequests({ requests }: { requests: StaffAssignedRequest[] }
                 <p className="mt-1 text-sm text-muted-foreground">{request.clientName} / {request.serviceName}</p>
                 <p className="mt-3 text-sm text-foreground">Next action: {request.nextAction}</p>
               </div>
-              <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={`/staff/clients/request-${request.id}`}>
-                Client details
+              <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={`/staff/requests/${request.id}`}>
+                Open request
                 <ArrowRight aria-hidden="true" className="h-4 w-4" />
               </Link>
             </div>

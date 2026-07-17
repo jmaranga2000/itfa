@@ -15,6 +15,7 @@ export default async function ClientMessagesPage({
       audienceLabel="Your admin and consultant conversations"
       baseHref="/client/messages"
       data={data}
+      principalId={principal.id}
     />
   );
 }

@@ -10,7 +10,7 @@ import { listServices } from "@/repositories/service-catalog-repository";
 export default async function NewAdminPricingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; fromService?: string; serviceId?: string }>;
 }) {
   await requirePermission("services.manage");
   const [query, services] = await Promise.all([searchParams, listServices()]);
@@ -26,7 +26,9 @@ export default async function NewAdminPricingPage({
           Back to pricing
         </Link>
       }
-      description="Add a client-facing pricing option and publish it when the wording is ready."
+      description={query.fromService === "1"
+        ? "Add the client-facing price for this service before you publish it."
+        : "Add a client-facing pricing option and publish it when the wording is ready."}
       icon={BadgeDollarSign}
       title="New pricing option"
     >
@@ -37,8 +39,9 @@ export default async function NewAdminPricingPage({
       ) : null}
       <PricingPlanForm
         action={createPricingPlanAction}
+        selectedServiceId={query.fromService === "1" ? query.serviceId : undefined}
         services={services}
-        submitLabel="Create pricing option"
+        submitLabel={query.fromService === "1" ? "Save price and continue" : "Create pricing option"}
       />
     </AdminPageSurface>
   );
