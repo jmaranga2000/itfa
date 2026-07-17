@@ -15,9 +15,17 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { buttonClassName } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { SubmitButton } from "@/components/ui/submit-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getAdminRequest } from "@/content/admin-requests";
 import { requirePermission } from "@/features/auth/server";
+import {
+  convertEngagementRequestAction,
+  sendEngagementQuotationAction,
+} from "@/features/client/request-admin-actions";
+import { engagementRequestToAdminRecord, getEngagementRequestForAdmin } from "@/repositories/engagement-request-repository";
 import { getRequestStaffAssignment } from "@/repositories/staff-assignment-repository";
 
 function statusTone(status: string) {
@@ -63,14 +71,15 @@ export default async function AdminRequestDetailPage({
   searchParams,
 }: {
   params: Promise<{ requestId: string }>;
-  searchParams: Promise<{ assigned?: string }>;
+  searchParams: Promise<{ assigned?: string; quoted?: string; error?: string }>;
 }) {
   const [{ requestId }, query] = await Promise.all([
     params,
     searchParams,
     requirePermission("engagements.read_all"),
   ]);
-  const request = getAdminRequest(requestId);
+  const databaseRequest = await getEngagementRequestForAdmin(requestId);
+  const request = databaseRequest ? engagementRequestToAdminRecord(databaseRequest) : getAdminRequest(requestId);
 
   if (!request) notFound();
   const assignment = await getRequestStaffAssignment(requestId);
@@ -87,6 +96,11 @@ export default async function AdminRequestDetailPage({
       {query.assigned === "1" && assignment ? (
         <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
           {assignment.staffName} has been assigned to this request.
+        </p>
+      ) : null}
+      {query.quoted === "1" ? (
+        <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
+          The quotation was sent to the client for acceptance.
         </p>
       ) : null}
       <section className="overflow-hidden rounded-md border border-border bg-card">
@@ -122,13 +136,38 @@ export default async function AdminRequestDetailPage({
                 <UserRound aria-hidden="true" className="h-4 w-4" />
                 Client directory
               </Link>
-              <Link className={buttonClassName()} href={action.href}>
-                <ActionIcon aria-hidden="true" className="h-4 w-4" />
-                {action.label}
-              </Link>
+              {databaseRequest && ["quotation_requested", "quotation_preparing", "quotation_sent"].includes(databaseRequest.status) ? null : request.source === "database" && !request.workflowId ? (
+                <form action={convertEngagementRequestAction}>
+                  <input name="requestId" type="hidden" value={request.id} />
+                  <SubmitButton pendingText="Creating engagement...">
+                    <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
+                    Approve and create engagement
+                  </SubmitButton>
+                </form>
+              ) : (
+                <Link className={buttonClassName()} href={request.workflowId ? `/admin/workflows/${request.workflowId}` : action.href}>
+                  <ActionIcon aria-hidden="true" className="h-4 w-4" />
+                  {request.workflowId ? "Open engagement" : action.label}
+                </Link>
+              )}
             </div>
           </div>
         </div>
+
+        {databaseRequest && ["quotation_requested", "quotation_preparing"].includes(databaseRequest.status) ? (
+          <form action={sendEngagementQuotationAction} className="grid gap-4 border-t border-border bg-muted/20 p-5 md:grid-cols-[1fr_160px_auto] md:items-end">
+            <input name="requestId" type="hidden" value={request.id} />
+            <div className="grid gap-2">
+              <Label htmlFor="quotation-amount">Quotation amount</Label>
+              <Input id="quotation-amount" min="1" name="amount" placeholder="e.g. 150000" required step="0.01" type="number" />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="quotation-currency">Currency</Label>
+              <Input defaultValue="KES" id="quotation-currency" maxLength={3} name="currency" required />
+            </div>
+            <SubmitButton pendingText="Sending quotation...">Send quotation</SubmitButton>
+          </form>
+        ) : null}
 
         <div className="grid border-t border-border bg-muted/20 sm:grid-cols-2 xl:grid-cols-4">
           {[

@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronDown, Landmark, Menu, X } from "lucide-react";
+import { ChevronDown, Landmark, Menu, ShoppingCart, X } from "lucide-react";
 import { AuthNavLink } from "@/components/layout/auth-nav-link";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { buttonClassName } from "@/components/ui/button";
@@ -25,10 +25,6 @@ const resourceNav = [
 export function PublicHeader() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
-
-  useEffect(() => {
-    setMobileOpen(false);
-  }, [pathname]);
 
   function isActive(href: string) {
     return href === "/" ? pathname === href : pathname.startsWith(href);
@@ -114,6 +110,14 @@ export function PublicHeader() {
 
         <div className="hidden shrink-0 items-center gap-2 md:flex">
           <ThemeToggle />
+          <Link
+            aria-label="Open service cart"
+            className={buttonClassName({ size: "icon", variant: "secondary" })}
+            href="/cart"
+            title="Service cart"
+          >
+            <ShoppingCart aria-hidden="true" className="h-4 w-4" />
+          </Link>
           <AuthNavLink className={buttonClassName({ variant: "secondary", size: "sm" })} href="/sign-in">
             Sign in
           </AuthNavLink>
@@ -144,17 +148,22 @@ export function PublicHeader() {
                 )}
                 href={item.href}
                 key={item.href}
+                onClick={() => setMobileOpen(false)}
               >
                 {item.label}
               </Link>
             ))}
             <div className="mt-3 grid grid-cols-2 gap-2 border-t border-border pt-4 md:hidden">
               <ThemeToggle className="w-full justify-center" />
-              <AuthNavLink className={buttonClassName({ variant: "secondary", size: "sm" })} href="/sign-in">
+              <AuthNavLink className={buttonClassName({ variant: "secondary", size: "sm" })} href="/sign-in" onClick={() => setMobileOpen(false)}>
                 Sign in
               </AuthNavLink>
-              <Link className={buttonClassName({ className: "col-span-2", size: "sm" })} href="/client">
+              <Link className={buttonClassName({ className: "col-span-2", size: "sm" })} href="/client" onClick={() => setMobileOpen(false)}>
                 Open client portal
+              </Link>
+              <Link className={buttonClassName({ className: "col-span-2", size: "sm", variant: "secondary" })} href="/cart" onClick={() => setMobileOpen(false)}>
+                <ShoppingCart aria-hidden="true" className="h-4 w-4" />
+                Service cart
               </Link>
             </div>
           </nav>

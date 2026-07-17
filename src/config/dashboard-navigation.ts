@@ -1,6 +1,7 @@
 import type { DashboardNavItem } from "@/components/layout/dashboard-shell";
 
-export const clientNavItems: DashboardNavItem[] = [
+export function getClientNavItems(cartCount = 0): DashboardNavItem[] {
+  return [
   {
     label: "Overview",
     icon: "gauge",
@@ -15,8 +16,9 @@ export const clientNavItems: DashboardNavItem[] = [
     icon: "briefcase",
     defaultOpen: true,
     children: [
+      { label: "Browse services", href: "/client/services", icon: "briefcase", symbol: "S" },
       { label: "My engagements", href: "/client/engagements", icon: "briefcase", symbol: "E" },
-      { label: "Service cart", href: "/client/cart", icon: "creditCard", symbol: "C" },
+      { label: "Service cart", href: "/client/cart", icon: "creditCard", symbol: "C", ...(cartCount > 0 ? { badge: String(cartCount) } : {}) },
       { label: "KYC", href: "/client/kyc", icon: "fileCheck", symbol: "K", badge: "Open" },
     ],
   },
@@ -38,7 +40,8 @@ export const clientNavItems: DashboardNavItem[] = [
       { label: "Archive", href: "/client/archive", icon: "archive", symbol: "A" },
     ],
   },
-];
+  ];
+}
 
 export const staffNavItems: DashboardNavItem[] = [
   {

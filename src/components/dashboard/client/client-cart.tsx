@@ -1,103 +1,65 @@
-import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
+import { ArrowRight, Calculator, ShoppingCart, Trash2 } from "lucide-react";
+import { AdminPageSurface } from "@/components/dashboard/admin/admin-page-surface";
+import { StaffEmptyState } from "@/components/dashboard/staff/staff-work-ui";
 import { buttonClassName } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { clientModules } from "@/constants/dashboard-modules";
-import { getModuleCode, getPrimaryAction } from "@/lib/dashboard/module-page-utils";
+import { Input } from "@/components/ui/input";
+import { SubmitButton } from "@/components/ui/submit-button";
+import { removeCartItemAction, requestQuotationAction, updateCartAction } from "@/features/client/commerce-actions";
+import type { ClientCartRecord } from "@/repositories/client-commerce-repository";
 
-const pageModule = clientModules.cart;
-
-export function ClientCart() {
+export function ClientCart({
+  cart,
+  checkoutHref,
+  returnPath,
+}: {
+  cart: ClientCartRecord;
+  checkoutHref: string;
+  returnPath: string;
+}) {
   return (
-    <div className="grid min-w-0 gap-5">
-      <section className="rounded-md border border-border border-l-4 border-l-primary bg-card p-5">
-        <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
-          <div>
-            <Badge tone="teal">{pageModule.eyebrow}</Badge>
-            <h1 className="mt-3 text-2xl font-bold tracking-normal text-foreground">
-              {pageModule.title}
-            </h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-              {pageModule.description}
-            </p>
-          </div>
-          <div className="rounded-md border border-border px-4 py-3">
-            <p className="font-mono text-xs font-semibold text-muted-foreground">
-              {getModuleCode(pageModule)}
-            </p>
-            <p className="mt-1 text-sm font-semibold text-foreground">
-              {getPrimaryAction(pageModule)}
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <section className="grid gap-4 sm:grid-cols-3">
-        {pageModule.metrics.map((metric) => (
-          <Card key={metric.label}>
-            <CardHeader>
-              <CardDescription>{metric.label}</CardDescription>
-              <CardTitle className="text-2xl font-bold">{metric.value}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm leading-6 text-muted-foreground">{metric.helper}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </section>
-
-      <section className="grid gap-5 xl:grid-cols-[1fr_360px]">
-        <Card>
-          <CardHeader>
-            <CardTitle>{pageModule.title} services</CardTitle>
-            <CardDescription>Available tools and information for this area.</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3">
-            {pageModule.services.map((service) => (
-              <div className="rounded-md border border-border bg-muted/40 px-3 py-3 text-sm font-medium text-foreground" key={service}>
-                {service}
+    <AdminPageSurface
+      actions={<Link className={buttonClassName({ variant: "secondary" })} href={returnPath.startsWith("/client") ? "/client/services" : "/services"}>Browse services</Link>}
+      description="Review selected services before submitting them for scope review or requesting a quotation."
+      icon={ShoppingCart}
+      summary={[{ label: "Services selected", value: cart.itemCount, helper: "Ready for review", icon: ShoppingCart }]}
+      title="Engagement cart"
+    >
+      {cart.empty ? (
+        <StaffEmptyState action={<Link className={buttonClassName()} href={returnPath.startsWith("/client") ? "/client/services" : "/services"}>Browse services</Link>} description="Add one or more consulting services before continuing." title="Your cart is empty" />
+      ) : (
+        <div className="grid lg:grid-cols-[minmax(0,1fr)_320px]">
+          <form action={updateCartAction} className="divide-y divide-border">
+            <input name="returnPath" type="hidden" value={returnPath} />
+            {cart.items.map((item) => (
+              <div className="grid gap-4 p-5 sm:grid-cols-[minmax(0,1fr)_100px_auto] sm:items-center" key={item.serviceId}>
+                <div><h2 className="font-bold text-foreground">{item.title}</h2><p className="mt-1 text-sm leading-6 text-muted-foreground">{item.summary}</p><p className="mt-2 text-sm font-semibold text-primary">{item.priceLabel}</p></div>
+                <Input aria-label={`Quantity for ${item.title}`} defaultValue={item.quantity} max={10} min={1} name={`quantity:${item.serviceId}`} type="number" />
+                <SubmitButton formAction={removeCartItemAction} name="serviceId" pendingText="Removing..." value={item.serviceId} variant="secondary">
+                  <Trash2 aria-hidden="true" className="h-4 w-4" />
+                  Remove
+                </SubmitButton>
               </div>
             ))}
-          </CardContent>
-        </Card>
+            <div className="flex justify-end p-5"><SubmitButton pendingText="Updating cart..." variant="secondary">Update cart</SubmitButton></div>
+          </form>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>{pageModule.title} actions</CardTitle>
-            <CardDescription>Actions available for the current portal role.</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-2">
-            {pageModule.actions.map((action, index) => (
-              <button
-                className={buttonClassName({
-                  variant: index === 0 ? "primary" : "secondary",
-                  className: "w-full",
-                })}
-                key={action}
-                type="button"
-              >
-                {action}
-              </button>
-            ))}
-          </CardContent>
-        </Card>
-      </section>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{pageModule.title} workflow</CardTitle>
-          <CardDescription>How work moves through this area.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-2 md:grid-cols-4">
-          {pageModule.workflow.map((step, index) => (
-            <div className="border-t-2 border-primary pt-3" key={step}>
-              <p className="font-mono text-xs font-semibold text-primary">
-                {String(index + 1).padStart(2, "0")}
-              </p>
-              <p className="mt-2 text-sm font-semibold text-foreground">{step}</p>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-    </div>
+          <aside className="grid content-start gap-3 border-t border-border bg-muted/20 p-5 lg:border-l lg:border-t-0">
+            <h2 className="font-bold text-foreground">Cart actions</h2>
+            <p className="text-sm leading-6 text-muted-foreground">Checkout sends a formal request for admin review. No charge is made until scope and fees are confirmed.</p>
+            <Link className={buttonClassName({ className: "mt-2 w-full" })} href={checkoutHref}>
+              Proceed to checkout
+              <ArrowRight aria-hidden="true" className="h-4 w-4" />
+            </Link>
+            <form action={requestQuotationAction}>
+              <SubmitButton className="w-full" pendingText="Requesting quotation..." variant="secondary">
+                <Calculator aria-hidden="true" className="h-4 w-4" />
+                Request quotation
+              </SubmitButton>
+            </form>
+          </aside>
+        </div>
+      )}
+    </AdminPageSurface>
   );
 }

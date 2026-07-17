@@ -19,6 +19,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { adminRequests } from "@/content/admin-requests";
+import type { AdminRequest } from "@/content/admin-requests";
 
 function statusTone(status: string) {
   if (status === "Ready to convert") {
@@ -36,16 +37,16 @@ function priorityTone(priority: string) {
   return priority === "High" ? ("red" as const) : ("slate" as const);
 }
 
-export function AdminRequests() {
-  const readyToConvert = adminRequests.filter((request) => request.status === "Ready to convert");
-  const needsClient = adminRequests.filter(
+export function AdminRequests({ requests = adminRequests }: { requests?: readonly AdminRequest[] }) {
+  const readyToConvert = requests.filter((request) => request.status === "Ready to convert");
+  const needsClient = requests.filter(
     (request) => request.status === "Clarification" || request.status === "KYC required",
   );
-  const highPriority = adminRequests.filter((request) => request.priority === "High");
+  const highPriority = requests.filter((request) => request.priority === "High");
   const summary = [
     {
       label: "Open",
-      value: adminRequests.length,
+      value: requests.length,
       helper: "Awaiting a decision",
       icon: Inbox,
     },
@@ -144,7 +145,7 @@ export function AdminRequests() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {adminRequests.map((request) => (
+                {requests.map((request) => (
                   <TableRow key={request.reference}>
                     <TableCell>
                       <div className="min-w-48">

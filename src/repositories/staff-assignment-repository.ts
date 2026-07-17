@@ -4,6 +4,7 @@ import { assertPermission } from "@/features/authorization/access-control";
 import { writeAuditLog } from "@/features/audit/audit-service";
 import { STAFF_ACCOUNT_ROLES } from "@/features/staff/types";
 import { getAdminRequest } from "@/content/admin-requests";
+import { engagementRequestExists } from "@/repositories/engagement-request-repository";
 import { connectToDatabase } from "@/lib/db/mongoose";
 import { RequestStaffAssignmentModel } from "@/models/request-staff-assignment";
 import { UserModel } from "@/models/user";
@@ -95,7 +96,7 @@ export async function assignStaffToRequest(
 ) {
   assertPermission(actor, "engagements.assign");
   await connectToDatabase();
-  if (!getAdminRequest(requestId) || !Types.ObjectId.isValid(staffUserId)) return false;
+  if ((!getAdminRequest(requestId) && !(await engagementRequestExists(requestId))) || !Types.ObjectId.isValid(staffUserId)) return false;
 
   const staff = await UserModel.findOne({
     _id: new Types.ObjectId(staffUserId),

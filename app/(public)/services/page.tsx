@@ -1,7 +1,9 @@
 import Link from "next/link";
-import { ArrowRight, BarChart3, Check, Scale, ScrollText } from "lucide-react";
+import { ArrowRight, BarChart3, Check, Plus, Scale, ScrollText } from "lucide-react";
 import { PublicPageIntro } from "@/components/public/public-page-intro";
 import { buttonClassName } from "@/components/ui/button";
+import { SubmitButton } from "@/components/ui/submit-button";
+import { addServiceToCartAction } from "@/features/client/commerce-actions";
 import { workflowSteps } from "@/content/public-site";
 import { listServices } from "@/repositories/service-catalog-repository";
 
@@ -69,11 +71,19 @@ export default async function ServicesPage() {
                     <p className="text-sm leading-6 text-muted-foreground">
                       Start with an enquiry. Sensitive evidence is requested only after a protected workspace is available.
                     </p>
-                    <Link className={buttonClassName({ className: "mt-5 w-full" })} href="/contact">
+                    <form action={addServiceToCartAction} className="mt-5">
+                      <input name="serviceId" type="hidden" value={service.id} />
+                      <input name="returnPath" type="hidden" value="/services" />
+                      <SubmitButton className="w-full" pendingText="Adding to cart...">
+                        <Plus aria-hidden="true" className="h-4 w-4" />
+                        Add to cart
+                      </SubmitButton>
+                    </form>
+                    <Link className={buttonClassName({ className: "mt-2 w-full", variant: "secondary" })} href="/contact">
                       Discuss this service
                       <ArrowRight aria-hidden="true" className="h-4 w-4" />
                     </Link>
-                    <Link className={buttonClassName({ className: "mt-2 w-full", variant: "secondary" })} href="/client">
+                    <Link className={buttonClassName({ className: "mt-2 w-full", variant: "ghost" })} href="/client/services">
                       Start in the portal
                     </Link>
                   </div>

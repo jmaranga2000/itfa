@@ -3,6 +3,7 @@ import type { Principal } from "@/features/authorization/access-control";
 import { getAdminRequest } from "@/content/admin-requests";
 import { connectToDatabase } from "@/lib/db/mongoose";
 import { ClientKycSubmissionModel } from "@/models/client-kyc-submission";
+import { EngagementRequestModel } from "@/models/engagement-request";
 import { RequestStaffAssignmentModel } from "@/models/request-staff-assignment";
 import { UserModel } from "@/models/user";
 import {
@@ -97,6 +98,15 @@ type RawAssignment = {
   assignedAt: Date;
 };
 
+type RawEngagementRequest = {
+  _id: Types.ObjectId;
+  reference: string;
+  clientName: string;
+  status: string;
+  priority: string;
+  items: Array<{ serviceTitle: string }>;
+};
+
 type RawClient = {
   _id: Types.ObjectId;
   email: string;
@@ -117,17 +127,47 @@ async function listAssignedRequests(principal: Principal): Promise<StaffAssigned
     .lean()
     .exec()) as unknown as RawAssignment[];
 
+  const databaseRequestIds = assignments
+    .map((assignment) => assignment.requestId)
+    .filter((requestId) => Types.ObjectId.isValid(requestId))
+    .map((requestId) => new Types.ObjectId(requestId));
+  const databaseRequests = databaseRequestIds.length
+    ? (await EngagementRequestModel.find({ _id: { $in: databaseRequestIds } })
+        .select("reference clientName status priority items.serviceTitle")
+        .lean()
+        .exec()) as unknown as RawEngagementRequest[]
+    : [];
+  const databaseRequestById = new Map(
+    databaseRequests.map((request) => [request._id.toString(), request]),
+  );
+
   return assignments.flatMap((assignment) => {
     const request = getAdminRequest(assignment.requestId);
-    if (!request) return [];
+    if (request) {
+      return [{
+        id: request.id,
+        reference: request.reference,
+        clientName: request.client,
+        serviceName: request.service,
+        status: request.status,
+        priority: request.priority,
+        nextAction: request.nextAction,
+        assignedAt: assignment.assignedAt.toISOString(),
+      }];
+    }
+
+    const databaseRequest = databaseRequestById.get(assignment.requestId);
+    if (!databaseRequest) return [];
     return [{
-      id: request.id,
-      reference: request.reference,
-      clientName: request.client,
-      serviceName: request.service,
-      status: request.status,
-      priority: request.priority,
-      nextAction: request.nextAction,
+      id: databaseRequest._id.toString(),
+      reference: databaseRequest.reference,
+      clientName: databaseRequest.clientName,
+      serviceName: databaseRequest.items.map((item) => item.serviceTitle).join(", ") || "Consulting services",
+      status: databaseRequest.status.replaceAll("_", " "),
+      priority: databaseRequest.priority,
+      nextAction: databaseRequest.status.startsWith("quotation")
+        ? "Prepare and send the quotation"
+        : "Review the request and begin the engagement",
       assignedAt: assignment.assignedAt.toISOString(),
     }];
   });

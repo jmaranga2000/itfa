@@ -340,9 +340,10 @@ function isAdmin(principal: Principal) {
   ]);
 }
 
-function workflowAccessFilter(principal: Principal): Record<string, unknown> {
+function workflowAccessFilter(principal: Principal, includeArchived = false): Record<string, unknown> {
+  const activeFilter = includeArchived ? {} : { archivedAt: null };
   if (isAdmin(principal)) {
-    return { archivedAt: null };
+    return activeFilter;
   }
 
   const principalId = objectId(principal.id);
@@ -366,7 +367,7 @@ function workflowAccessFilter(principal: Principal): Record<string, unknown> {
     clauses.push({ engagementId: { $in: engagementIds } });
   }
 
-  return clauses.length > 0 ? { archivedAt: null, $or: clauses } : { _id: null };
+  return clauses.length > 0 ? { ...activeFilter, $or: clauses } : { _id: null };
 }
 
 function calculateProgress(rawWorkflow: Pick<
@@ -570,6 +571,18 @@ export async function listWorkflowsForPrincipal(principal: Principal) {
   return (workflows as unknown as RawWorkflowInstance[]).map((workflow) =>
     serializeWorkflow(workflow, clientView),
   );
+}
+
+export async function listArchivedWorkflowsForPrincipal(principal: Principal) {
+  await connectToDatabase();
+  const workflows = await WorkflowInstanceModel.find({
+    ...workflowAccessFilter(principal, true),
+    $and: [
+      { $or: [{ archivedAt: { $ne: null } }, { status: { $in: ["completed", "read_only", "archived"] } }, { "archive.status": { $ne: "not_ready" } }] },
+    ],
+  }).sort({ "archive.archivedAt": -1, lastActivityAt: -1 }).limit(100).lean().exec();
+  const clientView = principal.roleKeys.some((role) => role === "client" || role === "client_representative");
+  return (workflows as unknown as RawWorkflowInstance[]).map((workflow) => serializeWorkflow(workflow, clientView));
 }
 
 export async function getWorkflowForPrincipal(principal: Principal, workflowId: string) {

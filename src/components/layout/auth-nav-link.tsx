@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, type MouseEventHandler, type ReactNode } from "react";
 
 type IdleWindow = Window &
   typeof globalThis & {
@@ -17,11 +17,12 @@ type AuthNavLinkProps = {
   children: ReactNode;
   className?: string;
   href: string;
+  onClick?: MouseEventHandler<HTMLAnchorElement>;
 };
 
 let authRouteWarmed = false;
 
-export function AuthNavLink({ children, className, href }: AuthNavLinkProps) {
+export function AuthNavLink({ children, className, href, onClick }: AuthNavLinkProps) {
   const router = useRouter();
   const warmed = useRef(false);
 
@@ -58,6 +59,7 @@ export function AuthNavLink({ children, className, href }: AuthNavLinkProps) {
     <Link
       className={className}
       href={href}
+      onClick={onClick}
       onFocus={warmAuthRoute}
       onMouseEnter={warmAuthRoute}
       onPointerDown={warmAuthRoute}

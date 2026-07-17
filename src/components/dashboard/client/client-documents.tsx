@@ -1,99 +1,56 @@
+import Link from "next/link";
+import { Download, FilePlus2, FolderOpen, MessageSquareReply } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { buttonClassName } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { clientModules } from "@/constants/dashboard-modules";
-import { getModuleCode, getPrimaryAction } from "@/lib/dashboard/module-page-utils";
+import { EmptyState } from "@/components/ui/empty-state";
+import type { ClientDocumentRecord } from "@/repositories/client-portal-repository";
 
-const pageModule = clientModules.documents;
+function statusTone(status: string) {
+  if (["approved", "final"].includes(status)) return "green" as const;
+  if (status === "replacement_requested") return "gold" as const;
+  return "teal" as const;
+}
 
-export function ClientDocuments() {
+function dateLabel(value: string) {
+  return new Intl.DateTimeFormat("en-KE", { dateStyle: "medium" }).format(new Date(value));
+}
+
+export function ClientDocuments({ documents, notice }: { documents: ClientDocumentRecord[]; notice?: string }) {
+  const shared = documents.filter((document) => document.direction === "received").length;
+  const feedback = documents.filter((document) => document.status === "replacement_requested").length;
+
   return (
     <div className="grid min-w-0 gap-5">
-      <section className="rounded-md border border-border border-l-4 border-l-primary bg-card p-5">
-        <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
-          <div>
-            <Badge tone="teal">{pageModule.eyebrow}</Badge>
-            <h1 className="mt-3 text-2xl font-bold tracking-normal text-foreground">
-              {pageModule.title}
-            </h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-              {pageModule.description}
-            </p>
-          </div>
-          <div className="rounded-md border border-border px-4 py-3">
-            <p className="font-mono text-xs font-semibold text-muted-foreground">
-              {getModuleCode(pageModule)}
-            </p>
-            <p className="mt-1 text-sm font-semibold text-foreground">
-              {getPrimaryAction(pageModule)}
-            </p>
-          </div>
+      {notice ? <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">{notice}</p> : null}
+      <section className="flex flex-col justify-between gap-4 rounded-md border border-border bg-card p-5 md:flex-row md:items-center">
+        <div>
+          <Badge tone="teal">Engagement files</Badge>
+          <h1 className="mt-3 text-2xl font-bold text-foreground">Documents</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">Upload evidence, download files shared by IFTA and respond to review feedback.</p>
         </div>
-      </section>
-
-      <section className="grid gap-4 sm:grid-cols-3">
-        {pageModule.metrics.map((metric) => (
-          <Card key={metric.label}>
-            <CardHeader>
-              <CardDescription>{metric.label}</CardDescription>
-              <CardTitle className="text-2xl font-bold">{metric.value}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm leading-6 text-muted-foreground">{metric.helper}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </section>
-
-      <section className="grid gap-5 xl:grid-cols-[1fr_360px]">
-        <Card>
-          <CardHeader>
-            <CardTitle>{pageModule.title} services</CardTitle>
-            <CardDescription>Available tools and information for this area.</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3">
-            {pageModule.services.map((service) => (
-              <div className="rounded-md border border-border bg-muted/40 px-3 py-3 text-sm font-medium text-foreground" key={service}>
-                {service}
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>{pageModule.title} actions</CardTitle>
-            <CardDescription>Actions available for the current portal role.</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-2">
-            {pageModule.actions.map((action, index) => (
-              <button
-                className={buttonClassName({
-                  variant: index === 0 ? "primary" : "secondary",
-                  className: "w-full",
-                })}
-                key={action}
-                type="button"
-              >
-                {action}
-              </button>
-            ))}
-          </CardContent>
-        </Card>
+        <div className="flex flex-wrap gap-2">
+          <Link className={buttonClassName({ variant: "secondary" })} href="/client/documents/shared"><FolderOpen className="h-4 w-4" />Shared files ({shared})</Link>
+          <Link className={buttonClassName({ variant: "secondary" })} href="/client/documents/feedback"><MessageSquareReply className="h-4 w-4" />Feedback ({feedback})</Link>
+          <Link className={buttonClassName()} href="/client/documents/upload"><FilePlus2 className="h-4 w-4" />Upload document</Link>
+        </div>
       </section>
 
       <Card>
         <CardHeader>
-          <CardTitle>{pageModule.title} workflow</CardTitle>
-          <CardDescription>How work moves through this area.</CardDescription>
+          <CardTitle>All documents</CardTitle>
+          <CardDescription>{documents.length} file{documents.length === 1 ? "" : "s"} across your engagements.</CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-2 md:grid-cols-4">
-          {pageModule.workflow.map((step, index) => (
-            <div className="border-t-2 border-primary pt-3" key={step}>
-              <p className="font-mono text-xs font-semibold text-primary">
-                {String(index + 1).padStart(2, "0")}
-              </p>
-              <p className="mt-2 text-sm font-semibold text-foreground">{step}</p>
+        <CardContent className="grid gap-2">
+          {documents.length === 0 ? (
+            <EmptyState title="No documents yet" description="Files you upload or receive from IFTA will appear here." />
+          ) : documents.map((document) => (
+            <div className="flex flex-col justify-between gap-3 border-t border-border py-4 first:border-t-0 first:pt-0 sm:flex-row sm:items-center" key={document.id}>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2"><p className="font-semibold text-foreground">{document.name}</p><Badge tone={statusTone(document.status)}>{document.status.replaceAll("_", " ")}</Badge></div>
+                <p className="mt-1 text-sm text-muted-foreground">{document.engagementReference} | {document.direction === "sent" ? "Uploaded by you" : "Shared by IFTA"} | {dateLabel(document.uploadedAt)}</p>
+              </div>
+              {document.downloadHref ? <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={document.downloadHref}><Download className="h-4 w-4" />Download</Link> : null}
             </div>
           ))}
         </CardContent>

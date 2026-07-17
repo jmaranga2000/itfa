@@ -29,10 +29,16 @@ function statusTone(status: string) {
   return "slate" as const;
 }
 
-export function ClientWorkflowProgress({ workflows }: { workflows: WorkflowInstanceRecord[] }) {
+export function ClientWorkflowProgress({
+  workflows,
+  showHeader = true,
+}: {
+  workflows: WorkflowInstanceRecord[];
+  showHeader?: boolean;
+}) {
   return (
     <div className="grid gap-5">
-      <section className="rounded-md border border-border bg-card p-5">
+      {showHeader ? <section className="rounded-md border border-border bg-card p-5">
         <Badge tone="teal">Client progress</Badge>
         <h1 className="mt-3 text-2xl font-bold tracking-normal text-foreground">
           Engagement progress
@@ -41,7 +47,7 @@ export function ClientWorkflowProgress({ workflows }: { workflows: WorkflowInsta
           View your simplified engagement progress, required actions, shared documents and
           client-visible activity.
         </p>
-      </section>
+      </section> : null}
 
       {workflows.length === 0 ? (
         <Card>

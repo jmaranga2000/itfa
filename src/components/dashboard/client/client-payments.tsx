@@ -1,103 +1,25 @@
+import Link from "next/link";
+import { CreditCard, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { buttonClassName } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { clientModules } from "@/constants/dashboard-modules";
-import { getModuleCode, getPrimaryAction } from "@/lib/dashboard/module-page-utils";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
+import { SubmitButton } from "@/components/ui/submit-button";
+import { submitClientPaymentAction } from "@/features/client/payment-actions";
+import { money } from "@/components/dashboard/client/client-invoices";
+import type { ClientInvoiceRecord, ClientPaymentRecord } from "@/repositories/client-portal-repository";
 
-const pageModule = clientModules.payments;
+const payableStatuses = new Set(["approved", "issued", "partially_paid", "overdue"]);
 
-export function ClientPayments() {
-  return (
-    <div className="grid min-w-0 gap-5">
-      <section className="rounded-md border border-border border-l-4 border-l-primary bg-card p-5">
-        <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
-          <div>
-            <Badge tone="teal">{pageModule.eyebrow}</Badge>
-            <h1 className="mt-3 text-2xl font-bold tracking-normal text-foreground">
-              {pageModule.title}
-            </h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-              {pageModule.description}
-            </p>
-          </div>
-          <div className="rounded-md border border-border px-4 py-3">
-            <p className="font-mono text-xs font-semibold text-muted-foreground">
-              {getModuleCode(pageModule)}
-            </p>
-            <p className="mt-1 text-sm font-semibold text-foreground">
-              {getPrimaryAction(pageModule)}
-            </p>
-          </div>
-        </div>
-      </section>
+export function ClientPayments({ payments, invoices, notice }: { payments: ClientPaymentRecord[]; invoices: ClientInvoiceRecord[]; notice?: string }) {
+  const payable = invoices.filter((invoice) => invoice.balanceDue > 0 && payableStatuses.has(invoice.status));
+  return <div className="grid min-w-0 gap-5">{notice ? <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">{notice}</p> : null}<section className="flex flex-col justify-between gap-4 rounded-md border border-border bg-card p-5 md:flex-row md:items-center"><div><Badge tone="teal">Billing</Badge><h1 className="mt-3 text-2xl font-bold text-foreground">Payments</h1><p className="mt-2 text-sm text-muted-foreground">Submit transaction details and follow finance verification.</p></div>{payable.length ? <Link className={buttonClassName()} href="/client/payments/new"><Plus className="h-4 w-4" />Submit payment</Link> : null}</section><Card><CardHeader><CardTitle>Payment history</CardTitle><CardDescription>Submitted transactions are verified by the finance team.</CardDescription></CardHeader><CardContent className="grid gap-2">{payments.length === 0 ? <EmptyState title="No payments submitted" description="Once an invoice is issued, you can submit its payment reference here." /> : payments.map((payment) => <div className="flex flex-col justify-between gap-3 border-t border-border py-4 first:border-0 first:pt-0 sm:flex-row sm:items-center" key={payment.id}><div><p className="font-semibold text-foreground">{payment.engagementReference}</p><p className="mt-1 text-sm text-muted-foreground">{payment.method.replaceAll("_", " ")} | {payment.transactionReference} | {new Intl.DateTimeFormat("en-KE", { dateStyle: "medium" }).format(new Date(payment.submittedAt))}</p></div><div className="text-left sm:text-right"><p className="font-bold text-foreground">{money(payment.amount, payment.currency)}</p><Badge tone={payment.status === "verified" ? "green" : payment.status === "rejected" ? "red" : "gold"}>{payment.status}</Badge></div></div>)}</CardContent></Card></div>;
+}
 
-      <section className="grid gap-4 sm:grid-cols-3">
-        {pageModule.metrics.map((metric) => (
-          <Card key={metric.label}>
-            <CardHeader>
-              <CardDescription>{metric.label}</CardDescription>
-              <CardTitle className="text-2xl font-bold">{metric.value}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm leading-6 text-muted-foreground">{metric.helper}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </section>
-
-      <section className="grid gap-5 xl:grid-cols-[1fr_360px]">
-        <Card>
-          <CardHeader>
-            <CardTitle>{pageModule.title} services</CardTitle>
-            <CardDescription>Available tools and information for this area.</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3">
-            {pageModule.services.map((service) => (
-              <div className="rounded-md border border-border bg-muted/40 px-3 py-3 text-sm font-medium text-foreground" key={service}>
-                {service}
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>{pageModule.title} actions</CardTitle>
-            <CardDescription>Actions available for the current portal role.</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-2">
-            {pageModule.actions.map((action, index) => (
-              <button
-                className={buttonClassName({
-                  variant: index === 0 ? "primary" : "secondary",
-                  className: "w-full",
-                })}
-                key={action}
-                type="button"
-              >
-                {action}
-              </button>
-            ))}
-          </CardContent>
-        </Card>
-      </section>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{pageModule.title} workflow</CardTitle>
-          <CardDescription>How work moves through this area.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-2 md:grid-cols-4">
-          {pageModule.workflow.map((step, index) => (
-            <div className="border-t-2 border-primary pt-3" key={step}>
-              <p className="font-mono text-xs font-semibold text-primary">
-                {String(index + 1).padStart(2, "0")}
-              </p>
-              <p className="mt-2 text-sm font-semibold text-foreground">{step}</p>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-    </div>
-  );
+export function ClientPaymentForm({ invoices, error }: { invoices: ClientInvoiceRecord[]; error?: string }) {
+  const payable = invoices.filter((invoice) => invoice.balanceDue > 0 && payableStatuses.has(invoice.status));
+  return <div className="grid max-w-3xl gap-5"><Link className={buttonClassName({ variant: "secondary", size: "sm", className: "w-fit" })} href="/client/payments">Back to payments</Link><Card><CardHeader><CardTitle>Submit payment for verification</CardTitle><CardDescription>Enter the transaction reference from your payment provider. Finance will confirm it before the invoice is marked paid.</CardDescription></CardHeader><CardContent>{error ? <p className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">Check the amount, invoice and reference. The reference may already have been submitted.</p> : null}{payable.length === 0 ? <EmptyState title="No payable invoice" description="Payment submission becomes available after finance issues an invoice with an outstanding balance." /> : <form action={submitClientPaymentAction} className="grid gap-4"><div className="grid gap-2"><Label htmlFor="workflowId">Invoice</Label><Select id="workflowId" name="workflowId" required><option value="">Select an invoice</option>{payable.map((invoice) => <option key={invoice.workflowId} value={invoice.workflowId}>{invoice.reference} - {money(invoice.balanceDue, invoice.currency)} due</option>)}</Select></div><div className="grid gap-4 sm:grid-cols-2"><div className="grid gap-2"><Label htmlFor="amount">Amount paid</Label><Input id="amount" min="1" name="amount" required step="0.01" type="number" /></div><div className="grid gap-2"><Label htmlFor="method">Payment method</Label><Select id="method" name="method" required><option value="">Select method</option><option value="mpesa">M-Pesa</option><option value="bank_transfer">Bank transfer</option><option value="card">Card</option><option value="other">Other</option></Select></div></div><div className="grid gap-2"><Label htmlFor="transactionReference">Transaction reference</Label><Input id="transactionReference" name="transactionReference" placeholder="Receipt or bank reference" required /></div><SubmitButton className="w-fit" pendingText="Submitting..."><CreditCard className="h-4 w-4" />Submit for verification</SubmitButton></form>}</CardContent></Card></div>;
 }
