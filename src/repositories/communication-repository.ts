@@ -1,9 +1,11 @@
 import { Types } from "mongoose";
 import {
+  assertPermission,
   hasAnyPermission,
   hasPermission,
   type Principal,
 } from "@/features/authorization/access-control";
+import { sendNewPortalMessageEmail } from "@/features/communication/message-email";
 import type {
   AnnouncementAudience,
   CommunicationModule,
@@ -185,6 +187,13 @@ export type CreateMessageInput = {
   body: string;
 };
 
+export type CreateDirectConversationInput = {
+  clientUserId: string;
+  sender: Principal;
+  subject: string;
+  body: string;
+};
+
 export type PublishAnnouncementInput = {
   title: string;
   body: string;
@@ -236,6 +245,11 @@ function participantRoleForPrincipal(principal: Principal): ConversationParticip
   }
 
   return "staff";
+}
+
+function messageActionUrl(role: ConversationParticipantRole, conversationId: string) {
+  const portal = role === "client" ? "client" : role === "staff" ? "staff" : "admin";
+  return "/" + portal + "/messages?conversation=" + conversationId;
 }
 
 function conversationAccessFilter(principal: Principal): Record<string, unknown> {
@@ -487,13 +501,19 @@ export async function listAnnouncementsForPrincipal(principal: Principal, limit 
   return (announcements as RawAnnouncement[]).map(serializeAnnouncement);
 }
 
-export async function getCommunicationHubData(principal: Principal): Promise<CommunicationHubData> {
+export async function getCommunicationHubData(
+  principal: Principal,
+  activeConversationId?: string,
+): Promise<CommunicationHubData> {
   const [conversations, notifications, announcements] = await Promise.all([
     listConversationsForPrincipal(principal),
     listNotificationsForPrincipal(principal),
     listAnnouncementsForPrincipal(principal),
   ]);
-  const activeConversation = conversations[0] ?? null;
+  const activeConversation =
+    conversations.find((conversation) => conversation.id === activeConversationId) ??
+    conversations[0] ??
+    null;
   const messages = activeConversation
     ? await listMessagesForConversation(principal, activeConversation.id)
     : [];
@@ -596,24 +616,106 @@ export async function createConversationMessage(input: CreateMessageInput) {
     },
   ).exec();
 
-  await Promise.all(
-    (conversation.participants ?? [])
-      .filter((participant) => participant.userId.toString() !== input.sender.id)
-      .map((participant) =>
-        createCommunicationNotification({
-          recipientUserId: participant.userId.toString(),
-          type: "new_message",
-          title: conversation.title,
-          description: input.body.slice(0, 140),
-          relatedModule: "messages",
-          relatedRecordId: conversation._id.toString(),
-          actionUrl: conversation.actionUrl,
-          createdByUserId: input.sender.id,
-        }),
-      ),
+  const recipients = (conversation.participants ?? []).filter(
+    (participant) => participant.userId.toString() !== input.sender.id,
   );
 
+  await Promise.all(
+    recipients.map((participant) =>
+      createCommunicationNotification({
+        recipientUserId: participant.userId.toString(),
+        type: "new_message",
+        title: conversation.title,
+        description: input.body.slice(0, 140),
+        relatedModule: "messages",
+        relatedRecordId: conversation._id.toString(),
+        actionUrl: messageActionUrl(participant.role, conversation._id.toString()),
+        createdByUserId: input.sender.id,
+      }),
+    ),
+  );
+
+  if (isAdminPrincipal(input.sender)) {
+    await Promise.all(
+      recipients
+        .filter((participant) => participant.role === "client")
+        .map((participant) =>
+          sendNewPortalMessageEmail({
+            recipientEmail: participant.email,
+            recipientName: participant.displayName,
+            conversationId: conversation._id.toString(),
+            subject: conversation.title,
+            messagePreview: input.body,
+          }),
+        ),
+    );
+  }
+
   return message;
+}
+
+export async function createDirectClientConversation(input: CreateDirectConversationInput) {
+  assertPermission(input.sender, "messages.send");
+  await connectToDatabase();
+
+  const senderId = toObjectId(input.sender.id);
+  const clientId = toObjectId(input.clientUserId);
+
+  if (!senderId || !clientId || !isAdminPrincipal(input.sender)) {
+    throw new AuthorizationError("Only administrators can start client conversations.");
+  }
+
+  const client = (await UserModel.findOne({
+    _id: clientId,
+    roleKeys: { $in: ["client", "client_representative"] },
+    status: { $ne: "archived" },
+  })
+    .select("email firstName lastName roleKeys")
+    .lean()
+    .exec()) as RawDirectoryUser | null;
+
+  if (!client) {
+    throw new Error("The selected client account is not available.");
+  }
+
+  const now = new Date();
+  const conversation = await CommunicationConversationModel.create({
+    title: input.subject,
+    type: "direct",
+    status: "waiting_for_client",
+    participants: [
+      {
+        userId: senderId,
+        role: "admin",
+        displayName: input.sender.email,
+        email: input.sender.email,
+        lastReadAt: now,
+      },
+      {
+        userId: client._id,
+        role: "client",
+        displayName: displayName(client),
+        email: client.email,
+        lastReadAt: null,
+      },
+    ],
+    relatedModule: "messages",
+    relatedRecordId: null,
+    actionUrl: "/client/messages",
+    lastMessagePreview: "",
+    lastMessageAt: null,
+    lastActivityAt: now,
+    createdByUserId: senderId,
+    archivedAt: null,
+  });
+
+  await createConversationMessage({
+    conversationId: conversation._id.toString(),
+    sender: input.sender,
+    body: input.body,
+  });
+
+  return conversation._id.toString();
 }
 
 export async function markNotificationRead(principal: Principal, notificationId: string) {

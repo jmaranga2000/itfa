@@ -3,13 +3,17 @@ import {
   AlertCircle,
   ArrowUpRight,
   Megaphone,
-  MessageSquareText,
   Paperclip,
+  Plus,
+  Send,
   Users,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { buttonClassName } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { SubmitButton } from "@/components/ui/submit-button";
+import { Textarea } from "@/components/ui/textarea";
+import { sendConversationMessageAction } from "@/features/communication/actions";
 import type {
   CommunicationConversation,
   CommunicationHubData,
@@ -82,9 +86,13 @@ function EmptyConversation() {
 export function CommunicationConsole({
   data,
   audienceLabel,
+  baseHref,
+  newMessageHref,
 }: {
   data: CommunicationHubData;
   audienceLabel: string;
+  baseHref: string;
+  newMessageHref?: string;
 }) {
   const activeConversation = data.activeConversation;
 
@@ -101,18 +109,26 @@ export function CommunicationConsole({
               Centralized communication between admins, staff and clients.
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
-            {[
-              ["Open", data.summary.openConversations],
-              ["Unread", data.summary.unreadMessages],
-              ["Firm", data.summary.waitingForFirm],
-              ["Client", data.summary.waitingForClient],
-            ].map(([label, value]) => (
-              <div className="rounded-md border border-border px-3 py-2" key={label}>
-                <p className="text-xs font-semibold uppercase text-muted-foreground">{label}</p>
-                <p className="mt-1 text-lg font-bold text-foreground">{value}</p>
-              </div>
-            ))}
+          <div className="flex flex-col items-stretch gap-3 sm:items-end">
+            {newMessageHref ? (
+              <Link className={buttonClassName()} href={newMessageHref}>
+                <Plus aria-hidden="true" className="h-4 w-4" />
+                New client message
+              </Link>
+            ) : null}
+            <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+              {[
+                ["Open", data.summary.openConversations],
+                ["Unread", data.summary.unreadMessages],
+                ["Firm", data.summary.waitingForFirm],
+                ["Client", data.summary.waitingForClient],
+              ].map(([label, value]) => (
+                <div className="rounded-md border border-border px-3 py-2" key={label}>
+                  <p className="text-xs font-semibold uppercase text-muted-foreground">{label}</p>
+                  <p className="mt-1 text-lg font-bold text-foreground">{value}</p>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </section>
@@ -140,7 +156,7 @@ export function CommunicationConsole({
                         ? "border-accent bg-muted"
                         : "border-border hover:border-accent hover:bg-muted/60",
                     )}
-                    href={conversation.actionUrl}
+                    href={`${baseHref}?conversation=${encodeURIComponent(conversation.id)}`}
                     key={conversation.id}
                   >
                     <div className="flex items-start justify-between gap-2">
@@ -207,12 +223,34 @@ export function CommunicationConsole({
                 ))
               )}
 
-              <div className="rounded-md border border-dashed border-border bg-muted/30 p-4">
-                <p className="text-sm font-semibold text-foreground">Reply</p>
-                <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                  Attachments accepted: PDF, DOCX, XLSX, CSV, JPG and PNG.
-                </p>
-              </div>
+              <form
+                action={sendConversationMessageAction}
+                className="grid gap-3 border-t border-border pt-4"
+              >
+                <input
+                  name="conversationId"
+                  type="hidden"
+                  value={activeConversation.id}
+                />
+                <input name="returnPath" type="hidden" value={baseHref} />
+                <label className="text-sm font-semibold text-foreground" htmlFor="body">
+                  Reply
+                </label>
+                <Textarea
+                  className="min-h-28"
+                  id="body"
+                  maxLength={6000}
+                  name="body"
+                  placeholder="Write your reply..."
+                  required
+                />
+                <div className="flex justify-end">
+                  <SubmitButton pendingText="Sending...">
+                    <Send aria-hidden="true" className="h-4 w-4" />
+                    Send reply
+                  </SubmitButton>
+                </div>
+              </form>
             </CardContent>
           </Card>
         ) : (
@@ -244,21 +282,23 @@ export function CommunicationConsole({
                   ))}
                 </div>
 
-                <div className="grid gap-2">
-                  <p className="text-xs font-semibold uppercase text-muted-foreground">
-                    Related resource
-                  </p>
-                  <Link
-                    className={buttonClassName({
-                      variant: "secondary",
-                      className: "justify-between",
-                    })}
-                    href={activeConversation.actionUrl}
-                  >
-                    Open resource
-                    <ArrowUpRight aria-hidden="true" className="h-4 w-4" />
-                  </Link>
-                </div>
+                {activeConversation.relatedModule !== "messages" ? (
+                  <div className="grid gap-2">
+                    <p className="text-xs font-semibold uppercase text-muted-foreground">
+                      Related resource
+                    </p>
+                    <Link
+                      className={buttonClassName({
+                        variant: "secondary",
+                        className: "justify-between",
+                      })}
+                      href={activeConversation.actionUrl}
+                    >
+                      Open resource
+                      <ArrowUpRight aria-hidden="true" className="h-4 w-4" />
+                    </Link>
+                  </div>
+                ) : null}
               </>
             ) : (
               <div className="rounded-md border border-dashed border-border p-5 text-sm text-muted-foreground">

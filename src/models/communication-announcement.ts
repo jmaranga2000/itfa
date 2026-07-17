@@ -31,6 +31,12 @@ const communicationAnnouncementSchema = new Schema(
       index: true,
     },
     relatedRecordId: { type: String, default: null, index: true },
+    destinationKey: {
+      type: String,
+      enum: ["portal_home", "notifications", "messages", "documents", "engagements"],
+      default: "portal_home",
+      index: true,
+    },
     selectedUserIds: { type: [Schema.Types.ObjectId], default: [], index: true },
     actionUrl: { type: String, default: "/notifications" },
     sendEmail: { type: Boolean, default: false },

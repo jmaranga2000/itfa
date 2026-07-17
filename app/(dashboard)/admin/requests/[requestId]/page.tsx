@@ -18,6 +18,7 @@ import { buttonClassName } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getAdminRequest } from "@/content/admin-requests";
 import { requirePermission } from "@/features/auth/server";
+import { getRequestStaffAssignment } from "@/repositories/staff-assignment-repository";
 
 function statusTone(status: string) {
   if (status === "Ready to convert") return "green" as const;
@@ -59,16 +60,20 @@ function primaryAction(status: string) {
 
 export default async function AdminRequestDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ requestId: string }>;
+  searchParams: Promise<{ assigned?: string }>;
 }) {
-  const [{ requestId }] = await Promise.all([
+  const [{ requestId }, query] = await Promise.all([
     params,
+    searchParams,
     requirePermission("engagements.read_all"),
   ]);
   const request = getAdminRequest(requestId);
 
   if (!request) notFound();
+  const assignment = await getRequestStaffAssignment(requestId);
 
   const receivedDocuments = request.documents.filter(
     (document) => document.status === "Received",
@@ -79,6 +84,11 @@ export default async function AdminRequestDetailPage({
 
   return (
     <div className="grid min-w-0 gap-5">
+      {query.assigned === "1" && assignment ? (
+        <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
+          {assignment.staffName} has been assigned to this request.
+        </p>
+      ) : null}
       <section className="overflow-hidden rounded-md border border-border bg-card">
         <div className="border-l-4 border-l-primary p-5 md:p-6">
           <Link
@@ -293,7 +303,7 @@ export default async function AdminRequestDetailPage({
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
-                  {request.status === "Ready to convert" ? (
+                  {assignment ? (
                     <CheckCircle2
                       aria-hidden="true"
                       className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600"
@@ -305,9 +315,11 @@ export default async function AdminRequestDetailPage({
                     />
                   )}
                   <div>
-                    <p className="text-sm font-semibold text-foreground">Approval state</p>
+                    <p className="text-sm font-semibold text-foreground">Assigned staff</p>
                     <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                      Current status: {request.status}.
+                      {assignment
+                        ? `${assignment.staffName} is responsible for this request.`
+                        : "No staff member has been assigned yet."}
                     </p>
                   </div>
                 </div>
@@ -332,10 +344,10 @@ export default async function AdminRequestDetailPage({
                   className: "w-full",
                   variant: "secondary",
                 })}
-                href="/admin/staff"
+                href={`/admin/staff?assignRequest=${encodeURIComponent(request.id)}`}
               >
                 <UserRoundCheck aria-hidden="true" className="h-4 w-4" />
-                Assign staff
+                {assignment ? "Change assigned staff" : "Assign staff"}
               </Link>
             </CardContent>
           </Card>

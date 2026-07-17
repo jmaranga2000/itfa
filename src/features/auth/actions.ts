@@ -115,6 +115,10 @@ export async function signInAction(formData: FormData) {
     authErrorRedirect("/sign-in", "The email or password is incorrect.");
   }
 
+  if (user.status && user.status !== "active") {
+    authErrorRedirect("/sign-in", "This account is not currently active.");
+  }
+
   if (!user.emailVerifiedAt) {
     const verification = await createAndSendVerificationEmail(user._id.toString(), user.email);
     verificationRedirect(user.email, {

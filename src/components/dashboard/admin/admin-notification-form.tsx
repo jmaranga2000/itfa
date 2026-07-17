@@ -69,16 +69,20 @@ export function AdminNotificationForm({
 
             <div className="grid gap-4 md:grid-cols-2">
               <div className="grid gap-2">
-                <Label htmlFor="actionUrl">Where the Open button goes</Label>
-                <Input
-                  defaultValue={notification?.actionUrl ?? "/"}
-                  id="actionUrl"
-                  maxLength={500}
-                  name="actionUrl"
-                  placeholder="/client/documents"
-                />
+                <Label htmlFor="destinationKey">Where the Open button goes</Label>
+                <Select
+                  defaultValue={notification?.destinationKey ?? "portal_home"}
+                  id="destinationKey"
+                  name="destinationKey"
+                >
+                  <option value="portal_home">Portal home</option>
+                  <option value="notifications">Notifications</option>
+                  <option value="messages">Messages</option>
+                  <option value="documents">Documents</option>
+                  <option value="engagements">Engagements</option>
+                </Select>
                 <p className="text-xs text-muted-foreground">
-                  Use a portal path beginning with `/`.
+                  The correct client or staff page is selected automatically.
                 </p>
               </div>
               <div className="grid gap-2">

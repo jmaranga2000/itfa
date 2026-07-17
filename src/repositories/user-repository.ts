@@ -2,6 +2,10 @@ import { Types } from "mongoose";
 import type { Principal } from "@/features/authorization/access-control";
 import { isPermission, type Permission } from "@/features/authorization/permissions";
 import { isAppRole, type AppRole } from "@/features/authorization/roles";
+import type {
+  StaffAccountRole,
+  StaffAccountStatus,
+} from "@/features/staff/types";
 import { connectToDatabase } from "@/lib/db/mongoose";
 import { RoleModel } from "@/models/role";
 import { UserModel } from "@/models/user";
@@ -172,6 +176,101 @@ export async function listStaffForAdmin() {
     roleKeys: { $in: staffDirectoryRoles },
     status: { $ne: "archived" },
   });
+}
+
+export async function getStaffForAdmin(staffId: string) {
+  await connectToDatabase();
+  if (!Types.ObjectId.isValid(staffId)) return null;
+
+  const user = await UserModel.findOne({
+    _id: new Types.ObjectId(staffId),
+    roleKeys: { $in: staffDirectoryRoles },
+    status: { $ne: "archived" },
+  })
+    .select(
+      "email firstName lastName status roleKeys directPermissions clientOrganizationIds assignedEngagementIds emailVerifiedAt lastLoginAt createdAt updatedAt archivedAt",
+    )
+    .lean()
+    .exec();
+
+  return user ? serializeAdminDirectoryUser(user as RawAdminDirectoryUser) : null;
+}
+
+export async function staffEmailExists(email: string, excludeUserId?: string) {
+  await connectToDatabase();
+  const excludeId =
+    excludeUserId && Types.ObjectId.isValid(excludeUserId)
+      ? new Types.ObjectId(excludeUserId)
+      : null;
+
+  return Boolean(
+    await UserModel.exists({
+      email: normalizeEmail(email),
+      ...(excludeId ? { _id: { $ne: excludeId } } : {}),
+    }).exec(),
+  );
+}
+
+export async function createStaffAccount(input: {
+  email: string;
+  passwordHash: string;
+  firstName: string;
+  lastName: string;
+  role: StaffAccountRole;
+  status: StaffAccountStatus;
+}) {
+  await connectToDatabase();
+  const user = await UserModel.create({
+    email: normalizeEmail(input.email),
+    passwordHash: input.passwordHash,
+    firstName: input.firstName,
+    lastName: input.lastName,
+    status: input.status,
+    roleKeys: [input.role],
+    directPermissions: [],
+    clientOrganizationIds: [],
+    assignedEngagementIds: [],
+    emailVerifiedAt: new Date(),
+    lastLoginAt: null,
+    archivedAt: null,
+  });
+
+  return user._id.toString();
+}
+
+export async function updateStaffAccount(
+  staffId: string,
+  input: {
+    email: string;
+    firstName: string;
+    lastName: string;
+    role: StaffAccountRole;
+    status: StaffAccountStatus;
+    passwordHash?: string;
+  },
+) {
+  await connectToDatabase();
+  if (!Types.ObjectId.isValid(staffId)) return false;
+
+  const result = await UserModel.updateOne(
+    {
+      _id: new Types.ObjectId(staffId),
+      roleKeys: { $in: staffDirectoryRoles },
+      status: { $ne: "archived" },
+    },
+    {
+      $set: {
+        email: normalizeEmail(input.email),
+        firstName: input.firstName,
+        lastName: input.lastName,
+        roleKeys: [input.role],
+        status: input.status,
+        ...(input.passwordHash ? { passwordHash: input.passwordHash } : {}),
+      },
+    },
+  ).exec();
+
+  return result.matchedCount > 0;
 }
 
 export async function listArchivedUsersForAdmin() {

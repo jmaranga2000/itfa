@@ -30,9 +30,19 @@ export type AdminNotificationInput = {
   notificationType: Extract<NotificationType, "announcement" | "action_required">;
   relatedModule: CommunicationModule;
   relatedRecordId: string | null;
-  actionUrl: string;
+  destinationKey: NotificationDestination;
   expiresAt: Date | null;
 };
+
+export const NOTIFICATION_DESTINATIONS = [
+  "portal_home",
+  "notifications",
+  "messages",
+  "documents",
+  "engagements",
+] as const;
+
+export type NotificationDestination = (typeof NOTIFICATION_DESTINATIONS)[number];
 
 export type AdminNotificationRecord = {
   id: string;
@@ -42,7 +52,7 @@ export type AdminNotificationRecord = {
   notificationType: AdminNotificationInput["notificationType"];
   relatedModule: CommunicationModule;
   relatedRecordId: string | null;
-  actionUrl: string;
+  destinationKey: NotificationDestination;
   publishedAt: string;
   expiresAt: string | null;
   createdAt: string | null;
@@ -60,6 +70,7 @@ type RawAnnouncement = {
   notificationType?: NotificationType;
   relatedModule?: CommunicationModule;
   relatedRecordId?: string | null;
+  destinationKey?: NotificationDestination;
   actionUrl?: string | null;
   publishedAt?: Date | null;
   expiresAt?: Date | null;
@@ -85,9 +96,34 @@ function toObjectId(value: string) {
   return Types.ObjectId.isValid(value) ? new Types.ObjectId(value) : null;
 }
 
-function normalizeActionUrl(value: string) {
-  const url = value.trim();
-  return url.startsWith("/") ? url : "/";
+function destinationForExistingRecord(announcement: RawAnnouncement): NotificationDestination {
+  if (
+    announcement.destinationKey &&
+    NOTIFICATION_DESTINATIONS.includes(announcement.destinationKey)
+  ) {
+    return announcement.destinationKey;
+  }
+
+  const actionUrl = announcement.actionUrl ?? "";
+  if (actionUrl.includes("/messages")) return "messages";
+  if (actionUrl.includes("/documents")) return "documents";
+  if (actionUrl.includes("/engagements")) return "engagements";
+  if (actionUrl.includes("/notifications")) return "notifications";
+  return "portal_home";
+}
+
+function destinationUrl(
+  destination: NotificationDestination,
+  roleKeys: string[] | undefined,
+) {
+  const portal = roleKeys?.some(
+    (role) => role === "client" || role === "client_representative",
+  )
+    ? "client"
+    : "staff";
+
+  if (destination === "portal_home") return `/${portal}`;
+  return `/${portal}/${destination}`;
 }
 
 function mapAnnouncement(
@@ -109,7 +145,7 @@ function mapAnnouncement(
       announcement.notificationType === "action_required" ? "action_required" : "announcement",
     relatedModule: announcement.relatedModule ?? "announcements",
     relatedRecordId: announcement.relatedRecordId ?? null,
-    actionUrl: announcement.actionUrl ?? "/",
+    destinationKey: destinationForExistingRecord(announcement),
     publishedAt: requiredDate(announcement.publishedAt),
     expiresAt: serializeDate(announcement.expiresAt),
     createdAt: serializeDate(announcement.createdAt),
@@ -140,9 +176,9 @@ async function synchronizeRecipients(
   actor: Principal,
 ) {
   const recipients = (await UserModel.find(recipientFilter(input.audience))
-    .select("_id")
+    .select("_id roleKeys")
     .lean()
-    .exec()) as Array<{ _id: Types.ObjectId }>;
+    .exec()) as Array<{ _id: Types.ObjectId; roleKeys?: string[] }>;
   const recipientIds = recipients.map((recipient) => recipient._id);
   const recipientIdSet = new Set(recipientIds.map((recipientId) => recipientId.toString()));
   const actorId = toObjectId(actor.id);
@@ -167,33 +203,38 @@ async function synchronizeRecipients(
     (recipientId) => !existingIds.has(recipientId.toString()),
   );
 
-  await CommunicationNotificationModel.updateMany(
-    { announcementId, recipientUserId: { $in: recipientIds } },
-    {
-      $set: {
-        type: input.notificationType,
-        title: input.title,
-        description: input.body,
-        relatedModule: input.relatedModule,
-        relatedRecordId: input.relatedRecordId,
-        actionUrl: normalizeActionUrl(input.actionUrl),
-        createdByUserId: actorId,
-        expiresAt: input.expiresAt,
-        archivedAt: null,
-      },
-    },
-  ).exec();
+  await Promise.all(
+    recipients.map((recipient) =>
+      CommunicationNotificationModel.updateOne(
+        { announcementId, recipientUserId: recipient._id },
+        {
+          $set: {
+            type: input.notificationType,
+            title: input.title,
+            description: input.body,
+            relatedModule: input.relatedModule,
+            relatedRecordId: input.relatedRecordId,
+            actionUrl: destinationUrl(input.destinationKey, recipient.roleKeys),
+            createdByUserId: actorId,
+            expiresAt: input.expiresAt,
+            archivedAt: null,
+          },
+        },
+      ).exec(),
+    ),
+  );
 
   if (newRecipientIds.length > 0) {
+    const newRecipientSet = new Set(newRecipientIds.map((recipientId) => recipientId.toString()));
     await CommunicationNotificationModel.insertMany(
-      newRecipientIds.map((recipientUserId) => ({
-        recipientUserId,
+      recipients.filter((recipient) => newRecipientSet.has(recipient._id.toString())).map((recipient) => ({
+        recipientUserId: recipient._id,
         type: input.notificationType,
         title: input.title,
         description: input.body,
         relatedModule: input.relatedModule,
         relatedRecordId: input.relatedRecordId,
-        actionUrl: normalizeActionUrl(input.actionUrl),
+        actionUrl: destinationUrl(input.destinationKey, recipient.roleKeys),
         createdByUserId: actorId,
         announcementId,
         readAt: null,
@@ -286,7 +327,7 @@ export async function createAdminNotification(input: AdminNotificationInput, act
 
   const announcement = await CommunicationAnnouncementModel.create({
     ...input,
-    actionUrl: normalizeActionUrl(input.actionUrl),
+    actionUrl: "/",
     selectedUserIds: [],
     sendEmail: false,
     publishedByUserId: publisherId,
@@ -330,7 +371,7 @@ export async function updateAdminNotification(
     {
       $set: {
         ...input,
-        actionUrl: normalizeActionUrl(input.actionUrl),
+        actionUrl: "/",
         selectedUserIds: [],
       },
     },

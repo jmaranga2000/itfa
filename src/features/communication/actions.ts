@@ -8,10 +8,13 @@ import {
   COMMUNICATION_MODULES,
 } from "@/features/communication/types";
 import {
+  createConversationMessage,
+  createDirectClientConversation,
   markAllNotificationsRead,
   markNotificationRead,
 } from "@/repositories/communication-repository";
 import {
+  NOTIFICATION_DESTINATIONS,
   archiveAdminNotification,
   createAdminNotification,
   updateAdminNotification,
@@ -24,9 +27,25 @@ const adminNotificationSchema = z.object({
   notificationType: z.enum(["announcement", "action_required"]),
   relatedModule: z.enum(COMMUNICATION_MODULES),
   relatedRecordId: z.string().trim().max(160),
-  actionUrl: z.string().trim().max(500),
+  destinationKey: z.enum(NOTIFICATION_DESTINATIONS),
   expiresAt: z.string().trim(),
 });
+
+const messageSchema = z.object({
+  body: z.string().trim().min(1).max(6000),
+});
+
+const directMessageSchema = messageSchema.extend({
+  clientUserId: z.string().trim().min(1),
+  subject: z.string().trim().min(3).max(180),
+});
+
+function messageReturnPath(value: FormDataEntryValue | null, conversationId: string) {
+  const path = String(value ?? "");
+  const allowedBases = ["/admin/messages", "/staff/messages", "/client/messages"];
+  const base = allowedBases.find((candidate) => path.startsWith(candidate)) ?? "/admin/messages";
+  return `${base.split("?")[0]}?conversation=${encodeURIComponent(conversationId)}`;
+}
 
 function adminNotificationInput(formData: FormData) {
   const parsed = adminNotificationSchema.safeParse({
@@ -36,7 +55,7 @@ function adminNotificationInput(formData: FormData) {
     notificationType: formData.get("notificationType"),
     relatedModule: formData.get("relatedModule"),
     relatedRecordId: formData.get("relatedRecordId") ?? "",
-    actionUrl: formData.get("actionUrl") ?? "/",
+    destinationKey: formData.get("destinationKey"),
     expiresAt: formData.get("expiresAt") ?? "",
   });
   if (!parsed.success) return null;
@@ -46,7 +65,6 @@ function adminNotificationInput(formData: FormData) {
 
   return {
     ...parsed.data,
-    actionUrl: parsed.data.actionUrl || "/",
     relatedRecordId: parsed.data.relatedRecordId || null,
     expiresAt,
   };
@@ -118,4 +136,42 @@ export async function archiveAdminNotificationAction(formData: FormData) {
   await archiveAdminNotification(notificationId, actor);
   revalidateNotificationPaths(notificationId);
   redirect("/admin/notifications?deleted=1");
+}
+
+export async function sendConversationMessageAction(formData: FormData) {
+  const sender = await requireUser();
+  const conversationId = String(formData.get("conversationId") ?? "");
+  const parsed = messageSchema.safeParse({ body: formData.get("body") });
+  const returnPath = messageReturnPath(formData.get("returnPath"), conversationId);
+  if (!parsed.success || !conversationId) redirect(`${returnPath}&error=message`);
+
+  await createConversationMessage({
+    conversationId,
+    sender,
+    body: parsed.data.body,
+  });
+  revalidatePath("/admin/messages");
+  revalidatePath("/staff/messages");
+  revalidatePath("/client/messages");
+  revalidatePath("/client/notifications");
+  redirect(`${returnPath}&sent=1`);
+}
+
+export async function createClientConversationAction(formData: FormData) {
+  const sender = await requirePermission("messages.send");
+  const parsed = directMessageSchema.safeParse({
+    clientUserId: formData.get("clientUserId"),
+    subject: formData.get("subject"),
+    body: formData.get("body"),
+  });
+  if (!parsed.success) redirect("/admin/messages/new?error=invalid");
+
+  const conversationId = await createDirectClientConversation({
+    ...parsed.data,
+    sender,
+  });
+  revalidatePath("/admin/messages");
+  revalidatePath("/client/messages");
+  revalidatePath("/client/notifications");
+  redirect(`/admin/messages?conversation=${conversationId}&sent=1`);
 }
