@@ -6,6 +6,7 @@ import { z } from "zod";
 import { writeAuditLog } from "@/features/audit/audit-service";
 import { requirePermission } from "@/features/auth/server";
 import { hashPassword } from "@/features/auth/password";
+import { revokeUserSessions } from "@/features/auth/session";
 import { isPasswordPolicySatisfied } from "@/features/auth/password-policy";
 import {
   STAFF_ACCOUNT_ROLES,
@@ -13,8 +14,10 @@ import {
 } from "@/features/staff/types";
 import { assignStaffToRequest } from "@/repositories/staff-assignment-repository";
 import {
+  archiveStaffAccount,
   createStaffAccount,
   getStaffForAdmin,
+  setStaffAccountStatus,
   staffEmailExists,
   updateStaffAccount,
 } from "@/repositories/user-repository";
@@ -113,6 +116,74 @@ export async function updateStaffAccountAction(formData: FormData) {
   revalidatePath("/admin/staff");
   revalidatePath(`/admin/staff/${staffId}`);
   redirect(`/admin/staff/${staffId}?saved=1`);
+}
+
+export async function deactivateStaffAccountAction(formData: FormData) {
+  const actor = await requirePermission("staff.manage");
+  const staffId = String(formData.get("staffId") ?? "");
+  const previous = await getStaffForAdmin(staffId);
+  if (!previous) redirect("/admin/staff");
+
+  const updated = await setStaffAccountStatus(staffId, "suspended");
+  if (!updated) redirect("/admin/staff");
+
+  await revokeUserSessions(staffId);
+  await writeAuditLog({
+    actor,
+    action: "staff.account_deactivated",
+    resourceType: "User",
+    resourceId: staffId,
+    previousValues: { status: previous.status },
+    newValues: { status: "suspended" },
+  });
+  revalidatePath("/admin/staff");
+  revalidatePath(`/admin/staff/${staffId}`);
+  redirect(`/admin/staff/${staffId}?deactivated=1`);
+}
+
+export async function reactivateStaffAccountAction(formData: FormData) {
+  const actor = await requirePermission("staff.manage");
+  const staffId = String(formData.get("staffId") ?? "");
+  const previous = await getStaffForAdmin(staffId);
+  if (!previous) redirect("/admin/staff");
+
+  const updated = await setStaffAccountStatus(staffId, "active");
+  if (!updated) redirect("/admin/staff");
+
+  await writeAuditLog({
+    actor,
+    action: "staff.account_reactivated",
+    resourceType: "User",
+    resourceId: staffId,
+    previousValues: { status: previous.status },
+    newValues: { status: "active" },
+  });
+  revalidatePath("/admin/staff");
+  revalidatePath(`/admin/staff/${staffId}`);
+  redirect(`/admin/staff/${staffId}?reactivated=1`);
+}
+
+export async function deleteStaffAccountAction(formData: FormData) {
+  const actor = await requirePermission("staff.manage");
+  const staffId = String(formData.get("staffId") ?? "");
+  const previous = await getStaffForAdmin(staffId);
+  if (!previous) redirect("/admin/staff");
+
+  const archived = await archiveStaffAccount(staffId);
+  if (!archived) redirect("/admin/staff");
+
+  await revokeUserSessions(staffId);
+  await writeAuditLog({
+    actor,
+    action: "staff.account_deleted",
+    resourceType: "User",
+    resourceId: staffId,
+    previousValues: previous,
+    newValues: { status: "archived", archivedAt: new Date().toISOString() },
+  });
+  revalidatePath("/admin/staff");
+  revalidatePath("/admin/archive");
+  redirect("/admin/staff?deleted=1");
 }
 
 export async function assignStaffToRequestAction(formData: FormData) {

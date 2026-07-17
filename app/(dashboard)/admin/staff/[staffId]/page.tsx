@@ -3,6 +3,7 @@ import { ArrowLeft, UserCog } from "lucide-react";
 import { notFound } from "next/navigation";
 import { AdminPageSurface } from "@/components/dashboard/admin/admin-page-surface";
 import { StaffAccountForm } from "@/components/dashboard/admin/staff-account-form";
+import { StaffAccountLifecycle } from "@/components/dashboard/admin/staff-account-lifecycle";
 import { Badge } from "@/components/ui/badge";
 import { buttonClassName } from "@/components/ui/button";
 import { requirePermission } from "@/features/auth/server";
@@ -51,6 +52,11 @@ export default async function StaffAccountDetailPage({
         action={updateStaffAccountAction}
         staff={staff}
         submitLabel="Save changes"
+      />
+      <StaffAccountLifecycle
+        name={name}
+        staffId={staff.id}
+        status={staff.status}
       />
     </AdminPageSurface>
   );

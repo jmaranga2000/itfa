@@ -1,27 +1,20 @@
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { staffNavItems } from "@/config/dashboard-navigation";
-import { requireAnyPermission } from "@/features/auth/server";
+import { requireStaffWorkspace } from "@/features/staff/server";
+import { getStaffNavItems, getStaffWorkspace } from "@/features/staff/workspace";
 
 export const dynamic = "force-dynamic";
 
-export default async function StaffDashboardLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
-  await requireAnyPermission([
-    "engagements.read_assigned",
-    "kyc.review",
-    "engagements.update_workflow",
-  ]);
+export default async function StaffDashboardLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const { role } = await requireStaffWorkspace();
+  const workspace = getStaffWorkspace(role);
 
   return (
     <DashboardShell
       homeHref="/staff"
-      navItems={staffNavItems}
-      roleLabel="Staff portal"
-      subtitle="Assigned engagements, reviews and client responses"
-      title="Staff workspace"
+      navItems={getStaffNavItems(role)}
+      roleLabel={workspace.roleLabel}
+      subtitle={workspace.subtitle}
+      title={workspace.title}
     >
       {children}
     </DashboardShell>

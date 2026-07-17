@@ -92,3 +92,16 @@ export async function destroyCurrentSession() {
 
   cookieStore.delete(AUTH_COOKIE_NAME);
 }
+
+export async function revokeUserSessions(userId: string) {
+  await connectToDatabase();
+
+  if (!Types.ObjectId.isValid(userId)) {
+    return null;
+  }
+
+  return AuthSessionModel.updateMany(
+    { userId: new Types.ObjectId(userId), revokedAt: null },
+    { $set: { revokedAt: new Date() } },
+  ).exec();
+}

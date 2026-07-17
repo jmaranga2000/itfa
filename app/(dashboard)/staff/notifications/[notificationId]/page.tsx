@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { RecipientNotificationDetail } from "@/components/dashboard/communication/recipient-notification-detail";
-import { requireUser } from "@/features/auth/server";
+import { requireStaffRoute } from "@/features/staff/server";
 import { getNotificationForPrincipal } from "@/repositories/communication-repository";
 
 export default async function StaffNotificationDetailPage({
@@ -8,7 +8,10 @@ export default async function StaffNotificationDetailPage({
 }: {
   params: Promise<{ notificationId: string }>;
 }) {
-  const [{ notificationId }, principal] = await Promise.all([params, requireUser()]);
+  const [{ notificationId }, { principal }] = await Promise.all([
+    params,
+    requireStaffRoute("notifications"),
+  ]);
   const notification = await getNotificationForPrincipal(principal, notificationId);
 
   if (!notification) notFound();

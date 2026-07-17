@@ -9,7 +9,7 @@ import {
 export default async function AdminStaffPage({
   searchParams,
 }: {
-  searchParams: Promise<{ assignRequest?: string; error?: string }>;
+  searchParams: Promise<{ assignRequest?: string; deleted?: string; error?: string }>;
 }) {
   await requirePermission("staff.read");
   const query = await searchParams;
@@ -25,6 +25,7 @@ export default async function AdminStaffPage({
     <AdminStaff
       assignment={assignment}
       assignmentRequest={assignmentRequest}
+      deleted={query.deleted === "1"}
       error={query.error === "assign"}
       staff={staff}
     />

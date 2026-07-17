@@ -49,11 +49,13 @@ function dateLabel(value: string | null) {
 export function AdminStaff({
   assignment,
   assignmentRequest,
+  deleted,
   error,
   staff,
 }: {
   assignment?: RequestStaffAssignmentRecord | null;
   assignmentRequest?: AdminRequest | null;
+  deleted?: boolean;
   error?: boolean;
   staff: StaffWorkloadRecord[];
 }) {
@@ -118,6 +120,11 @@ export function AdminStaff({
           : "Staff directory"
       }
     >
+      {deleted ? (
+        <p className="border-b border-emerald-200 bg-emerald-50 px-5 py-3 text-sm font-semibold text-emerald-800">
+          The staff account was deleted and removed from active access.
+        </p>
+      ) : null}
       {error ? (
         <p className="border-b border-red-200 bg-red-50 px-5 py-3 text-sm font-semibold text-red-800">
           The selected staff member could not be assigned. Choose an active account.

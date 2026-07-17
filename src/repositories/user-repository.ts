@@ -273,6 +273,41 @@ export async function updateStaffAccount(
   return result.matchedCount > 0;
 }
 
+export async function setStaffAccountStatus(
+  staffId: string,
+  status: StaffAccountStatus,
+) {
+  await connectToDatabase();
+  if (!Types.ObjectId.isValid(staffId)) return false;
+
+  const result = await UserModel.updateOne(
+    {
+      _id: new Types.ObjectId(staffId),
+      roleKeys: { $in: staffDirectoryRoles },
+      status: { $ne: "archived" },
+    },
+    { $set: { status, archivedAt: null } },
+  ).exec();
+
+  return result.matchedCount > 0;
+}
+
+export async function archiveStaffAccount(staffId: string) {
+  await connectToDatabase();
+  if (!Types.ObjectId.isValid(staffId)) return false;
+
+  const result = await UserModel.updateOne(
+    {
+      _id: new Types.ObjectId(staffId),
+      roleKeys: { $in: staffDirectoryRoles },
+      status: { $ne: "archived" },
+    },
+    { $set: { status: "archived", archivedAt: new Date() } },
+  ).exec();
+
+  return result.matchedCount > 0;
+}
+
 export async function listArchivedUsersForAdmin() {
   return listUsersForAdminDirectory({
     $or: [{ status: "archived" }, { archivedAt: { $ne: null } }],
@@ -383,7 +418,7 @@ export async function getPrincipalByUserId(userId: string): Promise<Principal | 
 
   const user = await UserModel.findOne({
     _id: userId,
-    status: { $ne: "archived" },
+    status: "active",
   })
     .lean()
     .exec();

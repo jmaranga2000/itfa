@@ -1,5 +1,5 @@
 import { CommunicationConsole } from "@/components/dashboard/communication/communication-console";
-import { requireUser } from "@/features/auth/server";
+import { requireStaffRoute } from "@/features/staff/server";
 import { getCommunicationHubData } from "@/repositories/communication-repository";
 
 export default async function StaffMessagesPage({
@@ -7,7 +7,10 @@ export default async function StaffMessagesPage({
 }: {
   searchParams: Promise<{ conversation?: string }>;
 }) {
-  const [principal, query] = await Promise.all([requireUser(), searchParams]);
+  const [{ principal }, query] = await Promise.all([
+    requireStaffRoute("messages"),
+    searchParams,
+  ]);
   const data = await getCommunicationHubData(principal, query.conversation);
 
   return (
