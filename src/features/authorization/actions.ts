@@ -1,67 +1,56 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
-import { APP_ROLES, isAppRole, type AppRole } from "@/features/authorization/roles";
-import { requirePermission } from "@/features/auth/server";
 import { writeAuditLog } from "@/features/audit/audit-service";
-import { assignRolesToUser } from "@/repositories/user-repository";
+import { requirePermission } from "@/features/auth/server";
+import { APP_ROLES } from "@/features/authorization/roles";
+import { isPermission, type Permission } from "@/features/authorization/permissions";
+import { getRoleForAdmin, updateRoleForAdmin } from "@/repositories/role-repository";
 
-export type AssignRolesState = {
-  ok: boolean;
-  message: string;
-  fieldErrors?: Record<string, string[] | undefined>;
-};
-
-const assignRolesSchema = z.object({
-  userId: z.string().min(1),
-  roleKeys: z.array(z.enum(APP_ROLES)).min(1),
+const roleSchema = z.object({
+  roleKey: z.enum(APP_ROLES),
+  label: z.string().trim().min(2).max(80),
+  description: z.string().trim().min(10).max(300),
 });
 
-export async function assignRolesToUserAction(
-  _previousState: AssignRolesState,
-  formData: FormData,
-): Promise<AssignRolesState> {
+export async function updateRoleAccessAction(formData: FormData) {
   const actor = await requirePermission("permissions.manage");
-  const requestedRoles = formData
-    .getAll("roleKeys")
-    .filter((value): value is AppRole => typeof value === "string" && isAppRole(value));
-
-  const parsed = assignRolesSchema.safeParse({
-    userId: formData.get("userId"),
-    roleKeys: requestedRoles,
+  const parsed = roleSchema.safeParse({
+    roleKey: formData.get("roleKey"),
+    label: formData.get("label"),
+    description: formData.get("description"),
   });
-
-  if (!parsed.success) {
-    return {
-      ok: false,
-      message: "Please correct the highlighted role fields.",
-      fieldErrors: parsed.error.flatten().fieldErrors,
-    };
-  }
-
-  const updated = await assignRolesToUser(parsed.data.userId, parsed.data.roleKeys);
-
-  if (!updated) {
-    return {
-      ok: false,
-      message: "The selected user could not be found.",
-    };
-  }
-
+  const rawRoleKey = String(formData.get("roleKey") ?? "");
+  if (!parsed.success) redirect(`/admin/permissions/${rawRoleKey}?error=invalid`);
+  const previous = await getRoleForAdmin(parsed.data.roleKey);
+  if (!previous) redirect("/admin/permissions");
+  const permissions = formData
+    .getAll("permissions")
+    .map(String)
+    .filter((permission): permission is Permission => isPermission(permission));
+  const savedPermissions = await updateRoleForAdmin({
+    ...parsed.data,
+    permissions: [...new Set(permissions)],
+  });
   await writeAuditLog({
     actor,
-    action: "permissions.user_roles_assigned",
-    resourceType: "User",
-    resourceId: updated._id.toString(),
-    newValues: { roleKeys: parsed.data.roleKeys },
-    reason: "Role assignment through admin server action.",
+    action: "role.access_updated",
+    resourceType: "Role",
+    resourceId: parsed.data.roleKey,
+    previousValues: {
+      label: previous.role.label,
+      description: previous.role.description,
+      permissions: previous.role.permissions,
+    },
+    newValues: {
+      label: parsed.data.label,
+      description: parsed.data.description,
+      permissions: savedPermissions,
+    },
   });
-
-  revalidatePath("/admin/staff");
-
-  return {
-    ok: true,
-    message: "User roles updated.",
-  };
+  revalidatePath("/admin/permissions");
+  revalidatePath(`/admin/permissions/${parsed.data.roleKey}`);
+  redirect(`/admin/permissions/${parsed.data.roleKey}?saved=1`);
 }

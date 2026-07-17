@@ -1,77 +1,62 @@
-import { KeyRound, ShieldCheck, UserCog, Users } from "lucide-react";
+import Link from "next/link";
+import { ArrowUpRight, KeyRound, ShieldCheck, UserCog, Users } from "lucide-react";
 import { AdminPageSurface } from "@/components/dashboard/admin/admin-page-surface";
 import { Badge } from "@/components/ui/badge";
+import { buttonClassName } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { PERMISSIONS, type Permission } from "@/features/authorization/permissions";
-import {
-  APP_ROLES,
-  ROLE_LABELS,
-  ROLE_PERMISSION_MATRIX,
-  type AppRole,
-} from "@/features/authorization/roles";
+import type { AdminRoleRecord } from "@/repositories/role-repository";
 
-function permissionCount(role: AppRole) {
-  return ROLE_PERMISSION_MATRIX[role].length;
-}
-
-function roleHasPermission(role: AppRole, permission: Permission) {
-  return ROLE_PERMISSION_MATRIX[role].includes(permission);
-}
-
-export function AdminPermissions() {
-  const highestPermissionCount = Math.max(
-    ...APP_ROLES.map((role) => ROLE_PERMISSION_MATRIX[role].length),
-  );
+export function AdminPermissions({ roles }: { roles: AdminRoleRecord[] }) {
+  const highestPermissionCount = Math.max(...roles.map((role) => role.permissions.length), 0);
+  const assignedUsers = roles.reduce((total, role) => total + role.userCount, 0);
 
   return (
     <AdminPageSurface
-      description="See what each staff role can access. Use this page before changing someone’s responsibilities."
+      description="Review each role, see how many accounts use it, and change access with simple Yes or No controls."
       icon={ShieldCheck}
       summary={[
-        { label: "Roles", value: APP_ROLES.length, helper: "Available staff roles", icon: Users },
-        { label: "Access rights", value: PERMISSIONS.length, helper: "Actions controlled", icon: KeyRound },
-        { label: "Largest role", value: highestPermissionCount, helper: "Most access rights", icon: UserCog },
+        { label: "Roles", value: roles.length, helper: "Available account roles", icon: Users },
+        { label: "Assigned accounts", value: assignedUsers, helper: "Across all roles", icon: KeyRound },
+        { label: "Largest role", value: highestPermissionCount, helper: "Most allowed actions", icon: UserCog },
       ]}
       title="Roles and access"
-      footer={
-        <p className="text-sm text-muted-foreground">
-          “Yes” means the role can open that area. Change role assignments carefully and review staff access afterwards.
-        </p>
-      }
+      footer={<p className="text-sm text-muted-foreground">Role changes apply to every active account assigned to that role and are recorded in the activity log.</p>}
     >
       <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Role</TableHead>
-                    <TableHead>Access level</TableHead>
-                    <TableHead>Clients</TableHead>
-                    <TableHead>Staff</TableHead>
-                    <TableHead>Reports</TableHead>
-                    <TableHead>Archive</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {APP_ROLES.map((role) => (
-                    <TableRow key={role}>
-                      <TableCell className="font-semibold text-foreground">
-                        {ROLE_LABELS[role]}
-                      </TableCell>
-                      <TableCell>{permissionCount(role)} allowed actions</TableCell>
-                      {[
-                        roleHasPermission(role, "clients.read"),
-                        roleHasPermission(role, "staff.read"),
-                        roleHasPermission(role, "reports.read"),
-                        roleHasPermission(role, "archive.read"),
-                      ].map((allowed, index) => (
-                        <TableCell key={`${role}-${index}`}>
-                          <Badge tone={allowed ? "green" : "slate"}>{allowed ? "Yes" : "No"}</Badge>
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+        <Table className="min-w-[900px]">
+          <TableHeader>
+            <TableRow>
+              <TableHead>Role</TableHead>
+              <TableHead>Access level</TableHead>
+              <TableHead>Assigned accounts</TableHead>
+              <TableHead>Last changed</TableHead>
+              <TableHead className="text-right">Action</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {roles.map((role) => (
+              <TableRow key={role.key}>
+                <TableCell>
+                  <p className="font-semibold text-foreground">{role.label}</p>
+                  <p className="mt-1 max-w-md text-xs leading-5 text-muted-foreground">{role.description}</p>
+                </TableCell>
+                <TableCell><Badge tone="teal">{role.permissions.length} allowed</Badge></TableCell>
+                <TableCell>{role.userCount}</TableCell>
+                <TableCell className="text-muted-foreground">
+                  {role.updatedAt
+                    ? new Intl.DateTimeFormat("en-KE", { dateStyle: "medium" }).format(new Date(role.updatedAt))
+                    : "Seed defaults"}
+                </TableCell>
+                <TableCell className="text-right">
+                  <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={`/admin/permissions/${role.key}`}>
+                    Edit access
+                    <ArrowUpRight aria-hidden="true" className="h-4 w-4" />
+                  </Link>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       </div>
     </AdminPageSurface>
   );
