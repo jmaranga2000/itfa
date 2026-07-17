@@ -1,6 +1,5 @@
 import { Types } from "mongoose";
 import {
-  assertPermission,
   hasAnyPermission,
   hasPermission,
   type Principal,

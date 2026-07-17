@@ -23,6 +23,7 @@ import { seedArchiveData } from "@/lib/seed/archive";
 import { seedReportData } from "@/lib/seed/reports";
 import { seedTemplateData } from "@/lib/seed/templates";
 import { seedWorkflowData } from "@/lib/seed/workflows";
+import { seedKycData } from "@/lib/seed/kyc";
 import { seedServiceAndPricingCatalog } from "@/repositories/service-catalog-repository";
 
 type SeedUser = {
@@ -348,6 +349,7 @@ export async function seedFoundation() {
   });
   const communication = await seedCommunicationData();
   const workflows = await seedWorkflowData();
+  const kyc = await seedKycData();
   const templates = await seedTemplateData();
   const reports = await seedReportData();
   const archive = await seedArchiveData();
@@ -359,6 +361,7 @@ export async function seedFoundation() {
     users: seedUsers.length,
     communication,
     workflows,
+    kyc,
     templates,
     reports,
     archive,

@@ -22,7 +22,7 @@ async function main() {
   console.log("Connecting to MongoDB and upserting foundation data...");
   const result = await seedFoundation();
   console.log(
-    `Seeded foundation: ${result.permissions} permissions, ${result.roles} roles, ${result.users} users, ${result.communication.conversations} communication conversation, ${result.workflows.workflows} workflow instances, ${result.templates.templates} templates, ${result.templates.versions} template versions, ${result.templates.usageRecords} template usage records, ${result.reports.savedReports} saved reports, ${result.reports.schedules} report schedule, ${result.reports.exports} report exports, ${result.archive.records} archive records, ${result.archive.policies} retention policies, ${result.archive.legalHolds} legal hold, ${result.archive.restoreRequests} restore request, ${result.archive.deletionRequests} deletion request.`,
+    `Seeded foundation: ${result.permissions} permissions, ${result.roles} roles, ${result.users} users, ${result.communication.conversations} communication conversation, ${result.workflows.workflows} workflow instances, ${result.kyc.submissions} complete KYC submission, ${result.templates.templates} templates, ${result.templates.versions} template versions, ${result.templates.usageRecords} template usage records, ${result.reports.savedReports} saved reports, ${result.reports.schedules} report schedule, ${result.reports.exports} report exports, ${result.archive.records} archive records, ${result.archive.policies} retention policies, ${result.archive.legalHolds} legal hold, ${result.archive.restoreRequests} restore request, ${result.archive.deletionRequests} deletion request.`,
   );
 }
 

@@ -507,6 +507,9 @@ export async function seedWorkflowData() {
             ],
             documents: [
               { documentId: `${workflow.reference}-DOC-001`, name: "Identification", status: "approved", version: 1, visibility: "all", reviewerComments: "Valid.", clientFeedback: "Accepted.", uploadedAt: dateFromNow(-9) },
+              { documentId: `${workflow.reference}-DOC-003`, name: "Tax PIN", status: "approved", version: 1, visibility: "all", reviewerComments: "KRA PIN verified.", clientFeedback: "Accepted.", uploadedAt: dateFromNow(-9) },
+              { documentId: `${workflow.reference}-DOC-004`, name: "Proof of address", status: "approved", version: 1, visibility: "all", reviewerComments: "Address evidence verified.", clientFeedback: "Accepted.", uploadedAt: dateFromNow(-9) },
+              { documentId: `${workflow.reference}-DOC-005`, name: "Signed engagement letter", status: workflow.completedStages.includes("letter") ? "final" : "uploaded", version: 1, visibility: "all", reviewerComments: "Signed letter retained.", clientFeedback: "Accepted.", uploadedAt: dateFromNow(-6) },
               { documentId: `${workflow.reference}-DOC-002`, name: "Draft deliverable", status: workflow.completedTasks.includes("draft_deliverable") ? "final" : "pending_review", version: 1, visibility: "client", reviewerComments: "", clientFeedback: "", uploadedAt: dateFromNow(-2) },
             ],
             financial: {

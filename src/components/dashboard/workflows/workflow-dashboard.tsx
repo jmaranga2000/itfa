@@ -233,6 +233,7 @@ export function WorkflowDashboard({ data }: { data: WorkflowDashboardData }) {
                     <TableHead>Responsible person</TableHead>
                     <TableHead>Next action</TableHead>
                     <TableHead>Due and risk</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -259,6 +260,11 @@ export function WorkflowDashboard({ data }: { data: WorkflowDashboardData }) {
                       <TableCell>
                         <p>{dateLabel(workflow.dueDate)}</p>
                         <Badge tone={riskTone(workflow.riskLevel)}>{workflow.riskLevel}</Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={`/admin/workflows/${workflow.id}`}>
+                          Open
+                        </Link>
                       </TableCell>
                     </TableRow>
                   ))}

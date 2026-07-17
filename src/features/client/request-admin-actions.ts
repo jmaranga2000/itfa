@@ -12,7 +12,8 @@ export async function convertEngagementRequestAction(formData: FormData) {
   if (!workflowId) redirect(`/admin/requests/${requestId}?error=convert`);
   revalidatePath("/admin/requests");
   revalidatePath(`/admin/requests/${requestId}`);
+  revalidatePath("/admin/active-engagements");
   revalidatePath("/admin/workflows");
   revalidatePath("/client/engagements");
-  redirect(`/admin/workflows/${workflowId}`);
+  redirect(`/admin/active-engagements?activated=${workflowId}`);
 }

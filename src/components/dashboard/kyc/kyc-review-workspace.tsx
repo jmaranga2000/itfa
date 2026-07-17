@@ -22,7 +22,6 @@ import {
 } from "@/components/dashboard/kyc/kyc-badges";
 import {
   getKycClientTypeLabel,
-  getKycProgress,
   type KycRequirement,
   type KycSubmission,
 } from "@/repositories/kyc-repository";
@@ -63,7 +62,6 @@ export function KycReviewWorkspace({ submission }: { submission: KycSubmission }
   const selectedRequirement = submission.requirements[0];
   const selectedDocument = selectedRequirement?.documentVersions[0];
   const grouped = groupRequirements(submission.requirements);
-  const progress = getKycProgress(submission);
 
   return (
     <div className="grid gap-5">
@@ -111,6 +109,9 @@ export function KycReviewWorkspace({ submission }: { submission: KycSubmission }
             </div>
           </div>
           <div className="flex flex-wrap gap-2 xl:justify-end">
+            <Link className={buttonClassName({ variant: "secondary" })} href="/admin/kyc">
+              Back to KYC
+            </Link>
             <Link className={buttonClassName({ variant: "secondary" })} href="/admin/kyc/reviewers">
               <UserPlus aria-hidden="true" className="h-4 w-4" />
               Assign Reviewer

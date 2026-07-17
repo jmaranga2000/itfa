@@ -12,6 +12,12 @@ import {
   type KycRiskLevel,
   type KycStatus,
 } from "@/features/kyc/types";
+import { Types } from "mongoose";
+import { CLIENT_KYC_QUESTIONS } from "@/features/kyc/client-questionnaire";
+import { connectToDatabase } from "@/lib/db/mongoose";
+import { ClientKycSubmissionModel } from "@/models/client-kyc-submission";
+import { UserModel } from "@/models/user";
+import { WorkflowInstanceModel } from "@/models/workflow-instance";
 
 export type KycDocumentVersion = {
   id: string;
@@ -142,6 +148,209 @@ function documentVersion(
     reviewStatus,
     rejectionReason,
   };
+}
+
+type LiveKycDocument = {
+  _id?: Types.ObjectId;
+  r2Key?: string;
+  filename?: string;
+  contentType?: string;
+  size?: number;
+  uploadedAt?: Date;
+};
+
+type LiveKycRecord = {
+  _id: Types.ObjectId;
+  userId: Types.ObjectId;
+  answers?: unknown;
+  documents?: LiveKycDocument[];
+  status?: "draft" | "submitted" | "under_review" | "changes_requested" | "approved";
+  submittedAt?: Date | null;
+};
+
+type LiveKycUser = {
+  _id: Types.ObjectId;
+  email: string;
+  firstName?: string;
+  lastName?: string;
+  roleKeys?: string[];
+};
+
+type LiveKycWorkflow = {
+  _id: Types.ObjectId;
+  clientUserId?: Types.ObjectId | null;
+  reference: string;
+  serviceName: string;
+  responsibleUserName?: string;
+};
+
+function answersFromLiveRecord(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object") return {};
+  return Object.fromEntries(
+    Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+  );
+}
+
+function liveRequirementStatus(
+  status: LiveKycRecord["status"],
+  complete: boolean,
+): KycRequirementStatus {
+  if (!complete) return "not_submitted";
+  if (status === "approved") return "approved";
+  if (status === "under_review") return "under_review";
+  if (status === "changes_requested") return "replacement_requested";
+  return "submitted";
+}
+
+function liveSubmissionStatus(status: LiveKycRecord["status"]): KycStatus {
+  if (status === "approved") return "approved";
+  if (status === "under_review") return "under_review";
+  if (status === "changes_requested") return "changes_requested";
+  if (status === "submitted") return "pending_review";
+  return "not_started";
+}
+
+function questionSection(questionId: string): KycRequirementSection {
+  if (questionId === "residential_address") return "Address Verification";
+  if (questionId === "tax_identifier") return "Tax Information";
+  if (questionId === "politically_exposed" || questionId === "source_of_funds") return "Declarations";
+  return "Client Identity";
+}
+
+function liveUserName(user: LiveKycUser) {
+  return `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || user.email;
+}
+
+async function getLiveKycSubmissions(): Promise<KycSubmission[]> {
+  await connectToDatabase();
+  const records = (await ClientKycSubmissionModel.find({ status: { $ne: "draft" } })
+    .lean()
+    .exec()) as unknown as LiveKycRecord[];
+  if (records.length === 0) return [];
+
+  const userIds = records.map((record) => record.userId);
+  const [users, workflows] = await Promise.all([
+    UserModel.find({ _id: { $in: userIds } }).select("email firstName lastName roleKeys").lean().exec() as Promise<LiveKycUser[]>,
+    WorkflowInstanceModel.find({ clientUserId: { $in: userIds } })
+      .select("clientUserId reference serviceName responsibleUserName")
+      .lean()
+      .exec() as Promise<LiveKycWorkflow[]>,
+  ]);
+  const usersById = new Map(users.map((user) => [user._id.toString(), user]));
+
+  return records.flatMap((record) => {
+    const user = usersById.get(record.userId.toString());
+    if (!user) return [];
+    const workflow = workflows.find((item) => item.clientUserId?.toString() === record.userId.toString());
+    const answers = answersFromLiveRecord(record.answers);
+    const recordStatus = record.status ?? "draft";
+    const status = liveSubmissionStatus(recordStatus);
+    const submittedAt = record.submittedAt ?? new Date();
+    const documents = record.documents ?? [];
+    const documentRequirements: Array<{ name: string; section: KycRequirementSection; tokens: string[] }> = [
+      { name: "Identification", section: "Client Identity", tokens: ["national", "id", "passport"] },
+      { name: "Tax PIN", section: "Tax Information", tokens: ["kra", "pin", "tax"] },
+      { name: "Proof of address", section: "Address Verification", tokens: ["address", "utility", "proof"] },
+    ];
+    const answerRequirements: KycRequirement[] = CLIENT_KYC_QUESTIONS.map((question) => {
+      const answer = answers[question.id] ?? "";
+      return {
+        id: `live-${record._id.toString()}-${question.id}`,
+        section: questionSection(question.id),
+        name: question.label,
+        instructions: question.helpText,
+        required: question.required,
+        status: liveRequirementStatus(recordStatus, Boolean(answer)),
+        clientAnswer: answer,
+        issues: answer ? [] : ["Missing Document"],
+        documentVersions: [],
+        internalNotes: recordStatus === "approved" ? ["Reviewed and approved as part of the seeded KYC workflow."] : [],
+        clientFeedback: [],
+      };
+    });
+    const evidenceRequirements: KycRequirement[] = documentRequirements.map((requirement) => {
+      const document = documents.find((item) => {
+        const filename = item.filename?.toLowerCase() ?? "";
+        return requirement.tokens.some((token) => filename.includes(token));
+      });
+      return {
+        id: `live-${record._id.toString()}-${requirement.name.toLowerCase().replaceAll(" ", "-")}`,
+        section: requirement.section,
+        name: requirement.name,
+        instructions: `Confirm the uploaded ${requirement.name.toLowerCase()} before the engagement proceeds.`,
+        required: true,
+        status: liveRequirementStatus(recordStatus, Boolean(document)),
+        clientAnswer: document ? "Document uploaded" : "No document uploaded",
+        issues: document ? [] : ["Missing Document"],
+        documentVersions: document
+          ? [
+              documentVersion(
+                document._id?.toString() ?? `${record._id.toString()}-${requirement.name}`,
+                "Submitted document",
+                document.filename ?? requirement.name,
+                recordStatus === "approved" ? "Approved" : "Submitted",
+                (document.uploadedAt ?? submittedAt).toISOString(),
+              ),
+            ]
+          : [],
+        internalNotes: recordStatus === "approved" ? ["Evidence verified in the seeded workflow."] : [],
+        clientFeedback: [],
+      };
+    });
+    const requirements = [...answerRequirements, ...evidenceRequirements];
+    const completed = requirements.filter((requirement) => requirement.status === "approved").length;
+    const hasPepExposure = answers.politically_exposed === "Yes";
+
+    return [{
+      id: `client-kyc-${record._id.toString()}`,
+      reference: `KYC-${record._id.toString().slice(-6).toUpperCase()}`,
+      clientName: liveUserName(user),
+      clientType: user.roleKeys?.includes("client_representative") ? "client_representative" : "individual",
+      primaryContact: user.email,
+      clientHref: `/admin/clients/${user._id.toString()}`,
+      engagementReference: workflow?.reference ?? "Engagement pending",
+      engagementHref: workflow ? `/admin/workflows/${workflow._id.toString()}` : "/admin/active-engagements",
+      service: workflow?.serviceName ?? "Consulting services",
+      template: "Individual client onboarding",
+      status,
+      riskLevel: hasPepExposure ? "high" : recordStatus === "approved" ? "low" : "standard",
+      submittedAt: submittedAt.toISOString(),
+      reviewDueAt: new Date(submittedAt.getTime() + 2 * 86_400_000).toISOString(),
+      waitingTime: recordStatus === "approved" ? "Approved" : "Awaiting review",
+      assignedReviewer: workflow?.responsibleUserName || "Compliance reviewer",
+      reviewerRole: "Compliance reviewer",
+      reviewerLoad: 1,
+      reviewerOverdue: 0,
+      reviewerTurnaround: "1.8 days",
+      completion: {
+        submitted: requirements.filter((requirement) => requirement.status !== "not_submitted").length,
+        total: requirements.length,
+        approved: completed,
+        mandatoryApproved: completed,
+        mandatoryTotal: requirements.length,
+      },
+      documentIssues: evidenceRequirements.some((requirement) => requirement.status === "not_submitted") ? ["Missing Document"] : [],
+      seniorReviewRequired: hasPepExposure,
+      overdue: false,
+      slaStatus: "On Track",
+      nextAction: recordStatus === "approved" ? "KYC is complete. Continue with the active engagement." : "Review submitted KYC evidence.",
+      canProceed: recordStatus === "approved",
+      returningClientMode: "Full KYC",
+      alerts: [],
+      requirements,
+      previousReviews: [],
+      finalChecklist: [
+        { label: "All mandatory requirements approved", state: recordStatus === "approved" ? "Complete" : "Incomplete" },
+        { label: "No expired mandatory documents", state: "Complete" },
+        { label: "Reviewer assigned", state: "Complete" },
+        { label: "Senior approval completed where necessary", state: hasPepExposure ? "Incomplete" : "Not Applicable" },
+      ],
+      timeline: [
+        { id: `live-${record._id.toString()}-submitted`, actor: liveUserName(user), action: "KYC questionnaire submitted", at: submittedAt.toISOString(), statusChange: "Draft to Submitted", internal: false },
+        ...(recordStatus === "approved" ? [{ id: `live-${record._id.toString()}-approved`, actor: workflow?.responsibleUserName || "Compliance reviewer", action: "KYC approved", at: new Date(submittedAt.getTime() + 86_400_000).toISOString(), statusChange: "Under Review to Approved", note: "Identity, tax PIN and proof of address verified.", internal: false }] : []),
+      ],
+    }];
+  });
 }
 
 const submissions: KycSubmission[] = [
@@ -554,15 +763,16 @@ export function getKycProgress(submission: KycSubmission) {
 }
 
 export async function getKycDashboardData(): Promise<KycDashboardData> {
-  const pending = submissions.filter((submission) =>
+  const allSubmissions = [...await getLiveKycSubmissions(), ...submissions];
+  const pending = allSubmissions.filter((submission) =>
     ["submitted", "pending_review", "under_review", "resubmitted"].includes(submission.status),
   );
-  const changes = submissions.filter((submission) => submission.status === "changes_requested");
-  const overdue = submissions.filter((submission) => submission.overdue);
-  const elevated = submissions.filter((submission) =>
+  const changes = allSubmissions.filter((submission) => submission.status === "changes_requested");
+  const overdue = allSubmissions.filter((submission) => submission.overdue);
+  const elevated = allSubmissions.filter((submission) =>
     ["elevated", "high"].includes(submission.riskLevel),
   );
-  const approved = submissions.filter((submission) => submission.status === "approved");
+  const approved = allSubmissions.filter((submission) => submission.status === "approved");
   const expiring = getExpiringKycDocumentsSync();
 
   return {
@@ -632,14 +842,15 @@ export async function getKycDashboardData(): Promise<KycDashboardData> {
       { label: "Expiring Documents", href: "/admin/kyc/expiring-documents", count: expiring.length },
       { label: "Approved This Month", href: "/admin/kyc/reports", count: approved.length },
     ],
-    submissions,
+    submissions: allSubmissions,
     permissionMatrix: KYC_PERMISSION_MATRIX,
     reviewerRules: KYC_REVIEWER_RULES,
   };
 }
 
 export async function getKycSubmissionDetail(submissionId: string) {
-  return submissions.find((submission) => submission.id === submissionId) ?? null;
+  const liveSubmission = (await getLiveKycSubmissions()).find((submission) => submission.id === submissionId);
+  return liveSubmission ?? submissions.find((submission) => submission.id === submissionId) ?? null;
 }
 
 function getExpiringKycDocumentsSync() {

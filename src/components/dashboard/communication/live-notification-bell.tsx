@@ -36,11 +36,12 @@ export function LiveNotificationBell({ notificationsHref }: { notificationsHref:
   }, []);
 
   useEffect(() => {
-    void refresh();
+    const initialRefresh = window.setTimeout(() => void refresh(), 0);
     const interval = window.setInterval(() => void refresh(), 15_000);
     const onVisibility = () => { if (document.visibilityState === "visible") void refresh(); };
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
+      window.clearTimeout(initialRefresh);
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisibility);
     };
@@ -50,7 +51,10 @@ export function LiveNotificationBell({ notificationsHref }: { notificationsHref:
     if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) return;
     const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
     if (!publicKey) return;
-    setPushState(Notification.permission === "granted" ? "enabled" : Notification.permission === "denied" ? "blocked" : "available");
+    const permissionCheck = window.setTimeout(() => {
+      setPushState(Notification.permission === "granted" ? "enabled" : Notification.permission === "denied" ? "blocked" : "available");
+    }, 0);
+    return () => window.clearTimeout(permissionCheck);
   }, []);
 
   const persistentAlert = useMemo(

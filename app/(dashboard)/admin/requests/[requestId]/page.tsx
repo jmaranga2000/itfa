@@ -142,9 +142,9 @@ export default async function AdminRequestDetailPage({
               ) : request.source === "database" && !request.workflowId ? (
                 <form action={convertEngagementRequestAction}>
                   <input name="requestId" type="hidden" value={request.id} />
-                  <SubmitButton pendingText="Creating engagement...">
+                  <SubmitButton pendingText="Activating client work...">
                     <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
-                    Approve and create engagement
+                    Approve and activate work
                   </SubmitButton>
                 </form>
               ) : (

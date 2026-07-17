@@ -138,7 +138,7 @@ function TransitionPanel({ workflow }: { workflow: WorkflowInstanceRecord }) {
   }
 
   return (
-    <Card className="min-w-0">
+    <Card className="min-w-0" id="advance-stage">
       <CardHeader>
         <CardTitle>Advance stage</CardTitle>
         <CardDescription>
@@ -176,6 +176,10 @@ function TransitionPanel({ workflow }: { workflow: WorkflowInstanceRecord }) {
 }
 
 export function WorkflowDetail({ workflow }: { workflow: WorkflowInstanceRecord }) {
+  const messageHref = workflow.clientUserId
+    ? `/admin/messages/new?clientId=${encodeURIComponent(workflow.clientUserId)}`
+    : "/admin/messages";
+
   return (
     <div className="grid w-full min-w-0 max-w-full gap-5 overflow-x-hidden">
       <section className="min-w-0 rounded-md border border-border bg-card p-5">
@@ -189,6 +193,17 @@ export function WorkflowDetail({ workflow }: { workflow: WorkflowInstanceRecord 
             <h1 className="mt-3 text-2xl font-bold tracking-normal text-foreground">
               {workflow.clientName}
             </h1>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href="/admin/active-engagements">
+                Back to active work
+              </Link>
+              <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href="/admin/tasks">
+                Open task queue
+              </Link>
+              <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={messageHref}>
+                Message client
+              </Link>
+            </div>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
               {workflow.serviceName} · {workflow.templateName} v{workflow.templateVersion}
             </p>
@@ -389,26 +404,26 @@ export function WorkflowDetail({ workflow }: { workflow: WorkflowInstanceRecord 
 
           <Card className="min-w-0">
             <CardHeader>
-              <CardTitle>Primary actions</CardTitle>
-              <CardDescription>Common workflow commands.</CardDescription>
+              <CardTitle>Workflow actions</CardTitle>
+              <CardDescription>Open the relevant work area or advance this engagement when checks are complete.</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-2">
               {[
-                ["Add task", UserPlus],
-                ["Assign staff", UserPlus],
-                ["Request client action", AlertTriangle],
-                ["Upload document", FileText],
-                ["Send message", MessageSquareText],
-                ["Complete engagement", ShieldCheck],
-              ].map(([label, Icon]) => (
-                <button
-                  className={buttonClassName({ variant: label === "Complete engagement" ? "primary" : "secondary", className: "justify-start" })}
+                ["Manage tasks", "/admin/tasks", UserPlus, "secondary"],
+                ["Assign staff", "/admin/staff", UserPlus, "secondary"],
+                ["Request client action", messageHref, AlertTriangle, "secondary"],
+                ["Open documents", "/admin/documents", FileText, "secondary"],
+                ["Send message", messageHref, MessageSquareText, "secondary"],
+                ["Advance workflow", "#advance-stage", ShieldCheck, "primary"],
+              ].map(([label, href, Icon, variant]) => (
+                <Link
+                  className={buttonClassName({ variant: variant as "primary" | "secondary", className: "justify-start" })}
+                  href={String(href)}
                   key={String(label)}
-                  type="button"
                 >
                   <Icon aria-hidden="true" className="h-4 w-4" />
                   {String(label)}
-                </button>
+                </Link>
               ))}
             </CardContent>
           </Card>

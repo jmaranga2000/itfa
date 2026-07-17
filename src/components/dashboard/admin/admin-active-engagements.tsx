@@ -11,67 +11,38 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-
-const engagementRows = [
-  {
-    reference: "ENG-2026-044",
-    client: "Amani Holdings",
-    service: "Corporate tax planning",
-    stage: "KYC review",
-    owner: "Engagement manager",
-    progress: 30,
-    blocker: "Director ID pending",
-    due: "Jul 18, 2026",
-  },
-  {
-    reference: "ENG-2026-043",
-    client: "Nairobi Trade Co.",
-    service: "Transfer pricing review",
-    stage: "Active work",
-    owner: "Consultant",
-    progress: 58,
-    blocker: "None",
-    due: "Jul 22, 2026",
-  },
-  {
-    reference: "ENG-2026-042",
-    client: "Kilele Foods",
-    service: "Payroll compliance",
-    stage: "Client review",
-    owner: "Reviewer",
-    progress: 76,
-    blocker: "Client approval",
-    due: "Jul 20, 2026",
-  },
-  {
-    reference: "ENG-2026-041",
-    client: "Blue Rift Advisory",
-    service: "KRA notice response",
-    stage: "Closeout",
-    owner: "Document controller",
-    progress: 92,
-    blocker: "Archive pack",
-    due: "Jul 16, 2026",
-  },
-];
+import type { WorkflowInstanceRecord } from "@/repositories/workflow-repository";
 
 function stageTone(stage: string) {
-  if (stage === "Closeout") {
+  if (stage === "Engagement Closed" || stage === "Workspace Archived") {
     return "green" as const;
   }
 
-  if (stage === "KYC review" || stage === "Client review") {
+  if (stage === "KYC Review" || stage === "Client Review") {
     return "gold" as const;
   }
 
   return "teal" as const;
 }
 
-export function AdminActiveEngagements() {
-  const blocked = engagementRows.filter((engagement) => engagement.blocker !== "None");
-  const dueSoon = engagementRows.filter((engagement) =>
-    ["Jul 16, 2026", "Jul 18, 2026", "Jul 20, 2026"].includes(engagement.due),
-  );
+function dateLabel(value: string | null) {
+  if (!value) return "Not set";
+  return new Intl.DateTimeFormat("en-KE", { month: "short", day: "numeric", year: "numeric" }).format(new Date(value));
+}
+
+export function AdminActiveEngagements({
+  activatedWorkflowId,
+  workflows,
+}: {
+  activatedWorkflowId?: string;
+  workflows: WorkflowInstanceRecord[];
+}) {
+  const activeWorkflows = workflows.filter((workflow) => workflow.status === "active");
+  const blocked = activeWorkflows.filter((workflow) => workflow.progress.blockedItems > 0);
+  const scheduled = activeWorkflows.filter((workflow) => Boolean(workflow.dueDate));
+  const averageProgress = activeWorkflows.length
+    ? Math.round(activeWorkflows.reduce((total, workflow) => total + workflow.progress.overall, 0) / activeWorkflows.length)
+    : 0;
 
   return (
     <AdminPageSurface
@@ -88,13 +59,18 @@ export function AdminActiveEngagements() {
       description="See what is being delivered, who owns it, what is delayed and what is due next."
       icon={Briefcase}
       summary={[
-        { label: "In progress", value: engagementRows.length, helper: "Current client work", icon: Briefcase },
+        { label: "In progress", value: activeWorkflows.length, helper: "Current client work", icon: Briefcase },
         { label: "Needs attention", value: blocked.length, helper: "Waiting on an action", icon: AlertTriangle },
-        { label: "Due soon", value: dueSoon.length, helper: "Due this week", icon: CalendarClock },
-        { label: "Progress", value: "64%", helper: "Average completion", icon: BarChart3 },
+        { label: "Scheduled", value: scheduled.length, helper: "Work with a due date", icon: CalendarClock },
+        { label: "Progress", value: `${averageProgress}%`, helper: "Average completion", icon: BarChart3 },
       ]}
       title="Active client work"
     >
+      {activatedWorkflowId ? (
+        <div className="border-b border-emerald-200 bg-emerald-50 px-5 py-3 text-sm font-semibold text-emerald-800">
+          The request is now active client work and is ready for the assigned team.
+        </div>
+      ) : null}
       <div className="overflow-x-auto">
         <Table>
           <TableHeader>
@@ -108,40 +84,40 @@ export function AdminActiveEngagements() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {engagementRows.map((engagement) => (
-              <TableRow key={engagement.reference}>
+            {activeWorkflows.map((workflow) => (
+              <TableRow className={workflow.id === activatedWorkflowId ? "bg-brand-soft/40" : ""} key={workflow.id}>
                 <TableCell>
                   <div className="min-w-56">
-                    <p className="font-semibold text-foreground">{engagement.client}</p>
-                    <p className="mt-1 text-sm text-muted-foreground">{engagement.service}</p>
-                    <p className="mt-1 font-mono text-xs text-primary">{engagement.reference}</p>
+                    <p className="font-semibold text-foreground">{workflow.clientName}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">{workflow.serviceName}</p>
+                    <p className="mt-1 font-mono text-xs text-primary">{workflow.reference}</p>
                   </div>
                 </TableCell>
                 <TableCell>
                   <div className="grid min-w-44 gap-2">
-                    <Badge tone={stageTone(engagement.stage)}>{engagement.stage}</Badge>
+                    <Badge tone={stageTone(workflow.currentStageName)}>{workflow.currentStageName}</Badge>
                     <div className="flex items-center gap-2">
                       <div className="h-2 w-24 rounded-sm bg-muted">
                         <div
                           className="h-2 rounded-sm bg-accent"
-                          style={{ width: `${engagement.progress}%` }}
+                          style={{ width: `${workflow.progress.overall}%` }}
                         />
                       </div>
-                      <span className="text-xs text-muted-foreground">{engagement.progress}%</span>
+                      <span className="text-xs text-muted-foreground">{workflow.progress.overall}%</span>
                     </div>
                   </div>
                 </TableCell>
-                <TableCell>{engagement.owner}</TableCell>
+                <TableCell>{workflow.responsibleUserName || "Unassigned"}</TableCell>
                 <TableCell>
-                  <span className={engagement.blocker === "None" ? "text-muted-foreground" : "font-semibold text-foreground"}>
-                    {engagement.blocker}
+                  <span className={workflow.progress.blockedItems === 0 ? "text-muted-foreground" : "font-semibold text-foreground"}>
+                    {workflow.progress.blockedItems ? `${workflow.progress.blockedItems} blocker(s)` : "None"}
                   </span>
                 </TableCell>
-                <TableCell>{engagement.due}</TableCell>
+                <TableCell>{dateLabel(workflow.dueDate)}</TableCell>
                 <TableCell className="text-right">
                   <Link
                     className={buttonClassName({ variant: "secondary", size: "sm" })}
-                    href="/admin/workflows"
+                    href={`/admin/workflows/${workflow.id}`}
                   >
                     Open
                     <ArrowUpRight aria-hidden="true" className="h-4 w-4" />
@@ -149,6 +125,13 @@ export function AdminActiveEngagements() {
                 </TableCell>
               </TableRow>
             ))}
+            {activeWorkflows.length === 0 ? (
+              <TableRow>
+                <TableCell className="py-10 text-center text-sm text-muted-foreground" colSpan={6}>
+                  No active client work yet. Approve a request to start the first engagement.
+                </TableCell>
+              </TableRow>
+            ) : null}
           </TableBody>
         </Table>
       </div>
