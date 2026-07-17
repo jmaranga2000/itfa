@@ -4,6 +4,8 @@ import { PublicPageIntro } from "@/components/public/public-page-intro";
 import { buttonClassName } from "@/components/ui/button";
 import { listPricingPlans } from "@/repositories/service-catalog-repository";
 
+export const dynamic = "force-dynamic";
+
 const feeFactors = [
   { icon: FileSearch, label: "Review depth", copy: "The volume and complexity of evidence that must be assessed." },
   { icon: Clock3, label: "Timeline", copy: "The urgency, external deadlines and review availability required." },

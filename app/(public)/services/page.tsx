@@ -7,6 +7,8 @@ import { addServiceToCartAction } from "@/features/client/commerce-actions";
 import { workflowSteps } from "@/content/public-site";
 import { listServices } from "@/repositories/service-catalog-repository";
 
+export const dynamic = "force-dynamic";
+
 const serviceIcons = [ScrollText, Scale, BarChart3] as const;
 
 export default async function ServicesPage() {
