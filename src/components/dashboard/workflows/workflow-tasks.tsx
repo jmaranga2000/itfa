@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, Clock, Link2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Link2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { buttonClassName } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -92,9 +92,9 @@ export function WorkflowTasks({
   const waiting = tasks.filter((task) => task.status.startsWith("waiting"));
 
   return (
-    <div className="grid gap-5">
-      <section className="flex flex-col justify-between gap-4 rounded-md border border-border bg-card p-5 sm:flex-row sm:items-start">
-        <div>
+    <div className="grid w-full min-w-0 max-w-full gap-5 overflow-x-hidden">
+      <section className="flex min-w-0 flex-col justify-between gap-4 rounded-md border border-border bg-card p-5 sm:flex-row sm:items-start">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold tracking-normal text-foreground">Tasks</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
             See what needs doing, who is responsible and which tasks are delayed or blocked.
@@ -106,7 +106,7 @@ export function WorkflowTasks({
         </Link>
       </section>
 
-      <section className="grid gap-px overflow-hidden rounded-md border border-border bg-border md:grid-cols-4">
+      <section className="grid min-w-0 gap-px overflow-hidden rounded-md border border-border bg-border sm:grid-cols-2 xl:grid-cols-4">
         {[
           ["Open tasks", tasks.filter((task) => !["completed", "cancelled"].includes(task.status)).length],
           ["Overdue", overdue.length],
@@ -122,14 +122,70 @@ export function WorkflowTasks({
         ))}
       </section>
 
-      <section>
-        <Card className="min-w-0 max-w-full overflow-hidden">
+      <section className="min-w-0 max-w-full overflow-hidden">
+        <Card className="w-full min-w-0 max-w-full overflow-hidden">
           <CardHeader>
             <CardTitle>Task queue</CardTitle>
-            <CardDescription>Compact table for assignment, dependency and status review.</CardDescription>
+            <CardDescription>Your assigned work, due dates and next actions.</CardDescription>
           </CardHeader>
-          <CardContent className="block w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain p-0 [scrollbar-gutter:stable]">
-            <Table className="min-w-[920px]">
+          <CardContent className="w-full min-w-0 max-w-full p-0">
+            {tasks.length === 0 ? (
+              <div className="border-t border-border p-5 text-sm text-muted-foreground">
+                No tasks are assigned to you right now.
+              </div>
+            ) : (
+              <div className="divide-y divide-border md:hidden">
+                {tasks.map((task) => (
+                  <article className="min-w-0 p-4" key={`${task.workflowId}-${task.key}`}>
+                    <div className="flex min-w-0 items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <Link className="break-words font-semibold text-accent hover:underline" href={task.href}>
+                          {task.title}
+                        </Link>
+                        <p className="mt-1 break-words text-xs text-muted-foreground">
+                          {task.client} / {task.engagement}
+                        </p>
+                      </div>
+                      <Badge tone={priorityTone(task.priority)}>{task.priority}</Badge>
+                    </div>
+
+                    <dl className="mt-4 grid min-w-0 grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                      <div className="min-w-0">
+                        <dt className="text-xs text-muted-foreground">Status</dt>
+                        <dd className="mt-1"><Badge tone={statusTone(task.status)}>{task.status.replaceAll("_", " ")}</Badge></dd>
+                      </div>
+                      <div className="min-w-0">
+                        <dt className="text-xs text-muted-foreground">Due</dt>
+                        <dd className="mt-1 font-medium text-foreground">{dateLabel(task.dueDate)}</dd>
+                      </div>
+                      <div className="col-span-2 min-w-0">
+                        <dt className="text-xs text-muted-foreground">Responsible person</dt>
+                        <dd className="mt-1 break-words font-medium text-foreground">
+                          {task.assignedUserName || task.assignedRole.replaceAll("_", " ")}
+                        </dd>
+                      </div>
+                    </dl>
+
+                    {task.dependencies.length > 0 || task.clientActionRequired || task.status === "overdue" ? (
+                      <div className="mt-4 flex min-w-0 flex-wrap gap-1.5">
+                        {task.dependencies.length > 0 ? <Badge tone="slate"><Link2 aria-hidden="true" className="mr-1 h-3 w-3" />{task.dependencies.length} dependencies</Badge> : null}
+                        {task.clientActionRequired ? <Badge tone="teal">Client action</Badge> : null}
+                        {task.status === "overdue" ? <Badge tone="red">{daysOverdue(task.dueDate)}d overdue</Badge> : null}
+                      </div>
+                    ) : null}
+
+                    <Link className={buttonClassName({ variant: "secondary", size: "sm", className: "mt-4 w-full justify-center" })} href={task.href}>
+                      Continue work
+                      <ArrowRight aria-hidden="true" className="h-4 w-4" />
+                    </Link>
+                  </article>
+                ))}
+              </div>
+            )}
+
+            {tasks.length > 0 ? (
+              <div className="hidden w-full max-w-full overflow-x-auto overscroll-x-contain md:block [scrollbar-gutter:stable]">
+                <Table className="min-w-[920px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Task</TableHead>
@@ -183,59 +239,11 @@ export function WorkflowTasks({
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
+                </Table>
+              </div>
+            ) : null}
           </CardContent>
         </Card>
-
-        <div className="hidden">
-          <Card>
-            <CardHeader>
-              <CardTitle>Overdue task cards</CardTitle>
-              <CardDescription>Clear warnings for delayed work.</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-3">
-              {overdue.length === 0 ? (
-                <div className="rounded-md border border-dashed border-border bg-muted/30 p-5 text-sm text-muted-foreground">
-                  All current tasks are within their deadlines.
-                </div>
-              ) : (
-                overdue.map((task) => (
-                  <Link className="rounded-md border border-red-200 bg-red-50 p-3 text-red-950" href={task.href} key={task.key}>
-                    <div className="flex items-start gap-2">
-                      <AlertTriangle aria-hidden="true" className="mt-0.5 h-4 w-4" />
-                      <div>
-                        <p className="text-sm font-semibold">{task.title}</p>
-                        <p className="mt-1 text-xs">
-                          {task.engagement} · {daysOverdue(task.dueDate)} days overdue
-                        </p>
-                      </div>
-                    </div>
-                  </Link>
-                ))
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Task actions</CardTitle>
-              <CardDescription>Common commands exposed from task records.</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-2">
-              {[
-                ["Start task", Clock],
-                ["Request client action", AlertTriangle],
-                ["Submit for approval", CheckCircle2],
-                ["Complete", CheckCircle2],
-              ].map(([label, Icon]) => (
-                <button className={buttonClassName({ variant: label === "Complete" ? "primary" : "secondary", className: "justify-start" })} key={String(label)} type="button">
-                  <Icon aria-hidden="true" className="h-4 w-4" />
-                  {String(label)}
-                </button>
-              ))}
-            </CardContent>
-          </Card>
-        </div>
       </section>
     </div>
   );

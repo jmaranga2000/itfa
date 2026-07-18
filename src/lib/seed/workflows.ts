@@ -293,17 +293,24 @@ function snapshotTaskInstances(
   currentStageKey: string,
   staff: SeedUser,
   manager: SeedUser,
+  finance: SeedUser | undefined,
   completedTaskKeys: string[],
   overdueTaskKeys: string[] = [],
 ) {
   return baseStages().flatMap((stage) =>
-    stage.tasks.map((task) => ({
+    stage.tasks.map((task) => {
+      const assignedUser = task.assignedRole === "engagement_manager"
+        ? manager
+        : task.assignedRole === "finance_officer"
+          ? finance
+          : staff;
+      return ({
       key: task.key,
       stageKey: stage.key,
       title: task.title,
       description: task.description,
-      assignedUserId: task.assignedRole === "engagement_manager" ? manager._id : staff._id,
-      assignedUserName: task.assignedRole === "engagement_manager" ? userName(manager, "Manager") : userName(staff, "Consultant"),
+      assignedUserId: assignedUser?._id ?? null,
+      assignedUserName: assignedUser ? userName(assignedUser, task.assignedRole === "finance_officer" ? "Finance officer" : "Consultant") : "Finance queue",
       assignedRole: task.assignedRole,
       priority: task.priority,
       status: completedTaskKeys.includes(task.key)
@@ -332,7 +339,8 @@ function snapshotTaskInstances(
       completedByUserId: completedTaskKeys.includes(task.key) ? staff._id : null,
       completedAt: completedTaskKeys.includes(task.key) ? dateFromNow(-1) : null,
       blockerReason: overdueTaskKeys.includes(task.key) ? "Waiting for technical review input." : null,
-    })),
+      });
+    }),
   );
 }
 
@@ -360,13 +368,14 @@ function milestones(completedKeys: string[]) {
 
 export async function seedWorkflowData() {
   const users = (await UserModel.find({
-    email: {
-      $in: [
-        process.env.SEED_ADMIN_EMAIL ?? "admin@ifta.test",
-        process.env.SEED_STAFF_EMAIL ?? "staff@ifta.test",
-        process.env.SEED_CLIENT_EMAIL ?? "client@ifta.test",
-      ],
-    },
+    $or: [
+      { email: { $in: [
+          process.env.SEED_ADMIN_EMAIL ?? "admin@ifta.test",
+          process.env.SEED_STAFF_EMAIL ?? "staff@ifta.test",
+          process.env.SEED_CLIENT_EMAIL ?? "client@ifta.test",
+        ] } },
+      { roleKeys: "finance_officer", status: "active" },
+    ],
   })
     .select("email firstName lastName roleKeys")
     .lean()
@@ -374,6 +383,7 @@ export async function seedWorkflowData() {
   const admin = users.find((user) => user.roleKeys?.includes("admin")) ?? users[0];
   const staff = users.find((user) => user.roleKeys?.includes("consultant")) ?? users[0];
   const client = users.find((user) => user.roleKeys?.includes("client")) ?? users[0];
+  const finance = users.find((user) => user.roleKeys?.includes("finance_officer"));
 
   if (!admin || !staff || !client) {
     return { templates: 0, workflows: 0 };
@@ -421,6 +431,7 @@ export async function seedWorkflowData() {
   const commonTeam = [
     { userId: admin._id, name: userName(admin, "Admin"), email: admin.email, role: "engagement_manager", department: "Operations", workloadLevel: "balanced" },
     { userId: staff._id, name: userName(staff, "Consultant"), email: staff.email, role: "lead_consultant", department: "Tax", workloadLevel: "high" },
+    ...(finance ? [{ userId: finance._id, name: userName(finance, "Finance officer"), email: finance.email, role: "finance_officer", department: "Finance", workloadLevel: "balanced" as const }] : []),
   ];
 
   const workflowPayloads = [
@@ -494,7 +505,7 @@ export async function seedWorkflowData() {
             lastActivityAt: dateFromNow(-1),
             team: commonTeam,
             stages: snapshotStageInstances(workflow.currentStageKey, workflow.completedStages),
-            tasks: snapshotTaskInstances(workflow.currentStageKey, staff, admin, workflow.completedTasks, workflow.overdueTasks),
+            tasks: snapshotTaskInstances(workflow.currentStageKey, staff, admin, finance, workflow.completedTasks, workflow.overdueTasks),
             milestones: milestones(workflow.milestoneKeys),
             approvals: [
               { key: "request_approval", title: "Engagement request approval", stageKey: "intake", status: "approved", approverName: userName(admin, "Admin"), approvalDate: dateFromNow(-11), reason: "", comments: "Accepted for onboarding.", previousVersion: "request-v1", approvedVersion: "request-v1" },

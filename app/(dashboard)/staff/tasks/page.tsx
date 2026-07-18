@@ -8,7 +8,7 @@ export default async function StaffTasksPage({
 }: {
   searchParams: Promise<{ returnTo?: string }>;
 }) {
-  const [{ principal }, query] = await Promise.all([
+  const [{ principal, role }, query] = await Promise.all([
     requireStaffRoute("tasks"),
     searchParams,
   ]);
@@ -17,17 +17,24 @@ export default async function StaffTasksPage({
     principal.roleKeys.includes("reviewer") ? listStaffKycTasks(principal) : Promise.resolve([]),
   ]);
 
-  const returnTo = query.returnTo?.startsWith("/staff/engagements/")
+  const returnTo = role === "finance_officer"
+    ? "/staff"
+    : query.returnTo?.startsWith("/staff/engagements/")
     ? query.returnTo
     : "/staff/engagements";
 
   return (
     <WorkflowTasks
       backHref={returnTo}
-      backLabel="Back to engagements"
+      backLabel={role === "finance_officer" ? "Back to finance" : "Back to engagements"}
       tasks={[
         ...kycTasks,
-        ...tasks.map((task) => ({ ...task, href: `/staff/engagements/${task.workflowId}` })),
+        ...tasks.map((task) => ({
+          ...task,
+          href: task.assignedRole === "finance_officer"
+            ? `/staff/invoices#invoice-${task.workflowId}`
+            : `/staff/engagements/${task.workflowId}`,
+        })),
       ]}
     />
   );

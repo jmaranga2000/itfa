@@ -110,6 +110,13 @@ export function ClientKyc({
         </div>
       ) : null}
 
+      {submission.status === "approved" ? (
+        <div className="flex items-start gap-3 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-950" role="status">
+          <CheckCircle2 aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0" />
+          <div><p className="text-sm font-semibold">KYC approved</p><p className="mt-1 text-sm leading-6">Your verification is complete. You can now review your engagement letter in Documents.</p></div>
+        </div>
+      ) : null}
+
       {error === "complete-questionnaire" ? (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
           Complete every required questionnaire answer before submitting for review.
@@ -178,7 +185,9 @@ export function ClientKyc({
           </CardHeader>
           <CardContent>
             <p className="text-sm leading-6 text-muted-foreground">
-              {reviewSubmitted
+              {submission.status === "approved"
+                ? "Your KYC has been approved."
+                : reviewSubmitted
                 ? documentsMissing
                   ? "Submitted. Supporting documents are still outstanding."
                   : "Your KYC is with the review team."

@@ -62,7 +62,7 @@ const routeAccess: Record<StaffAccountRole, readonly StaffRouteKey[]> = {
   ],
   finance_officer: [
     "dashboard", "notifications", "calendar", "messages", "engagements", "clients", "invoices",
-    "quotations", "payments", "reports", "templates", "archive",
+    "quotations", "tasks", "payments", "reports", "templates", "archive",
   ],
   document_controller: [
     "dashboard", "notifications", "calendar", "messages", "engagements", "clients", "documents", "reports",
@@ -203,6 +203,7 @@ const roleNavigation: Record<StaffAccountRole, DashboardNavItem> = {
     label: "Finance work", icon: "finance", defaultOpen: true,
     children: [
       link("Quotations", "/staff/quotations", "money", "Q"),
+      link("Approval tasks", "/staff/tasks", "listTodo", "T"),
       link("Invoices", "/staff/invoices", "invoice", "I"),
       link("Payments", "/staff/payments", "money", "P"),
       link("Finance reports", "/staff/reports", "reports", "R"),

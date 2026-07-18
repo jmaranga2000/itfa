@@ -359,6 +359,13 @@ function workflowAccessFilter(principal: Principal, includeArchived = false): Re
     clauses.push({ "clientActions.assignedClientUserId": principalId });
   }
 
+  // Finance work is intentionally assigned to the finance role so any available
+  // finance officer can pick it up, even before a named officer is selected.
+  if (principal.roleKeys.includes("finance_officer")) {
+    clauses.push({ "tasks.assignedRole": "finance_officer" });
+    clauses.push({ "stages.responsibleRole": "finance_officer" });
+  }
+
   if (orgIds.length > 0) {
     clauses.push({ organizationId: { $in: orgIds } });
   }
@@ -767,16 +774,24 @@ export async function getWorkflowDashboardData(principal: Principal): Promise<Wo
 
 export async function listWorkflowTasksForPrincipal(principal: Principal) {
   const workflows = await listWorkflowsForPrincipal(principal);
+  const roleAssignments = new Set<string>(principal.roleKeys);
+  if (principal.roleKeys.includes("consultant")) roleAssignments.add("lead_consultant");
+  const canSeeEveryTask = isAdmin(principal);
 
   return workflows.flatMap((workflow) =>
-    workflow.tasks.map((task) => ({
+    workflow.tasks
+      .filter((task) => canSeeEveryTask || task.assignedUserId === principal.id || roleAssignments.has(task.assignedRole))
+      .map((task) => ({
       ...task,
+      assignedUserName: task.assignedRole === "finance_officer" && principal.roleKeys.includes("finance_officer") && task.assignedUserId !== principal.id
+        ? "Finance queue"
+        : task.assignedUserName,
       workflowId: workflow.id,
       engagement: workflow.reference,
       client: workflow.clientName,
       service: workflow.serviceName,
       href: `/admin/workflows/${workflow.id}`,
-    })),
+      })),
   );
 }
 

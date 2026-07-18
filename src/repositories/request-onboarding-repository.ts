@@ -8,6 +8,7 @@ import { ClientKycSubmissionModel } from "@/models/client-kyc-submission";
 import { EngagementRequestModel } from "@/models/engagement-request";
 import { RequestStaffAssignmentModel } from "@/models/request-staff-assignment";
 import { UserModel } from "@/models/user";
+import { WorkflowInstanceModel } from "@/models/workflow-instance";
 import { createCommunicationNotification } from "@/repositories/communication-repository";
 import { ensureEngagementLetterForRequest, sendEngagementLetter } from "@/repositories/engagement-letter-repository";
 
@@ -247,14 +248,13 @@ export async function approveClientKycSubmission(submissionId: string, actor: Pr
   }
   const requests = await EngagementRequestModel.find({
     clientUserId: submission.userId,
-    status: "approved",
+    status: { $in: ["approved", "converted"] },
     adminApprovedAt: { $ne: null },
     kycUnlockedAt: { $ne: null },
-    workflowId: null,
   }).exec();
-  if (requests.length === 0) return { ok: false as const, reason: "request" as const };
   const hasApprovalPermission = actor.permissions.includes("kyc.approve");
   if (!hasApprovalPermission) {
+    if (requests.length === 0) return { ok: false as const, reason: "request" as const };
     const assigned = await RequestStaffAssignmentModel.exists({
       requestId: { $in: requests.map((request) => request._id.toString()) },
       staffUserId: Types.ObjectId.isValid(actor.id) ? new Types.ObjectId(actor.id) : null,
@@ -265,6 +265,50 @@ export async function approveClientKycSubmission(submissionId: string, actor: Pr
   const now = new Date();
   submission.status = "approved";
   await submission.save();
+  const workflowIds = requests
+    .map((request) => request.workflowId)
+    .filter((workflowId): workflowId is NonNullable<typeof workflowId> => Boolean(workflowId));
+  if (workflowIds.length > 0) {
+    await WorkflowInstanceModel.updateMany(
+      { _id: { $in: workflowIds } },
+      {
+        $set: {
+          "tasks.$[kycTask].status": "completed",
+          "tasks.$[kycTask].completedAt": now,
+          "tasks.$[kycTask].completedByUserId": actor.id,
+          "approvals.$[kycApproval].status": "approved",
+          "approvals.$[kycApproval].approvalDate": now,
+          "approvals.$[kycApproval].approverUserId": actor.id,
+          "approvals.$[kycApproval].approverName": actor.email,
+          "stages.$[kycStage].status": "completed",
+          "stages.$[kycStage].completedAt": now,
+          "milestones.$[kycMilestone].status": "completed",
+          "milestones.$[kycMilestone].date": now,
+          lastActivityAt: now,
+        },
+        $push: {
+          activity: {
+            type: "approval_decision",
+            title: "KYC approved",
+            actorName: actor.email,
+            actorUserId: actor.id,
+            description: "The client KYC submission was approved.",
+            relatedResource: submission._id.toString(),
+            clientVisible: true,
+            createdAt: now,
+          },
+        },
+      },
+      {
+        arrayFilters: [
+          { "kycTask.stageKey": "kyc" },
+          { "kycApproval.stageKey": "kyc" },
+          { "kycStage.key": "kyc" },
+          { "kycMilestone.key": { $in: ["kyc_approved", "kyc-approved"] } },
+        ],
+      },
+    ).exec();
+  }
   const generatedLetterIds: string[] = [];
   for (const request of requests) {
     if (!request.kycApprovedAt) {
