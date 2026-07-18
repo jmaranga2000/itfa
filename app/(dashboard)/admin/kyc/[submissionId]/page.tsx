@@ -8,7 +8,7 @@ export default async function AdminKycSubmissionPage({
   searchParams,
 }: {
   params: Promise<{ submissionId: string }>;
-  searchParams: Promise<{ approved?: string; error?: string }>;
+  searchParams: Promise<{ approved?: string; assigned?: string; decision?: string; error?: string }>;
 }) {
   await requireAnyPermission(["kyc.review", "kyc.approve"]);
   const [{ submissionId }, query] = await Promise.all([params, searchParams]);
@@ -18,5 +18,13 @@ export default async function AdminKycSubmissionPage({
     notFound();
   }
 
-  return <KycReviewWorkspace approved={query.approved === "1"} error={query.error} submission={submission} />;
+  return (
+    <KycReviewWorkspace
+      approved={query.approved === "1"}
+      assigned={query.assigned === "1"}
+      decision={query.decision}
+      error={query.error}
+      submission={submission}
+    />
+  );
 }

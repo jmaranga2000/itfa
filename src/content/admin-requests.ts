@@ -17,6 +17,7 @@ export type AdminRequest = {
   source?: "legacy" | "database";
   workflowId?: string | null;
   isNew?: boolean;
+  adminApproved?: boolean;
 };
 
 export const adminRequests: readonly AdminRequest[] = [

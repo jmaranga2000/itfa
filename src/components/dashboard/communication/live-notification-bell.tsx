@@ -69,12 +69,16 @@ export function LiveNotificationBell({ notificationsHref }: { notificationsHref:
     [notifications],
   );
 
-  async function openNotification(notification: LiveNotification) {
-    await fetch(`/api/notifications/${notification.id}/read`, { method: "POST" });
+  function openNotification(notification: LiveNotification) {
+    const destination = notification.actionUrl.startsWith("/") && !notification.actionUrl.startsWith("//")
+      ? notification.actionUrl
+      : notificationsHref;
     setNotifications((current) => current.filter((item) => item.id !== notification.id));
     setOpen(false);
-    router.push(notification.actionUrl);
-    router.refresh();
+    router.push(destination);
+    void fetch(`/api/notifications/${notification.id}/read`, { method: "POST" })
+      .catch(() => undefined)
+      .finally(() => router.refresh());
   }
 
   async function enablePush() {
@@ -107,21 +111,21 @@ export function LiveNotificationBell({ notificationsHref }: { notificationsHref:
           {notifications.length ? <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-danger px-1 text-[10px] font-bold text-white">{Math.min(notifications.length, 9)}</span> : null}
         </button>
         {open ? (
-          <div className="absolute right-0 top-11 z-50 w-[min(360px,calc(100vw-2rem))] overflow-hidden rounded-md border border-border bg-card shadow-xl">
+          <div className="fixed left-4 right-4 top-[76px] z-[80] max-h-[calc(100dvh-92px)] overflow-hidden rounded-md border border-border bg-card shadow-xl sm:absolute sm:left-auto sm:right-0 sm:top-11 sm:max-h-[min(520px,calc(100dvh-5rem))] sm:w-[min(360px,calc(100vw-2rem))]">
             <div className="flex items-center justify-between border-b border-border px-4 py-3"><p className="text-sm font-bold text-foreground">Unread notifications</p><a className="text-xs font-semibold text-primary" href={notificationsHref}>View all</a></div>
             {pushState === "available" ? <button className="flex w-full items-center gap-3 border-b border-border bg-brand-soft px-4 py-3 text-left text-sm font-semibold text-brand-deep" onClick={() => void enablePush()} type="button"><Smartphone className="h-4 w-4" />Enable phone and computer alerts</button> : null}
-            <div className="max-h-80 overflow-y-auto p-2">
-              {notifications.length === 0 ? <p className="p-4 text-center text-sm text-muted-foreground">You are all caught up.</p> : notifications.map((notification) => <button className="flex w-full gap-3 rounded-md px-3 py-3 text-left hover:bg-muted" key={notification.id} onClick={() => void openNotification(notification)} type="button"><span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-md bg-brand-soft text-brand-deep"><BellRing className="h-4 w-4" /></span><span className="min-w-0"><span className="block text-sm font-semibold text-foreground">{notification.title}</span><span className="mt-1 line-clamp-2 block text-xs leading-5 text-muted-foreground">{notification.description}</span></span></button>)}
+            <div className="max-h-[calc(100dvh-190px)] overflow-y-auto overscroll-contain p-2 sm:max-h-80">
+              {notifications.length === 0 ? <p className="p-4 text-center text-sm text-muted-foreground">You are all caught up.</p> : notifications.map((notification) => <button className="flex w-full min-w-0 gap-3 rounded-md px-3 py-3 text-left hover:bg-muted" key={notification.id} onClick={() => openNotification(notification)} type="button"><span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-md bg-brand-soft text-brand-deep"><BellRing className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block break-words text-sm font-semibold text-foreground">{notification.title}</span><span className="mt-1 line-clamp-2 block break-words text-xs leading-5 text-muted-foreground">{notification.description}</span></span></button>)}
             </div>
           </div>
         ) : null}
       </div>
 
       {persistentAlert ? (
-        <aside aria-live="assertive" className="fixed bottom-4 right-4 z-[70] w-[min(400px,calc(100vw-2rem))] overflow-hidden rounded-md border border-primary/30 bg-card shadow-2xl">
-          <div className="flex gap-4 border-l-4 border-l-primary p-4">
+        <aside aria-live="assertive" className="fixed bottom-4 left-4 right-4 z-[70] max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain rounded-md border border-primary/30 bg-card shadow-2xl sm:left-auto sm:w-[min(400px,calc(100vw-2rem))]">
+          <div className="flex min-w-0 gap-3 border-l-4 border-l-primary p-3 sm:gap-4 sm:p-4">
             <Image alt="IFTA Consulting logo" className="h-12 w-12 rounded-md border border-border bg-white object-contain" height={48} src="/icons/icon-192.png" width={48} />
-            <div className="min-w-0 flex-1"><div className="flex items-center gap-2"><BellRing className="h-4 w-4 text-primary" /><p className="text-xs font-bold uppercase text-primary">New portal alert</p></div><h2 className="mt-2 text-sm font-bold text-foreground">{persistentAlert.title}</h2><p className="mt-1 text-sm leading-5 text-muted-foreground">{persistentAlert.description}</p><button className={buttonClassName({ className: "mt-3", size: "sm" })} onClick={() => void openNotification(persistentAlert)} type="button">{persistentAlert.type === "task_assigned" ? "Open request" : "Open update"}<ExternalLink className="h-4 w-4" /></button></div>
+            <div className="min-w-0 flex-1"><div className="flex items-center gap-2"><BellRing className="h-4 w-4 shrink-0 text-primary" /><p className="text-xs font-bold uppercase text-primary">New portal alert</p></div><h2 className="mt-2 break-words text-sm font-bold text-foreground">{persistentAlert.title}</h2><p className="mt-1 line-clamp-4 break-words text-sm leading-5 text-muted-foreground">{persistentAlert.description}</p><button className={buttonClassName({ className: "mt-3", size: "sm" })} onClick={() => openNotification(persistentAlert)} type="button">{persistentAlert.type === "task_assigned" ? "Open request" : "Open update"}<ExternalLink className="h-4 w-4" /></button></div>
           </div>
         </aside>
       ) : null}

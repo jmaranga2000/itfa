@@ -11,6 +11,21 @@ const clientKycDocumentSchema = new Schema(
   { _id: true },
 );
 
+const kycRequirementReviewSchema = new Schema(
+  {
+    requirementId: { type: String, required: true, trim: true },
+    decision: {
+      type: String,
+      enum: ["approved", "replacement_requested", "escalated", "rejected"],
+      required: true,
+    },
+    note: { type: String, default: "", trim: true },
+    reviewedByUserId: { type: Schema.Types.ObjectId, required: true, ref: "User" },
+    reviewedAt: { type: Date, required: true, default: Date.now },
+  },
+  { _id: false },
+);
+
 const clientKycSubmissionSchema = new Schema(
   {
     userId: { type: Schema.Types.ObjectId, required: true, unique: true, index: true, ref: "User" },
@@ -25,6 +40,10 @@ const clientKycSubmissionSchema = new Schema(
       index: true,
     },
     submittedAt: { type: Date, default: null },
+    assignedReviewerUserId: { type: Schema.Types.ObjectId, default: null, index: true, ref: "User" },
+    assignedByUserId: { type: Schema.Types.ObjectId, default: null, ref: "User" },
+    assignedAt: { type: Date, default: null },
+    requirementReviews: { type: [kycRequirementReviewSchema], default: [] },
   },
   {
     collection: "client_kyc_submissions",
@@ -34,6 +53,7 @@ const clientKycSubmissionSchema = new Schema(
 );
 
 clientKycSubmissionSchema.index({ status: 1, submittedAt: -1 });
+clientKycSubmissionSchema.index({ assignedReviewerUserId: 1, status: 1 });
 
 export type ClientKycSubmissionDocument = InferSchemaType<typeof clientKycSubmissionSchema>;
 

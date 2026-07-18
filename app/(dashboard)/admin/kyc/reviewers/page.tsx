@@ -1,24 +1,24 @@
-import { KycSimpleTablePage } from "@/components/dashboard/kyc/kyc-support-pages";
-import { getKycReviewerWorkload } from "@/repositories/kyc-repository";
+import { KycReviewerAssignment } from "@/components/dashboard/kyc/kyc-reviewer-assignment";
+import { requirePermission } from "@/features/auth/server";
+import { getKycReviewerWorkload, getKycSubmissionDetail } from "@/repositories/kyc-repository";
 
-export default async function AdminKycReviewersPage() {
-  const rows = await getKycReviewerWorkload();
+export default async function AdminKycReviewersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ submissionId?: string; error?: string }>;
+}) {
+  await requirePermission("kyc.assign");
+  const query = await searchParams;
+  const submission = query.submissionId
+    ? await getKycSubmissionDetail(query.submissionId)
+    : null;
+  const reviewers = await getKycReviewerWorkload(query.submissionId);
 
   return (
-    <KycSimpleTablePage
-      columns={[
-        "name",
-        "role",
-        "currentReviews",
-        "overdueReviews",
-        "averageTurnaround",
-        "availability",
-        "conflictWarning",
-      ]}
-      description="Assign reviewers with workload, availability and conflict warnings visible."
-      eyebrow="KYC reviewers"
-      rows={rows}
-      title="Reviewer assignment"
+    <KycReviewerAssignment
+      error={query.error}
+      reviewers={reviewers}
+      submission={submission}
     />
   );
 }

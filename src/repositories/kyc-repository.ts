@@ -13,11 +13,14 @@ import {
   type KycStatus,
 } from "@/features/kyc/types";
 import { Types } from "mongoose";
+import { assertPermission, type Principal } from "@/features/authorization/access-control";
+import { writeAuditLog } from "@/features/audit/audit-service";
 import { CLIENT_KYC_QUESTIONS } from "@/features/kyc/client-questionnaire";
 import { connectToDatabase } from "@/lib/db/mongoose";
 import { ClientKycSubmissionModel } from "@/models/client-kyc-submission";
 import { UserModel } from "@/models/user";
 import { WorkflowInstanceModel } from "@/models/workflow-instance";
+import { createCommunicationNotification } from "@/repositories/communication-repository";
 
 export type KycDocumentVersion = {
   id: string;
@@ -166,6 +169,16 @@ type LiveKycRecord = {
   documents?: LiveKycDocument[];
   status?: "draft" | "submitted" | "under_review" | "changes_requested" | "approved";
   submittedAt?: Date | null;
+  assignedReviewerUserId?: Types.ObjectId | null;
+  assignedByUserId?: Types.ObjectId | null;
+  assignedAt?: Date | null;
+  requirementReviews?: Array<{
+    requirementId: string;
+    decision: "approved" | "replacement_requested" | "escalated" | "rejected";
+    note?: string;
+    reviewedByUserId: Types.ObjectId;
+    reviewedAt: Date;
+  }>;
 };
 
 type LiveKycUser = {
@@ -194,7 +207,9 @@ function answersFromLiveRecord(value: unknown): Record<string, string> {
 function liveRequirementStatus(
   status: LiveKycRecord["status"],
   complete: boolean,
+  decision?: "approved" | "replacement_requested" | "escalated" | "rejected",
 ): KycRequirementStatus {
+  if (decision) return decision;
   if (!complete) return "not_submitted";
   if (status === "approved") return "approved";
   if (status === "under_review") return "under_review";
@@ -229,8 +244,15 @@ async function getLiveKycSubmissions(): Promise<KycSubmission[]> {
   if (records.length === 0) return [];
 
   const userIds = records.map((record) => record.userId);
+  const directoryIds = [
+    ...userIds,
+    ...records.flatMap((record) => [
+      ...(record.assignedReviewerUserId ? [record.assignedReviewerUserId] : []),
+      ...(record.requirementReviews ?? []).map((review) => review.reviewedByUserId),
+    ]),
+  ];
   const [users, workflows] = await Promise.all([
-    UserModel.find({ _id: { $in: userIds } }).select("email firstName lastName roleKeys").lean().exec() as Promise<LiveKycUser[]>,
+    UserModel.find({ _id: { $in: directoryIds } }).select("email firstName lastName roleKeys").lean().exec() as Promise<LiveKycUser[]>,
     WorkflowInstanceModel.find({ clientUserId: { $in: userIds } })
       .select("clientUserId reference serviceName responsibleUserName")
       .lean()
@@ -243,6 +265,12 @@ async function getLiveKycSubmissions(): Promise<KycSubmission[]> {
     if (!user) return [];
     const workflow = workflows.find((item) => item.clientUserId?.toString() === record.userId.toString());
     const answers = answersFromLiveRecord(record.answers);
+    const reviewsByRequirement = new Map(
+      (record.requirementReviews ?? []).map((review) => [review.requirementId, review]),
+    );
+    const assignedReviewer = record.assignedReviewerUserId
+      ? usersById.get(record.assignedReviewerUserId.toString())
+      : null;
     const recordStatus = record.status ?? "draft";
     const status = liveSubmissionStatus(recordStatus);
     const submittedAt = record.submittedAt ?? new Date();
@@ -254,32 +282,42 @@ async function getLiveKycSubmissions(): Promise<KycSubmission[]> {
     ];
     const answerRequirements: KycRequirement[] = CLIENT_KYC_QUESTIONS.map((question) => {
       const answer = answers[question.id] ?? "";
+      const requirementId = `live-${record._id.toString()}-${question.id}`;
+      const review = reviewsByRequirement.get(requirementId);
       return {
-        id: `live-${record._id.toString()}-${question.id}`,
+        id: requirementId,
         section: questionSection(question.id),
         name: question.label,
         instructions: question.helpText,
         required: question.required,
-        status: liveRequirementStatus(recordStatus, Boolean(answer)),
+        status: liveRequirementStatus(recordStatus, Boolean(answer), review?.decision),
         clientAnswer: answer,
         issues: answer ? [] : ["Missing Document"],
         documentVersions: [],
-        internalNotes: recordStatus === "approved" ? ["Reviewed and approved as part of the seeded KYC workflow."] : [],
-        clientFeedback: [],
+        internalNotes: review?.note
+          ? [review.note]
+          : recordStatus === "approved"
+            ? ["Reviewed and approved as part of the KYC workflow."]
+            : [],
+        clientFeedback: review?.note && ["replacement_requested", "rejected"].includes(review.decision)
+          ? [review.note]
+          : [],
       };
     });
     const evidenceRequirements: KycRequirement[] = documentRequirements.map((requirement) => {
+      const requirementId = `live-${record._id.toString()}-${requirement.name.toLowerCase().replaceAll(" ", "-")}`;
+      const review = reviewsByRequirement.get(requirementId);
       const document = documents.find((item) => {
         const filename = item.filename?.toLowerCase() ?? "";
         return requirement.tokens.some((token) => filename.includes(token));
       });
       return {
-        id: `live-${record._id.toString()}-${requirement.name.toLowerCase().replaceAll(" ", "-")}`,
+        id: requirementId,
         section: requirement.section,
         name: requirement.name,
         instructions: `Confirm the uploaded ${requirement.name.toLowerCase()} before the engagement proceeds.`,
         required: true,
-        status: liveRequirementStatus(recordStatus, Boolean(document)),
+        status: liveRequirementStatus(recordStatus, Boolean(document), review?.decision),
         clientAnswer: document ? "Document uploaded" : "No document uploaded",
         issues: document ? [] : ["Missing Document"],
         documentVersions: document
@@ -293,8 +331,14 @@ async function getLiveKycSubmissions(): Promise<KycSubmission[]> {
               ),
             ]
           : [],
-        internalNotes: recordStatus === "approved" ? ["Evidence verified in the seeded workflow."] : [],
-        clientFeedback: [],
+        internalNotes: review?.note
+          ? [review.note]
+          : recordStatus === "approved"
+            ? ["Evidence verified in the KYC workflow."]
+            : [],
+        clientFeedback: review?.note && ["replacement_requested", "rejected"].includes(review.decision)
+          ? [review.note]
+          : [],
       };
     });
     const requirements = [...answerRequirements, ...evidenceRequirements];
@@ -317,8 +361,10 @@ async function getLiveKycSubmissions(): Promise<KycSubmission[]> {
       submittedAt: submittedAt.toISOString(),
       reviewDueAt: new Date(submittedAt.getTime() + 2 * 86_400_000).toISOString(),
       waitingTime: recordStatus === "approved" ? "Approved" : "Awaiting review",
-      assignedReviewer: workflow?.responsibleUserName || "Compliance reviewer",
-      reviewerRole: "Compliance reviewer",
+      assignedReviewer: assignedReviewer
+        ? liveUserName(assignedReviewer)
+        : workflow?.responsibleUserName || "Unassigned",
+      reviewerRole: assignedReviewer?.roleKeys?.includes("reviewer") ? "Reviewer" : "Compliance reviewer",
       reviewerLoad: 1,
       reviewerOverdue: 0,
       reviewerTurnaround: "1.8 days",
@@ -343,11 +389,23 @@ async function getLiveKycSubmissions(): Promise<KycSubmission[]> {
       finalChecklist: [
         { label: "All mandatory requirements approved", state: recordStatus === "approved" ? "Complete" : "Incomplete" },
         { label: "No expired mandatory documents", state: "Complete" },
-        { label: "Reviewer assigned", state: "Complete" },
+        { label: "Reviewer assigned", state: assignedReviewer || workflow?.responsibleUserName ? "Complete" : "Incomplete" },
         { label: "Senior approval completed where necessary", state: hasPepExposure ? "Incomplete" : "Not Applicable" },
       ],
       timeline: [
         { id: `live-${record._id.toString()}-submitted`, actor: liveUserName(user), action: "KYC questionnaire submitted", at: submittedAt.toISOString(), statusChange: "Draft to Submitted", internal: false },
+        ...(record.assignedAt && assignedReviewer ? [{ id: `live-${record._id.toString()}-assigned`, actor: liveUserName(assignedReviewer), action: "KYC reviewer assigned", at: record.assignedAt.toISOString(), statusChange: "Reviewer assigned", internal: true }] : []),
+        ...(record.requirementReviews ?? []).map((review) => ({
+          id: `live-${record._id.toString()}-${review.requirementId}-${review.reviewedAt.toISOString()}`,
+          actor: usersById.get(review.reviewedByUserId.toString())
+            ? liveUserName(usersById.get(review.reviewedByUserId.toString()) as LiveKycUser)
+            : "KYC reviewer",
+          action: `Requirement ${review.decision.replaceAll("_", " ")}`,
+          at: review.reviewedAt.toISOString(),
+          requirement: requirements.find((requirement) => requirement.id === review.requirementId)?.name,
+          note: review.note,
+          internal: true,
+        })),
         ...(recordStatus === "approved" ? [{ id: `live-${record._id.toString()}-approved`, actor: workflow?.responsibleUserName || "Compliance reviewer", action: "KYC approved", at: new Date(submittedAt.getTime() + 86_400_000).toISOString(), statusChange: "Under Review to Approved", note: "Identity, tax PIN and proof of address verified.", internal: false }] : []),
       ],
     }];
@@ -764,7 +822,8 @@ export function getKycProgress(submission: KycSubmission) {
 }
 
 export async function getKycDashboardData(): Promise<KycDashboardData> {
-  const allSubmissions = [...await getLiveKycSubmissions(), ...submissions];
+  const liveSubmissions = await getLiveKycSubmissions();
+  const allSubmissions = liveSubmissions.length > 0 ? liveSubmissions : submissions;
   const pending = allSubmissions.filter((submission) =>
     ["submitted", "pending_review", "under_review", "resubmitted"].includes(submission.status),
   );
@@ -954,36 +1013,185 @@ export async function getKycRiskRules() {
   ];
 }
 
-export async function getKycReviewerWorkload() {
-  return [
-    {
-      name: "Grace Wambui",
-      role: "Compliance reviewer",
-      currentReviews: 7,
-      overdueReviews: 2,
-      averageTurnaround: "1.8 days",
-      availability: "Available",
-      conflictWarning: "No conflict",
-    },
-    {
-      name: "Samuel Kariuki",
-      role: "Reviewer",
-      currentReviews: 4,
-      overdueReviews: 1,
-      averageTurnaround: "2.2 days",
-      availability: "Limited",
-      conflictWarning: "Assigned to related engagement",
-    },
-    {
-      name: "Miriam Njoroge",
-      role: "Senior reviewer",
-      currentReviews: 3,
-      overdueReviews: 0,
-      averageTurnaround: "1.4 days",
-      availability: "Available",
-      conflictWarning: "No conflict",
-    },
-  ];
+export type KycReviewerWorkloadRecord = {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  currentReviews: number;
+  overdueReviews: number;
+  averageTurnaround: string;
+  availability: string;
+  conflictWarning: string;
+  assigned: boolean;
+};
+
+function liveKycObjectId(submissionId: string) {
+  const value = submissionId.startsWith("client-kyc-")
+    ? submissionId.slice("client-kyc-".length)
+    : submissionId;
+  return Types.ObjectId.isValid(value) ? new Types.ObjectId(value) : null;
+}
+
+export async function getKycReviewerWorkload(submissionId?: string): Promise<KycReviewerWorkloadRecord[]> {
+  await connectToDatabase();
+  const reviewers = (await UserModel.find({
+    roleKeys: "reviewer",
+    status: "active",
+    archivedAt: null,
+  })
+    .select("email firstName lastName roleKeys")
+    .lean()
+    .exec()) as LiveKycUser[];
+  const reviewerIds = reviewers.map((reviewer) => reviewer._id);
+  const overdueBefore = new Date(Date.now() - 2 * 86_400_000);
+  const [workloads, overdueWorkloads, selectedSubmission] = await Promise.all([
+    ClientKycSubmissionModel.aggregate<{ _id: Types.ObjectId; count: number }>([
+      { $match: { assignedReviewerUserId: { $in: reviewerIds }, status: { $in: ["submitted", "under_review", "changes_requested"] } } },
+      { $group: { _id: "$assignedReviewerUserId", count: { $sum: 1 } } },
+    ]).exec(),
+    ClientKycSubmissionModel.aggregate<{ _id: Types.ObjectId; count: number }>([
+      { $match: { assignedReviewerUserId: { $in: reviewerIds }, status: { $in: ["submitted", "under_review"] }, submittedAt: { $lt: overdueBefore } } },
+      { $group: { _id: "$assignedReviewerUserId", count: { $sum: 1 } } },
+    ]).exec(),
+    submissionId && liveKycObjectId(submissionId)
+      ? ClientKycSubmissionModel.findById(liveKycObjectId(submissionId)).select("assignedReviewerUserId").lean().exec()
+      : null,
+  ]);
+  const workloadByReviewer = new Map(workloads.map((item) => [item._id.toString(), item.count]));
+  const overdueByReviewer = new Map(overdueWorkloads.map((item) => [item._id.toString(), item.count]));
+  const assignedReviewerId = selectedSubmission?.assignedReviewerUserId?.toString() ?? null;
+
+  return reviewers
+    .map((reviewer) => {
+      const currentReviews = workloadByReviewer.get(reviewer._id.toString()) ?? 0;
+      return {
+        id: reviewer._id.toString(),
+        name: liveUserName(reviewer),
+        email: reviewer.email,
+        role: "Reviewer",
+        currentReviews,
+        overdueReviews: overdueByReviewer.get(reviewer._id.toString()) ?? 0,
+        averageTurnaround: "Not measured",
+        availability: currentReviews < 5 ? "Available" : "Limited",
+        conflictWarning: "No recorded conflict",
+        assigned: assignedReviewerId === reviewer._id.toString(),
+      };
+    })
+    .sort((left, right) => {
+      if (left.assigned !== right.assigned) return left.assigned ? -1 : 1;
+      if (left.currentReviews !== right.currentReviews) return left.currentReviews - right.currentReviews;
+      return left.name.localeCompare(right.name);
+    });
+}
+
+export async function assignKycReviewer(
+  submissionId: string,
+  reviewerUserId: string,
+  actor: Principal,
+) {
+  assertPermission(actor, "kyc.assign");
+  const submissionObjectId = liveKycObjectId(submissionId);
+  if (!submissionObjectId || !Types.ObjectId.isValid(reviewerUserId) || !Types.ObjectId.isValid(actor.id)) {
+    return false;
+  }
+  await connectToDatabase();
+  const [submission, reviewer] = await Promise.all([
+    ClientKycSubmissionModel.findById(submissionObjectId).exec(),
+    UserModel.findOne({ _id: reviewerUserId, roleKeys: "reviewer", status: "active", archivedAt: null })
+      .select("email firstName lastName")
+      .lean()
+      .exec(),
+  ]);
+  if (!submission || !reviewer) return false;
+
+  const previousReviewerUserId = submission.assignedReviewerUserId?.toString() ?? null;
+  submission.assignedReviewerUserId = new Types.ObjectId(reviewerUserId);
+  submission.assignedByUserId = new Types.ObjectId(actor.id);
+  submission.assignedAt = new Date();
+  if (submission.status === "submitted") submission.status = "under_review";
+  await submission.save();
+
+  await Promise.all([
+    createCommunicationNotification({
+      recipientUserId: reviewerUserId,
+      type: "task_assigned",
+      title: "KYC review assigned",
+      description: "A client KYC questionnaire is ready for your review.",
+      relatedModule: "kyc",
+      relatedRecordId: submission._id.toString(),
+      actionUrl: `/staff/kyc/client-kyc-${submission._id.toString()}`,
+      createdByUserId: actor.id,
+    }),
+    writeAuditLog({
+      actor,
+      action: previousReviewerUserId ? "kyc.reviewer_reassigned" : "kyc.reviewer_assigned",
+      resourceType: "ClientKycSubmission",
+      resourceId: submission._id.toString(),
+      previousValues: { reviewerUserId: previousReviewerUserId },
+      newValues: { reviewerUserId, reviewerName: liveUserName(reviewer as LiveKycUser) },
+    }),
+  ]);
+  return true;
+}
+
+export async function reviewKycRequirement(input: {
+  submissionId: string;
+  requirementId: string;
+  decision: "approved" | "replacement_requested" | "escalated" | "rejected";
+  note: string;
+  actor: Principal;
+}) {
+  const submissionObjectId = liveKycObjectId(input.submissionId);
+  if (!submissionObjectId || !Types.ObjectId.isValid(input.actor.id)) return false;
+  const expectedPrefix = `live-${submissionObjectId.toString()}-`;
+  if (!input.requirementId.startsWith(expectedPrefix)) return false;
+  await connectToDatabase();
+  const submission = await ClientKycSubmissionModel.findById(submissionObjectId).exec();
+  if (!submission) return false;
+
+  const reviewedAt = new Date();
+  const previousIndex = submission.requirementReviews.findIndex(
+    (review) => review.requirementId === input.requirementId,
+  );
+  const previous = previousIndex >= 0
+    ? submission.requirementReviews[previousIndex]
+    : undefined;
+  if (previousIndex >= 0) submission.requirementReviews.splice(previousIndex, 1);
+  submission.requirementReviews.push({
+    requirementId: input.requirementId,
+    decision: input.decision,
+    note: input.note,
+    reviewedByUserId: new Types.ObjectId(input.actor.id),
+    reviewedAt,
+  });
+  submission.status = ["replacement_requested", "rejected"].includes(input.decision)
+    ? "changes_requested"
+    : "under_review";
+  await submission.save();
+
+  const tasks: Array<Promise<unknown>> = [writeAuditLog({
+    actor: input.actor,
+    action: `kyc.requirement_${input.decision}`,
+    resourceType: "ClientKycSubmission",
+    resourceId: submission._id.toString(),
+    previousValues: previous ? { decision: previous.decision, note: previous.note } : null,
+    newValues: { requirementId: input.requirementId, decision: input.decision, note: input.note },
+  })];
+  if (["replacement_requested", "rejected"].includes(input.decision)) {
+    tasks.push(createCommunicationNotification({
+      recipientUserId: submission.userId.toString(),
+      type: "action_required",
+      title: input.decision === "replacement_requested" ? "KYC information needs an update" : "KYC requirement needs attention",
+      description: input.note || "Open your KYC page to review the requested change.",
+      relatedModule: "kyc",
+      relatedRecordId: submission._id.toString(),
+      actionUrl: "/client/kyc",
+      createdByUserId: input.actor.id,
+    }));
+  }
+  await Promise.all(tasks);
+  return true;
 }
 
 export async function getKycReports() {

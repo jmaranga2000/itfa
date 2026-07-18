@@ -398,6 +398,12 @@ summary {
   }
 }
 
+.dashboard-topbar {
+  position: sticky !important;
+  top: 0;
+  isolation: isolate;
+}
+
 /* Keep admin pages calm and readable, including the more detailed review workspaces. */
 .admin-content-simple {
   min-width: 0;

@@ -418,8 +418,8 @@ export function DashboardShell({
         </div>
       </aside>
 
-      <div className="dashboard-shell-main min-w-0 max-w-full overflow-x-hidden">
-        <header className="sticky top-0 z-30 border-b border-border bg-card/95 backdrop-blur-md">
+      <div className="dashboard-shell-main min-w-0 max-w-full">
+        <header className="dashboard-topbar sticky top-0 z-50 border-b border-border bg-card/95 backdrop-blur-md">
           <div className="flex min-h-[68px] min-w-0 max-w-full items-center justify-between gap-3 px-4 lg:px-6">
             <button
               aria-label="Open navigation"

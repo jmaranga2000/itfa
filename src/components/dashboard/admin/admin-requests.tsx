@@ -9,6 +9,8 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { buttonClassName } from "@/components/ui/button";
+import { SubmitButton } from "@/components/ui/submit-button";
+import { approveEngagementRequestAction } from "@/features/client/request-admin-actions";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -175,14 +177,30 @@ export function AdminRequests({ requests = adminRequests }: { requests?: readonl
                     </TableCell>
                     <TableCell>{request.owner}</TableCell>
                     <TableCell>{request.submitted}</TableCell>
-                    <TableCell className="text-right">
-                      <Link
-                        className={buttonClassName({ variant: "secondary", size: "sm" })}
-                        href={`/admin/requests/${request.id}`}
-                      >
-                        Open
-                        <ArrowUpRight aria-hidden="true" className="h-4 w-4" />
-                      </Link>
+                    <TableCell>
+                      <div className="flex min-w-max justify-end gap-2">
+                        {request.source === "database" && !request.adminApproved ? (
+                          <form action={approveEngagementRequestAction}>
+                            <input name="requestId" type="hidden" value={request.id} />
+                            <SubmitButton pendingText="Accepting..." size="sm">
+                              <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
+                              Accept
+                            </SubmitButton>
+                          </form>
+                        ) : request.source === "database" && !request.workflowId ? (
+                          <Link className={buttonClassName({ size: "sm" })} href={`/admin/staff?assignRequest=${encodeURIComponent(request.id)}`}>
+                            <Users aria-hidden="true" className="h-4 w-4" />
+                            Assign
+                          </Link>
+                        ) : null}
+                        <Link
+                          className={buttonClassName({ variant: "secondary", size: "sm" })}
+                          href={`/admin/requests/${request.id}`}
+                        >
+                          Open
+                          <ArrowUpRight aria-hidden="true" className="h-4 w-4" />
+                        </Link>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

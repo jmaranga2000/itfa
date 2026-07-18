@@ -1,16 +1,20 @@
+import Link from "next/link";
 import { Check, Plus, ShoppingCart } from "lucide-react";
 import { AdminPageSurface } from "@/components/dashboard/admin/admin-page-surface";
 import { Badge } from "@/components/ui/badge";
+import { buttonClassName } from "@/components/ui/button";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { addServiceToCartAction } from "@/features/client/commerce-actions";
 import type { PricingPlanRecord, ServiceCatalogRecord } from "@/repositories/service-catalog-repository";
 
 export function ClientServices({
   added,
+  cartCount,
   plans,
   services,
 }: {
   added: boolean;
+  cartCount: number;
   plans: PricingPlanRecord[];
   services: ServiceCatalogRecord[];
 }) {
@@ -18,6 +22,15 @@ export function ClientServices({
 
   return (
     <AdminPageSurface
+      actions={
+        <Link className={buttonClassName()} href="/client/cart">
+          <ShoppingCart aria-hidden="true" className="h-4 w-4" />
+          Cart
+          <span className="grid h-5 min-w-5 place-items-center rounded-full bg-white/20 px-1 text-xs font-bold">
+            {cartCount}
+          </span>
+        </Link>
+      }
       description="Browse current consulting services and add the work you need to your engagement cart."
       icon={ShoppingCart}
       title="Services"

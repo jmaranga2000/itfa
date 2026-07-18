@@ -170,6 +170,7 @@ export function engagementRequestToAdminRecord(request: EngagementRequestRecord)
     source: "database",
     workflowId: request.workflowId,
     isNew: request.isNew,
+    adminApproved: Boolean(request.adminApprovedAt),
   };
 }
 

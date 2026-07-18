@@ -9,7 +9,7 @@ export default async function StaffKycSubmissionPage({
   searchParams,
 }: {
   params: Promise<{ submissionId: string }>;
-  searchParams: Promise<{ approved?: string; error?: string }>;
+  searchParams: Promise<{ approved?: string; decision?: string; error?: string }>;
 }) {
   const [{ principal }, { submissionId }, query] = await Promise.all([
     requireStaffRoute("kyc"),
@@ -24,6 +24,7 @@ export default async function StaffKycSubmissionPage({
   return (
     <KycReviewWorkspace
       approved={query.approved === "1"}
+      decision={query.decision}
       error={query.error}
       portal="staff"
       submission={submission}

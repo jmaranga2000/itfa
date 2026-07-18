@@ -12,7 +12,10 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
-import { approveClientKycSubmissionAction } from "@/features/kyc/review-actions";
+import {
+  approveClientKycSubmissionAction,
+  reviewKycRequirementAction,
+} from "@/features/kyc/review-actions";
 import { Badge } from "@/components/ui/badge";
 import { buttonClassName } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -65,6 +68,8 @@ type KycReviewWorkspaceProps = {
   submission: KycSubmission;
   portal?: "admin" | "staff";
   approved?: boolean;
+  assigned?: boolean;
+  decision?: string;
   error?: string;
 };
 
@@ -81,6 +86,8 @@ export function KycReviewWorkspace({
   submission,
   portal = "admin",
   approved = false,
+  assigned = false,
+  decision,
   error,
 }: KycReviewWorkspaceProps) {
   const selectedRequirement = submission.requirements[0];
@@ -98,6 +105,20 @@ export function KycReviewWorkspace({
             <p className="text-sm font-semibold">KYC approved and engagement letter generated</p>
             <p className="mt-1 text-xs">The client has been notified and can review the letter in Documents.</p>
           </div>
+        </div>
+      ) : null}
+      {assigned ? (
+        <div className="flex items-start gap-3 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-900">
+          <UserPlus aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0" />
+          <div>
+            <p className="text-sm font-semibold">Reviewer assigned</p>
+            <p className="mt-1 text-xs">The reviewer was notified and can open this KYC record from the staff portal.</p>
+          </div>
+        </div>
+      ) : null}
+      {decision ? (
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900">
+          Requirement decision saved: {decision.replaceAll("_", " ")}.
         </div>
       ) : null}
       {error ? (
@@ -153,7 +174,7 @@ export function KycReviewWorkspace({
               Back to KYC
             </Link>
             {portal === "admin" ? (
-              <Link className={buttonClassName({ variant: "secondary" })} href="/admin/kyc/reviewers">
+              <Link className={buttonClassName({ variant: "secondary" })} href={`/admin/kyc/reviewers?submissionId=${encodeURIComponent(submission.id)}`}>
                 <UserPlus aria-hidden="true" className="h-4 w-4" />
                 Assign Reviewer
               </Link>
@@ -240,6 +261,28 @@ export function KycReviewWorkspace({
         </aside>
 
         <main className="grid gap-5">
+          <Card>
+            <CardHeader>
+              <CardTitle>Questionnaire answers</CardTitle>
+              <CardDescription>All information submitted by the client, in questionnaire order.</CardDescription>
+            </CardHeader>
+            <CardContent className="divide-y divide-border p-0">
+              {submission.requirements.map((requirement, index) => (
+                <div className="grid gap-3 px-5 py-4 md:grid-cols-[minmax(0,240px)_minmax(0,1fr)_auto] md:items-start" key={requirement.id}>
+                  <div>
+                    <p className="text-xs font-bold text-primary">{String(index + 1).padStart(2, "0")}</p>
+                    <p className="mt-1 text-sm font-semibold text-foreground">{requirement.name}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{requirement.section}</p>
+                  </div>
+                  <p className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground">
+                    {requirement.clientAnswer || "No answer provided."}
+                  </p>
+                  <KycRequirementStatusBadge status={requirement.status} />
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
           {selectedRequirement ? (
             <Card id={selectedRequirement.id}>
               <CardHeader>
@@ -389,27 +432,34 @@ export function KycReviewWorkspace({
               <CardDescription>Requirement-level decision panel.</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-3">
-              <button className={buttonClassName({ className: "w-full" })} type="button">
-                Approve Requirement
-              </button>
-              <button
-                className={buttonClassName({ variant: "secondary", className: "w-full" })}
-                type="button"
-              >
-                Request Replacement
-              </button>
-              <button
-                className={buttonClassName({ variant: "secondary", className: "w-full" })}
-                type="button"
-              >
-                Escalate Review
-              </button>
-              <button
-                className={buttonClassName({ variant: "destructive", className: "w-full" })}
-                type="button"
-              >
-                Reject Requirement
-              </button>
+              <form action={reviewKycRequirementAction} className="grid gap-3">
+                <input name="submissionId" type="hidden" value={submission.id} />
+                <input name="returnPath" type="hidden" value={returnPath} />
+                <label className="grid gap-2 text-sm font-semibold text-foreground">
+                  Requirement
+                  <select className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm font-normal" defaultValue={selectedRequirement?.id} name="requirementId" required>
+                    {submission.requirements.map((requirement) => (
+                      <option key={requirement.id} value={requirement.id}>{requirement.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="grid gap-2 text-sm font-semibold text-foreground">
+                  Review note
+                  <textarea className="min-h-24 w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm font-normal" maxLength={1000} name="note" placeholder="Record the reason or the update the client needs to make." />
+                </label>
+                <button className={buttonClassName({ className: "w-full" })} name="decision" type="submit" value="approved">
+                  Approve requirement
+                </button>
+                <button className={buttonClassName({ variant: "secondary", className: "w-full" })} name="decision" type="submit" value="replacement_requested">
+                  Request replacement
+                </button>
+                <button className={buttonClassName({ variant: "secondary", className: "w-full" })} name="decision" type="submit" value="escalated">
+                  Escalate review
+                </button>
+                <button className={buttonClassName({ variant: "destructive", className: "w-full" })} name="decision" type="submit" value="rejected">
+                  Reject requirement
+                </button>
+              </form>
               <div className="rounded-md border border-border bg-muted/30 px-3 py-3">
                 <p className="text-xs font-bold uppercase text-muted-foreground">Internal notes</p>
                 <p className="mt-2 text-sm leading-6 text-foreground">

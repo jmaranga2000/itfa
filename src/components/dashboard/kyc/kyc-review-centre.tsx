@@ -232,7 +232,7 @@ export function KycReviewCentre({ data }: { data: KycDashboardData }) {
                           </Link>
                           <Link
                             className={buttonClassName({ variant: "secondary", size: "sm" })}
-                            href="/admin/kyc/reviewers"
+                            href={`/admin/kyc/reviewers?submissionId=${encodeURIComponent(submission.id)}`}
                           >
                             Assign
                           </Link>

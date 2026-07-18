@@ -188,6 +188,9 @@ export async function getClientKycAccess(clientUserId: string): Promise<ClientKy
 export async function notifyKycSubmitted(clientUserId: string, actor: Principal) {
   const access = await getClientKycAccess(clientUserId);
   if (!access) return;
+  const submission = await ClientKycSubmissionModel.findOne({ userId: clientUserId }).select("_id").lean().exec();
+  if (!submission) return;
+  const submissionId = `client-kyc-${submission._id.toString()}`;
   const recipients = new Set<string>([access.assignedStaffUserId]);
   const administrators = await UserModel.find({
     roleKeys: { $in: ["admin", "super_admin", "reviewer"] },
@@ -200,8 +203,10 @@ export async function notifyKycSubmitted(clientUserId: string, actor: Principal)
     title: "KYC submitted for review",
     description: `${access.reference} is ready for KYC review and approval.`,
     relatedModule: "kyc",
-    relatedRecordId: access.requestId,
-    actionUrl: recipientUserId === access.assignedStaffUserId ? "/staff/kyc" : "/admin/kyc",
+    relatedRecordId: submission._id.toString(),
+    actionUrl: recipientUserId === access.assignedStaffUserId
+      ? `/staff/kyc/${submissionId}`
+      : `/admin/kyc/${submissionId}`,
     createdByUserId: actor.id,
   })));
 }
@@ -217,8 +222,9 @@ export async function canStaffAccessKycSubmission(submissionId: string, staffUse
   const submissionObjectId = kycObjectId(submissionId);
   if (!submissionObjectId || !Types.ObjectId.isValid(staffUserId)) return false;
   await connectToDatabase();
-  const submission = await ClientKycSubmissionModel.findById(submissionObjectId).select("userId").lean().exec();
+  const submission = await ClientKycSubmissionModel.findById(submissionObjectId).select("userId assignedReviewerUserId").lean().exec();
   if (!submission) return false;
+  if (submission.assignedReviewerUserId?.toString() === staffUserId) return true;
   const requestIds = await EngagementRequestModel.find({
     clientUserId: submission.userId,
     kycUnlockedAt: { $ne: null },

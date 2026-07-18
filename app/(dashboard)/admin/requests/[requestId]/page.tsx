@@ -158,40 +158,48 @@ export default async function AdminRequestDetailPage({
                   <BadgeDollarSign aria-hidden="true" className="h-4 w-4" />
                   {databaseRequest.status === "quotation_sent" ? "Open quotation" : "Prepare quotation"}
                 </Link>
-              ) : request.workflowId ? (
+              ) : null}
+              {request.workflowId ? (
                 <Link className={buttonClassName()} href={`/admin/workflows/${request.workflowId}`}>
                   <BriefcaseBusiness aria-hidden="true" className="h-4 w-4" />
                   Open engagement
                 </Link>
-              ) : engagementLetter ? (
+              ) : null}
+              {!request.workflowId && engagementLetter ? (
                 <Link className={buttonClassName()} href={`/admin/engagement-letters/${engagementLetter.id}`}>
                   <FileSignature aria-hidden="true" className="h-4 w-4" />
                   Open engagement letter
                 </Link>
-              ) : databaseRequest && !databaseRequest.adminApprovedAt ? (
+              ) : null}
+              {databaseRequest
+              && !databaseRequest.adminApprovedAt
+              && !["quotation_requested", "quotation_preparing", "quotation_sent"].includes(databaseRequest.status) ? (
                 <form action={approveEngagementRequestAction}>
                   <input name="requestId" type="hidden" value={request.id} />
                   <SubmitButton pendingText="Approving request...">
                     <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
-                    Approve request
+                    Accept request
                   </SubmitButton>
                 </form>
-              ) : databaseRequest && !assignment ? (
+              ) : null}
+              {databaseRequest && !request.workflowId && !engagementLetter ? (
                 <Link className={buttonClassName()} href={`/admin/staff?assignRequest=${encodeURIComponent(request.id)}`}>
                   <UserRoundCheck aria-hidden="true" className="h-4 w-4" />
-                  Assign staff
+                  {assignment ? "Change staff" : "Assign staff"}
                 </Link>
-              ) : databaseRequest && !databaseRequest.kycApprovedAt ? (
+              ) : null}
+              {databaseRequest && databaseRequest.adminApprovedAt && assignment && !databaseRequest.kycApprovedAt ? (
                 <Link className={buttonClassName()} href="/admin/kyc">
                   <ShieldCheck aria-hidden="true" className="h-4 w-4" />
                   Open KYC queue
                 </Link>
-              ) : (
+              ) : null}
+              {!databaseRequest && !request.workflowId && !engagementLetter ? (
                 <Link className={buttonClassName()} href={request.workflowId ? `/admin/workflows/${request.workflowId}` : action.href}>
                   <ActionIcon aria-hidden="true" className="h-4 w-4" />
                   {request.workflowId ? "Open engagement" : action.label}
                 </Link>
-              )}
+              ) : null}
             </div>
           </div>
         </div>
