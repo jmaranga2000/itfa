@@ -1,6 +1,6 @@
 import { KycReviewerAssignment } from "@/components/dashboard/kyc/kyc-reviewer-assignment";
 import { requirePermission } from "@/features/auth/server";
-import { getKycReviewerWorkload, getKycSubmissionDetail } from "@/repositories/kyc-repository";
+import { getKycReviewerWorkload, getKycSubmissionDetail } from "@/features/kyc/service";
 
 export default async function AdminKycReviewersPage({
   searchParams,

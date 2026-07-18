@@ -16,7 +16,7 @@ import { assignKycReviewerAction } from "@/features/kyc/review-actions";
 import type {
   KycReviewerWorkloadRecord,
   KycSubmission,
-} from "@/repositories/kyc-repository";
+} from "@/features/kyc/service";
 
 export function KycReviewerAssignment({
   error,

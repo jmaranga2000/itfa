@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requirePermission, requireUser } from "@/features/auth/server";
 import type { Permission } from "@/features/authorization/permissions";
-import { assignKycReviewer, reviewKycRequirement } from "@/repositories/kyc-repository";
+import { assignKycReviewer, reviewKycRequirement } from "@/features/kyc/service";
 import { approveClientKycSubmission } from "@/repositories/request-onboarding-repository";
 
 const requirementDecisionSchema = z.enum([

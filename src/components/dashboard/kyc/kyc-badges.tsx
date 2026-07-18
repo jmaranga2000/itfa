@@ -14,7 +14,7 @@ import {
   getKycRequirementStatusLabel,
   getKycRiskLabel,
   getKycStatusLabel,
-} from "@/repositories/kyc-repository";
+} from "@/features/kyc/service";
 import type {
   KycRequirementStatus,
   KycRiskLevel,

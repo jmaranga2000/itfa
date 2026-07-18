@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { KycReviewWorkspace } from "@/components/dashboard/kyc/kyc-review-workspace";
 import { requireAnyPermission } from "@/features/auth/server";
-import { getKycSubmissionDetail } from "@/repositories/kyc-repository";
+import { getKycSubmissionDetail } from "@/features/kyc/service";
 
 export default async function AdminKycSubmissionPage({
   params,

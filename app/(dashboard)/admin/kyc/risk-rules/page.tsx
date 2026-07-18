@@ -1,5 +1,5 @@
 import { KycSimpleTablePage } from "@/components/dashboard/kyc/kyc-support-pages";
-import { getKycRiskRules } from "@/repositories/kyc-repository";
+import { getKycRiskRules } from "@/features/kyc/service";
 
 export default async function AdminKycRiskRulesPage() {
   const rows = await getKycRiskRules();

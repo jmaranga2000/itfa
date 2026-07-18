@@ -1,3 +1,7 @@
+import { Types } from "mongoose";
+import { assertPermission, type Principal } from "@/features/authorization/access-control";
+import { writeAuditLog } from "@/features/audit/audit-service";
+import { CLIENT_KYC_QUESTIONS } from "@/features/kyc/client-questionnaire";
 import {
   KYC_CLIENT_TYPE_LABELS,
   KYC_PERMISSION_MATRIX,
@@ -12,12 +16,10 @@ import {
   type KycRiskLevel,
   type KycStatus,
 } from "@/features/kyc/types";
-import { Types } from "mongoose";
-import { assertPermission, type Principal } from "@/features/authorization/access-control";
-import { writeAuditLog } from "@/features/audit/audit-service";
-import { CLIENT_KYC_QUESTIONS } from "@/features/kyc/client-questionnaire";
 import { connectToDatabase } from "@/lib/db/mongoose";
 import { ClientKycSubmissionModel } from "@/models/client-kyc-submission";
+import { KycRiskRuleModel } from "@/models/kyc-risk-rule";
+import { KycTemplateModel } from "@/models/kyc-template";
 import { UserModel } from "@/models/user";
 import { WorkflowInstanceModel } from "@/models/workflow-instance";
 import { createCommunicationNotification } from "@/repositories/communication-repository";
@@ -50,12 +52,7 @@ export type KycRequirement = {
   documentVersions: KycDocumentVersion[];
   internalNotes: string[];
   clientFeedback: string[];
-  comparison?: {
-    label: string;
-    entered: string;
-    document: string;
-    warning: string;
-  };
+  comparison?: { label: string; entered: string; document: string; warning: string };
 };
 
 export type KycTimelineEvent = {
@@ -127,32 +124,6 @@ export type KycDashboardData = {
   reviewerRules: typeof KYC_REVIEWER_RULES;
 };
 
-function documentVersion(
-  id: string,
-  label: string,
-  filename: string,
-  reviewStatus: string,
-  uploadedAt: string,
-  expiryDate: string | null = null,
-  rejectionReason?: string,
-): KycDocumentVersion {
-  return {
-    id,
-    label,
-    filename,
-    fileType: filename.endsWith(".pdf") ? "PDF" : "Image",
-    fileSize: filename.endsWith(".pdf") ? "2.4 MB" : "840 KB",
-    uploadedBy: "Client representative",
-    uploadedAt,
-    documentDate: "2026-06-20",
-    expiryDate,
-    version: Number(id.split("-").at(-1) ?? 1),
-    checksum: `sha256:${id.replaceAll("-", "").slice(0, 12)}`,
-    reviewStatus,
-    rejectionReason,
-  };
-}
-
 type LiveKycDocument = {
   _id?: Types.ObjectId;
   r2Key?: string;
@@ -160,15 +131,24 @@ type LiveKycDocument = {
   contentType?: string;
   size?: number;
   uploadedAt?: Date;
+  documentType?: string;
+  documentDate?: Date | null;
+  expiryDate?: Date | null;
+  version?: number;
+  checksum?: string;
+  reviewStatus?: "submitted" | "approved" | "replacement_requested" | "rejected";
+  rejectionReason?: string;
 };
 
 type LiveKycRecord = {
   _id: Types.ObjectId;
   userId: Types.ObjectId;
+  questionnaireVersion?: string;
   answers?: unknown;
   documents?: LiveKycDocument[];
   status?: "draft" | "submitted" | "under_review" | "changes_requested" | "approved";
   submittedAt?: Date | null;
+  updatedAt?: Date;
   assignedReviewerUserId?: Types.ObjectId | null;
   assignedByUserId?: Types.ObjectId | null;
   assignedAt?: Date | null;
@@ -197,14 +177,16 @@ type LiveKycWorkflow = {
   responsibleUserName?: string;
 };
 
-function answersFromLiveRecord(value: unknown): Record<string, string> {
+const DAY_MS = 86_400_000;
+
+function answersFromRecord(value: unknown): Record<string, string> {
   if (!value || typeof value !== "object") return {};
   return Object.fromEntries(
     Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
   );
 }
 
-function liveRequirementStatus(
+function requirementStatus(
   status: LiveKycRecord["status"],
   complete: boolean,
   decision?: "approved" | "replacement_requested" | "escalated" | "rejected",
@@ -217,7 +199,7 @@ function liveRequirementStatus(
   return "submitted";
 }
 
-function liveSubmissionStatus(status: LiveKycRecord["status"]): KycStatus {
+function submissionStatus(status: LiveKycRecord["status"]): KycStatus {
   if (status === "approved") return "approved";
   if (status === "under_review") return "under_review";
   if (status === "changes_requested") return "changes_requested";
@@ -232,13 +214,64 @@ function questionSection(questionId: string): KycRequirementSection {
   return "Client Identity";
 }
 
-function liveUserName(user: LiveKycUser) {
+function userName(user: LiveKycUser) {
   return `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || user.email;
 }
 
-async function getLiveKycSubmissions(): Promise<KycSubmission[]> {
+function fileSizeLabel(size = 0) {
+  if (size >= 1_000_000) return `${(size / 1_000_000).toFixed(1)} MB`;
+  if (size >= 1_000) return `${Math.round(size / 1_000)} KB`;
+  return `${size} B`;
+}
+
+function dateOnly(value?: Date | null) {
+  return value ? value.toISOString().slice(0, 10) : null;
+}
+
+function documentVersion(document: LiveKycDocument, submittedAt: Date): KycDocumentVersion {
+  return {
+    id: document._id?.toString() ?? document.r2Key ?? document.filename ?? "document",
+    label: document.documentType || "Submitted document",
+    filename: document.filename ?? "Uploaded file",
+    fileType: document.contentType?.split("/").at(-1)?.toUpperCase() ?? "File",
+    fileSize: fileSizeLabel(document.size),
+    uploadedBy: "Client representative",
+    uploadedAt: (document.uploadedAt ?? submittedAt).toISOString(),
+    documentDate: dateOnly(document.documentDate),
+    expiryDate: dateOnly(document.expiryDate),
+    version: document.version ?? 1,
+    checksum: document.checksum || "Not recorded",
+    reviewStatus: document.reviewStatus?.replaceAll("_", " ") ?? "submitted",
+    rejectionReason: document.rejectionReason || undefined,
+  };
+}
+
+function documentIssues(document: LiveKycDocument | undefined): KycDocumentIssue[] {
+  if (!document) return ["Missing Document"];
+  if (document.expiryDate && document.expiryDate.getTime() < Date.now()) return ["Expired"];
+  if (["replacement_requested", "rejected"].includes(document.reviewStatus ?? "")) {
+    return ["Replacement Required"];
+  }
+  return [];
+}
+
+function elapsedLabel(from: Date, to = new Date()) {
+  const days = Math.max(0, Math.floor((to.getTime() - from.getTime()) / DAY_MS));
+  if (days === 0) return "Today";
+  return `${days} day${days === 1 ? "" : "s"}`;
+}
+
+function liveKycObjectId(submissionId: string) {
+  const value = submissionId.startsWith("client-kyc-")
+    ? submissionId.slice("client-kyc-".length)
+    : submissionId;
+  return Types.ObjectId.isValid(value) ? new Types.ObjectId(value) : null;
+}
+
+async function listKycSubmissions(): Promise<KycSubmission[]> {
   await connectToDatabase();
   const records = (await ClientKycSubmissionModel.find({ status: { $ne: "draft" } })
+    .sort({ submittedAt: -1 })
     .lean()
     .exec()) as unknown as LiveKycRecord[];
   if (records.length === 0) return [];
@@ -252,563 +285,216 @@ async function getLiveKycSubmissions(): Promise<KycSubmission[]> {
     ]),
   ];
   const [users, workflows] = await Promise.all([
-    UserModel.find({ _id: { $in: directoryIds } }).select("email firstName lastName roleKeys").lean().exec() as Promise<LiveKycUser[]>,
+    UserModel.find({ _id: { $in: directoryIds } })
+      .select("email firstName lastName roleKeys")
+      .lean()
+      .exec() as Promise<LiveKycUser[]>,
     WorkflowInstanceModel.find({ clientUserId: { $in: userIds } })
       .select("clientUserId reference serviceName responsibleUserName")
+      .sort({ lastActivityAt: -1 })
       .lean()
       .exec() as Promise<LiveKycWorkflow[]>,
   ]);
   const usersById = new Map(users.map((user) => [user._id.toString(), user]));
+  const reviewerLoads = new Map<string, number>();
+  for (const record of records) {
+    if (record.assignedReviewerUserId && record.status !== "approved") {
+      const id = record.assignedReviewerUserId.toString();
+      reviewerLoads.set(id, (reviewerLoads.get(id) ?? 0) + 1);
+    }
+  }
 
   return records.flatMap((record) => {
-    const user = usersById.get(record.userId.toString());
-    if (!user) return [];
+    const client = usersById.get(record.userId.toString());
+    if (!client) return [];
     const workflow = workflows.find((item) => item.clientUserId?.toString() === record.userId.toString());
-    const answers = answersFromLiveRecord(record.answers);
+    const answers = answersFromRecord(record.answers);
     const reviewsByRequirement = new Map(
       (record.requirementReviews ?? []).map((review) => [review.requirementId, review]),
     );
-    const assignedReviewer = record.assignedReviewerUserId
+    const reviewer = record.assignedReviewerUserId
       ? usersById.get(record.assignedReviewerUserId.toString())
-      : null;
-    const recordStatus = record.status ?? "draft";
-    const status = liveSubmissionStatus(recordStatus);
-    const submittedAt = record.submittedAt ?? new Date();
-    const documents = record.documents ?? [];
-    const documentRequirements: Array<{ name: string; section: KycRequirementSection; tokens: string[] }> = [
-      { name: "Identification", section: "Client Identity", tokens: ["national", "id", "passport"] },
-      { name: "Tax PIN", section: "Tax Information", tokens: ["kra", "pin", "tax"] },
-      { name: "Proof of address", section: "Address Verification", tokens: ["address", "utility", "proof"] },
-    ];
+      : undefined;
+    const submittedAt = record.submittedAt ?? record.updatedAt ?? new Date();
+    const reviewDueAt = new Date(submittedAt.getTime() + 2 * DAY_MS);
+    const status = submissionStatus(record.status);
+    const completedStatus = record.status === "approved";
+    const overdue = !completedStatus && Date.now() > reviewDueAt.getTime();
+    const overdueDays = Math.max(0, Math.floor((Date.now() - reviewDueAt.getTime()) / DAY_MS));
+    const hasPepExposure = answers.politically_exposed?.toLowerCase() === "yes";
+
     const answerRequirements: KycRequirement[] = CLIENT_KYC_QUESTIONS.map((question) => {
       const answer = answers[question.id] ?? "";
-      const requirementId = `live-${record._id.toString()}-${question.id}`;
-      const review = reviewsByRequirement.get(requirementId);
+      const id = `live-${record._id.toString()}-${question.id}`;
+      const review = reviewsByRequirement.get(id);
       return {
-        id: requirementId,
+        id,
         section: questionSection(question.id),
         name: question.label,
         instructions: question.helpText,
         required: question.required,
-        status: liveRequirementStatus(recordStatus, Boolean(answer), review?.decision),
+        status: requirementStatus(record.status, Boolean(answer), review?.decision),
         clientAnswer: answer,
-        issues: answer ? [] : ["Missing Document"],
+        issues: [],
         documentVersions: [],
-        internalNotes: review?.note
-          ? [review.note]
-          : recordStatus === "approved"
-            ? ["Reviewed and approved as part of the KYC workflow."]
+        internalNotes: review?.note ? [review.note] : [],
+        clientFeedback:
+          review?.note && ["replacement_requested", "rejected"].includes(review.decision)
+            ? [review.note]
             : [],
-        clientFeedback: review?.note && ["replacement_requested", "rejected"].includes(review.decision)
-          ? [review.note]
-          : [],
       };
     });
-    const evidenceRequirements: KycRequirement[] = documentRequirements.map((requirement) => {
-      const requirementId = `live-${record._id.toString()}-${requirement.name.toLowerCase().replaceAll(" ", "-")}`;
-      const review = reviewsByRequirement.get(requirementId);
-      const document = documents.find((item) => {
-        const filename = item.filename?.toLowerCase() ?? "";
-        return requirement.tokens.some((token) => filename.includes(token));
+
+    const evidenceDefinitions: Array<{
+      key: string;
+      name: string;
+      section: KycRequirementSection;
+      tokens: string[];
+    }> = [
+      { key: "identification", name: "Identification", section: "Client Identity", tokens: ["national", "id", "passport"] },
+      { key: "tax-pin", name: "Tax PIN", section: "Tax Information", tokens: ["kra", "pin", "tax"] },
+      { key: "proof-of-address", name: "Proof of address", section: "Address Verification", tokens: ["address", "utility", "proof"] },
+    ];
+    const evidenceRequirements: KycRequirement[] = evidenceDefinitions.map((definition) => {
+      const id = `live-${record._id.toString()}-${definition.key}`;
+      const review = reviewsByRequirement.get(id);
+      const document = (record.documents ?? []).find((item) => {
+        const searchable = `${item.documentType ?? ""} ${item.filename ?? ""}`.toLowerCase();
+        return definition.tokens.some((token) => searchable.includes(token));
       });
+      const issues = documentIssues(document);
+      const expired = issues.includes("Expired");
+      const statusValue = expired
+        ? "expired"
+        : requirementStatus(record.status, Boolean(document), review?.decision);
       return {
-        id: requirementId,
-        section: requirement.section,
-        name: requirement.name,
-        instructions: `Confirm the uploaded ${requirement.name.toLowerCase()} before the engagement proceeds.`,
+        id,
+        section: definition.section,
+        name: definition.name,
+        instructions: `Confirm the uploaded ${definition.name.toLowerCase()} before the engagement proceeds.`,
         required: true,
-        status: liveRequirementStatus(recordStatus, Boolean(document), review?.decision),
+        status: statusValue,
         clientAnswer: document ? "Document uploaded" : "No document uploaded",
-        issues: document ? [] : ["Missing Document"],
-        documentVersions: document
-          ? [
-              documentVersion(
-                document._id?.toString() ?? `${record._id.toString()}-${requirement.name}`,
-                "Submitted document",
-                document.filename ?? requirement.name,
-                recordStatus === "approved" ? "Approved" : "Submitted",
-                (document.uploadedAt ?? submittedAt).toISOString(),
-              ),
-            ]
-          : [],
-        internalNotes: review?.note
-          ? [review.note]
-          : recordStatus === "approved"
-            ? ["Evidence verified in the KYC workflow."]
+        issues,
+        documentVersions: document ? [documentVersion(document, submittedAt)] : [],
+        internalNotes: review?.note ? [review.note] : [],
+        clientFeedback:
+          review?.note && ["replacement_requested", "rejected"].includes(review.decision)
+            ? [review.note]
             : [],
-        clientFeedback: review?.note && ["replacement_requested", "rejected"].includes(review.decision)
-          ? [review.note]
-          : [],
       };
     });
     const requirements = [...answerRequirements, ...evidenceRequirements];
-    const completed = requirements.filter((requirement) => requirement.status === "approved").length;
-    const hasPepExposure = answers.politically_exposed === "Yes";
+    const submitted = requirements.filter((item) => item.status !== "not_submitted").length;
+    const approved = requirements.filter((item) => item.status === "approved").length;
+    const mandatory = requirements.filter((item) => item.required);
+    const mandatoryApproved = mandatory.filter((item) => item.status === "approved").length;
+    const issues = Array.from(new Set(evidenceRequirements.flatMap((item) => item.issues)));
+    const reviewerLoad = record.assignedReviewerUserId
+      ? reviewerLoads.get(record.assignedReviewerUserId.toString()) ?? 0
+      : 0;
+    const riskLevel: KycRiskLevel = hasPepExposure ? "high" : completedStatus ? "low" : "standard";
+    const alerts: KycSubmission["alerts"] = [];
+    if (!reviewer) alerts.push({ severity: "warning", message: "This submission has no assigned reviewer.", action: "Assign reviewer" });
+    if (issues.length > 0) alerts.push({ severity: "warning", message: "Some required documents need attention.", action: "Review documents" });
+    if (hasPepExposure) alerts.push({ severity: "danger", message: "Politically exposed person declaration requires senior review.", action: "Escalate review" });
+    if (overdue) alerts.push({ severity: "danger", message: `The review is ${overdueDays} day${overdueDays === 1 ? "" : "s"} overdue.`, action: "Open review" });
+
+    const timeline: KycTimelineEvent[] = [
+      {
+        id: `${record._id.toString()}-submitted`,
+        actor: userName(client),
+        action: "KYC questionnaire submitted",
+        at: submittedAt.toISOString(),
+        statusChange: "Draft to Submitted",
+        internal: false,
+      },
+      ...(record.assignedAt && reviewer
+        ? [{
+            id: `${record._id.toString()}-assigned`,
+            actor: userName(reviewer),
+            action: "KYC reviewer assigned",
+            at: record.assignedAt.toISOString(),
+            statusChange: "Reviewer assigned",
+            internal: true,
+          }]
+        : []),
+      ...(record.requirementReviews ?? []).map((review) => ({
+        id: `${record._id.toString()}-${review.requirementId}-${review.reviewedAt.toISOString()}`,
+        actor: usersById.get(review.reviewedByUserId.toString())
+          ? userName(usersById.get(review.reviewedByUserId.toString()) as LiveKycUser)
+          : "KYC reviewer",
+        action: `Requirement ${review.decision.replaceAll("_", " ")}`,
+        at: review.reviewedAt.toISOString(),
+        requirement: requirements.find((item) => item.id === review.requirementId)?.name,
+        note: review.note,
+        internal: true,
+      })),
+      ...(completedStatus
+        ? [{
+            id: `${record._id.toString()}-approved`,
+            actor: reviewer ? userName(reviewer) : workflow?.responsibleUserName || "KYC reviewer",
+            action: "KYC approved",
+            at: (record.updatedAt ?? submittedAt).toISOString(),
+            statusChange: "Under Review to Approved",
+            internal: false,
+          }]
+        : []),
+    ].sort((left, right) => new Date(left.at).getTime() - new Date(right.at).getTime());
 
     return [{
       id: `client-kyc-${record._id.toString()}`,
       reference: `KYC-${record._id.toString().slice(-6).toUpperCase()}`,
-      clientName: liveUserName(user),
-      clientType: user.roleKeys?.includes("client_representative") ? "client_representative" : "individual",
-      primaryContact: user.email,
-      clientHref: `/admin/clients/${user._id.toString()}`,
+      clientName: userName(client),
+      clientType: client.roleKeys?.includes("client_representative") ? "client_representative" : "individual",
+      primaryContact: client.email,
+      clientHref: `/admin/clients/${client._id.toString()}`,
       engagementReference: workflow?.reference ?? "Engagement pending",
       engagementHref: workflow ? `/admin/workflows/${workflow._id.toString()}` : "/admin/active-engagements",
       service: workflow?.serviceName ?? "Consulting services",
-      template: "Individual client onboarding",
+      template: record.questionnaireVersion ?? "individual-v1",
       status,
-      riskLevel: hasPepExposure ? "high" : recordStatus === "approved" ? "low" : "standard",
+      riskLevel,
       submittedAt: submittedAt.toISOString(),
-      reviewDueAt: new Date(submittedAt.getTime() + 2 * 86_400_000).toISOString(),
-      waitingTime: recordStatus === "approved" ? "Approved" : "Awaiting review",
-      assignedReviewer: assignedReviewer
-        ? liveUserName(assignedReviewer)
-        : workflow?.responsibleUserName || "Unassigned",
-      reviewerRole: assignedReviewer?.roleKeys?.includes("reviewer") ? "Reviewer" : "Compliance reviewer",
-      reviewerLoad: 1,
+      reviewDueAt: reviewDueAt.toISOString(),
+      waitingTime: completedStatus ? "Approved" : elapsedLabel(submittedAt),
+      assignedReviewer: reviewer ? userName(reviewer) : workflow?.responsibleUserName || "Unassigned",
+      reviewerRole: reviewer?.roleKeys?.includes("reviewer") ? "Reviewer" : "Compliance reviewer",
+      reviewerLoad,
       reviewerOverdue: 0,
-      reviewerTurnaround: "1.8 days",
+      reviewerTurnaround: "Not measured",
       completion: {
-        submitted: requirements.filter((requirement) => requirement.status !== "not_submitted").length,
+        submitted,
         total: requirements.length,
-        approved: completed,
-        mandatoryApproved: completed,
-        mandatoryTotal: requirements.length,
+        approved,
+        mandatoryApproved,
+        mandatoryTotal: mandatory.length,
       },
-      documentIssues: evidenceRequirements.some((requirement) => requirement.status === "not_submitted") ? ["Missing Document"] : [],
+      documentIssues: issues,
       seniorReviewRequired: hasPepExposure,
-      overdue: false,
-      slaStatus: "On Track",
-      nextAction: recordStatus === "approved" ? "KYC is complete. Continue with the active engagement." : "Review submitted KYC evidence.",
-       canProceed: ["submitted", "under_review"].includes(recordStatus)
-         && answerRequirements.filter((requirement) => requirement.required).every((requirement) => requirement.clientAnswer),
+      overdue,
+      slaStatus: overdueDays >= 5 ? "Severely Overdue" : overdue ? "Overdue" : reviewDueAt.getTime() - Date.now() <= DAY_MS ? "Due Soon" : "On Track",
+      nextAction: completedStatus
+        ? "KYC is complete. Continue with the active engagement."
+        : !reviewer
+          ? "Assign a reviewer to this submission."
+          : "Review the submitted questionnaire and supporting evidence.",
+      canProceed: ["submitted", "under_review"].includes(record.status ?? "")
+        && answerRequirements.filter((item) => item.required).every((item) => Boolean(item.clientAnswer)),
       returningClientMode: "Full KYC",
-      alerts: [],
+      alerts,
       requirements,
       previousReviews: [],
       finalChecklist: [
-        { label: "All mandatory requirements approved", state: recordStatus === "approved" ? "Complete" : "Incomplete" },
-        { label: "No expired mandatory documents", state: "Complete" },
-        { label: "Reviewer assigned", state: assignedReviewer || workflow?.responsibleUserName ? "Complete" : "Incomplete" },
+        { label: "All mandatory requirements approved", state: mandatoryApproved === mandatory.length ? "Complete" : "Incomplete" },
+        { label: "No expired mandatory documents", state: issues.includes("Expired") ? "Incomplete" : "Complete" },
+        { label: "Reviewer assigned", state: reviewer ? "Complete" : "Incomplete" },
         { label: "Senior approval completed where necessary", state: hasPepExposure ? "Incomplete" : "Not Applicable" },
       ],
-      timeline: [
-        { id: `live-${record._id.toString()}-submitted`, actor: liveUserName(user), action: "KYC questionnaire submitted", at: submittedAt.toISOString(), statusChange: "Draft to Submitted", internal: false },
-        ...(record.assignedAt && assignedReviewer ? [{ id: `live-${record._id.toString()}-assigned`, actor: liveUserName(assignedReviewer), action: "KYC reviewer assigned", at: record.assignedAt.toISOString(), statusChange: "Reviewer assigned", internal: true }] : []),
-        ...(record.requirementReviews ?? []).map((review) => ({
-          id: `live-${record._id.toString()}-${review.requirementId}-${review.reviewedAt.toISOString()}`,
-          actor: usersById.get(review.reviewedByUserId.toString())
-            ? liveUserName(usersById.get(review.reviewedByUserId.toString()) as LiveKycUser)
-            : "KYC reviewer",
-          action: `Requirement ${review.decision.replaceAll("_", " ")}`,
-          at: review.reviewedAt.toISOString(),
-          requirement: requirements.find((requirement) => requirement.id === review.requirementId)?.name,
-          note: review.note,
-          internal: true,
-        })),
-        ...(recordStatus === "approved" ? [{ id: `live-${record._id.toString()}-approved`, actor: workflow?.responsibleUserName || "Compliance reviewer", action: "KYC approved", at: new Date(submittedAt.getTime() + 86_400_000).toISOString(), statusChange: "Under Review to Approved", note: "Identity, tax PIN and proof of address verified.", internal: false }] : []),
-      ],
+      timeline,
     }];
   });
 }
-
-const submissions: KycSubmission[] = [
-  {
-    id: "kyc-2026-014",
-    reference: "KYC-2026-014",
-    clientName: "Amani Holdings Limited",
-    clientType: "corporate",
-    primaryContact: "Njeri Mwangi",
-    clientHref: "/admin/clients",
-    engagementReference: "ENG-2026-014",
-    engagementHref: "/admin/active-engagements",
-    service: "Corporate tax planning",
-    template: "Corporate onboarding - tax advisory",
-    status: "pending_review",
-    riskLevel: "elevated",
-    submittedAt: "2026-07-13T09:30:00.000Z",
-    reviewDueAt: "2026-07-16T17:00:00.000Z",
-    waitingTime: "2 days",
-    assignedReviewer: "Grace Wambui",
-    reviewerRole: "Compliance reviewer",
-    reviewerLoad: 7,
-    reviewerOverdue: 2,
-    reviewerTurnaround: "1.8 days",
-    completion: { submitted: 8, total: 10, approved: 4, mandatoryApproved: 4, mandatoryTotal: 8 },
-    documentIssues: ["Replacement Required", "Name Mismatch"],
-    seniorReviewRequired: true,
-    overdue: false,
-    slaStatus: "Due Soon",
-    nextAction: "Review company certificate mismatch and beneficial ownership notes.",
-    canProceed: false,
-    returningClientMode: "Full KYC",
-    alerts: [
-      {
-        severity: "warning",
-        message: "Company name differs between entered profile and certificate.",
-        action: "Review the company registration requirement.",
-      },
-      {
-        severity: "info",
-        message: "Senior review is required because risk is elevated.",
-        action: "Escalate after requirement review if mismatch remains unresolved.",
-      },
-    ],
-    requirements: [
-      {
-        id: "company-certificate",
-        section: "Company Information",
-        name: "Company Registration Certificate",
-        instructions: "Confirm legal name, registration number and certificate date.",
-        required: true,
-        status: "replacement_requested",
-        clientAnswer: "Amani Holdings Limited, CPR/2020/11894.",
-        issues: ["Name Mismatch", "Replacement Required"],
-        documentVersions: [
-          documentVersion(
-            "kyc-2026-014-doc-2",
-            "Current Version",
-            "amani-registration-certificate.pdf",
-            "Replacement requested",
-            "2026-07-13T09:12:00.000Z",
-            null,
-          ),
-          documentVersion(
-            "kyc-2026-014-doc-1",
-            "Rejected Version",
-            "amani-certificate-scan.jpg",
-            "Rejected",
-            "2026-07-11T15:40:00.000Z",
-            null,
-            "Registration number was not visible.",
-          ),
-        ],
-        internalNotes: ["Legal name appears as Amani Holding Ltd on the uploaded certificate."],
-        clientFeedback: ["Please upload a clearer copy showing the full registered company name."],
-        comparison: {
-          label: "Company name",
-          entered: "Amani Holdings Limited",
-          document: "Amani Holding Ltd",
-          warning: "Possible legal name mismatch. Treat as a review warning, not an automatic failure.",
-        },
-      },
-      {
-        id: "beneficial-ownership",
-        section: "Beneficial Ownership",
-        name: "Beneficial Ownership Declaration",
-        instructions: "Confirm all beneficial owners above the reporting threshold.",
-        required: true,
-        status: "under_review",
-        clientAnswer: "Three beneficial owners declared; one trust structure noted.",
-        issues: ["Review Pending"],
-        documentVersions: [
-          documentVersion(
-            "kyc-2026-014-doc-3",
-            "Current Version",
-            "beneficial-ownership-declaration.pdf",
-            "Under review",
-            "2026-07-13T09:20:00.000Z",
-          ),
-        ],
-        internalNotes: ["Trust ownership requires senior guidance before final approval."],
-        clientFeedback: [],
-      },
-      {
-        id: "kra-pin",
-        section: "Tax Information",
-        name: "KRA PIN Certificate",
-        instructions: "Validate tax registration and taxpayer name.",
-        required: true,
-        status: "approved",
-        clientAnswer: "P052118940K",
-        issues: [],
-        documentVersions: [
-          documentVersion(
-            "kyc-2026-014-doc-4",
-            "Current Version",
-            "kra-pin-certificate.pdf",
-            "Approved",
-            "2026-07-13T09:24:00.000Z",
-            "2026-08-10",
-          ),
-        ],
-        internalNotes: ["PIN matches client profile."],
-        clientFeedback: [],
-      },
-    ],
-    previousReviews: [
-      { reference: "KYC-2025-009", approvedAt: "2025-08-12", outcome: "Approved", riskLevel: "standard" },
-    ],
-    finalChecklist: [
-      { label: "All mandatory requirements approved", state: "Incomplete" },
-      { label: "No unresolved replacement requests", state: "Incomplete" },
-      { label: "Senior approval completed where necessary", state: "Incomplete" },
-      { label: "Reviewer assigned", state: "Complete" },
-      { label: "Client identity confirmed", state: "Complete" },
-    ],
-    timeline: [
-      {
-        id: "kyc-014-t1",
-        actor: "Client representative",
-        action: "KYC submitted",
-        at: "2026-07-13T09:30:00.000Z",
-        statusChange: "In Progress to Pending Review",
-        internal: false,
-      },
-      {
-        id: "kyc-014-t2",
-        actor: "Grace Wambui",
-        action: "Replacement requested",
-        at: "2026-07-14T11:20:00.000Z",
-        requirement: "Company Registration Certificate",
-        statusChange: "Under Review to Replacement Requested",
-        note: "Registration number and company name need confirmation.",
-        internal: false,
-      },
-      {
-        id: "kyc-014-t3",
-        actor: "Grace Wambui",
-        action: "Internal risk note added",
-        at: "2026-07-14T11:28:00.000Z",
-        requirement: "Beneficial Ownership Declaration",
-        note: "Trust structure requires senior review.",
-        internal: true,
-      },
-    ],
-  },
-  {
-    id: "kyc-2026-013",
-    reference: "KYC-2026-013",
-    clientName: "Nairobi Trade Co.",
-    clientType: "returning",
-    primaryContact: "David Otieno",
-    clientHref: "/admin/clients",
-    engagementReference: "ENG-2026-013",
-    engagementHref: "/admin/active-engagements",
-    service: "Transfer pricing review",
-    template: "Returning client refresh",
-    status: "changes_requested",
-    riskLevel: "standard",
-    submittedAt: "2026-07-09T08:00:00.000Z",
-    reviewDueAt: "2026-07-12T17:00:00.000Z",
-    waitingTime: "6 days",
-    assignedReviewer: "Samuel Kariuki",
-    reviewerRole: "Reviewer",
-    reviewerLoad: 4,
-    reviewerOverdue: 1,
-    reviewerTurnaround: "2.2 days",
-    completion: { submitted: 6, total: 7, approved: 5, mandatoryApproved: 5, mandatoryTotal: 6 },
-    documentIssues: ["Expired", "Replacement Required"],
-    seniorReviewRequired: false,
-    overdue: true,
-    slaStatus: "Overdue",
-    nextAction: "Client must replace expired director identification.",
-    canProceed: false,
-    returningClientMode: "KYC Refresh",
-    alerts: [
-      {
-        severity: "danger",
-        message: "Review is overdue and one mandatory identity document has expired.",
-        action: "Notify the client and request replacement.",
-      },
-    ],
-    requirements: [
-      {
-        id: "director-id",
-        section: "Directors",
-        name: "Director Identification",
-        instructions: "Verify current director identification for returning-client refresh.",
-        required: true,
-        status: "expired",
-        clientAnswer: "Director ID uploaded.",
-        issues: ["Expired", "Replacement Required"],
-        documentVersions: [
-          documentVersion(
-            "kyc-2026-013-doc-1",
-            "Current Version",
-            "director-id.pdf",
-            "Expired",
-            "2026-07-09T08:00:00.000Z",
-            "2026-07-10",
-          ),
-        ],
-        internalNotes: ["Document expired before review completion."],
-        clientFeedback: ["Please upload current director identification before the engagement can proceed."],
-      },
-    ],
-    previousReviews: [
-      { reference: "KYC-2024-044", approvedAt: "2024-10-02", outcome: "Approved", riskLevel: "standard" },
-    ],
-    finalChecklist: [
-      { label: "All mandatory requirements approved", state: "Incomplete" },
-      { label: "No expired mandatory documents", state: "Incomplete" },
-      { label: "Reviewer assigned", state: "Complete" },
-      { label: "Senior approval completed where necessary", state: "Not Applicable" },
-    ],
-    timeline: [
-      {
-        id: "kyc-013-t1",
-        actor: "Samuel Kariuki",
-        action: "Replacement requested",
-        at: "2026-07-10T14:00:00.000Z",
-        requirement: "Director Identification",
-        statusChange: "Submitted to Replacement Requested",
-        internal: false,
-      },
-    ],
-  },
-  {
-    id: "kyc-2026-012",
-    reference: "KYC-2026-012",
-    clientName: "Kilele Foods",
-    clientType: "corporate",
-    primaryContact: "Lilian Achieng",
-    clientHref: "/admin/clients",
-    engagementReference: "ENG-2026-012",
-    engagementHref: "/admin/active-engagements",
-    service: "Payroll compliance",
-    template: "Corporate onboarding - payroll",
-    status: "under_review",
-    riskLevel: "high",
-    submittedAt: "2026-07-08T12:15:00.000Z",
-    reviewDueAt: "2026-07-11T17:00:00.000Z",
-    waitingTime: "7 days",
-    assignedReviewer: "Unassigned",
-    reviewerRole: "Senior reviewer required",
-    reviewerLoad: 0,
-    reviewerOverdue: 0,
-    reviewerTurnaround: "Not assigned",
-    completion: { submitted: 10, total: 10, approved: 7, mandatoryApproved: 7, mandatoryTotal: 9 },
-    documentIssues: ["Review Pending"],
-    seniorReviewRequired: true,
-    overdue: true,
-    slaStatus: "Severely Overdue",
-    nextAction: "Assign senior reviewer for high-risk approval.",
-    canProceed: false,
-    returningClientMode: "Full KYC",
-    alerts: [
-      {
-        severity: "danger",
-        message: "High-risk submission is overdue and senior reviewer is not assigned.",
-        action: "Assign a senior reviewer immediately.",
-      },
-    ],
-    requirements: [
-      {
-        id: "declarations",
-        section: "Declarations",
-        name: "Compliance Declarations",
-        instructions: "Confirm declaration responses and politically exposed person disclosure.",
-        required: true,
-        status: "escalated",
-        clientAnswer: "One beneficial owner declared as politically exposed.",
-        issues: ["Review Pending"],
-        documentVersions: [
-          documentVersion(
-            "kyc-2026-012-doc-1",
-            "Current Version",
-            "declaration-form.pdf",
-            "Escalated",
-            "2026-07-08T12:15:00.000Z",
-          ),
-        ],
-        internalNotes: ["PEP disclosure requires senior reviewer decision."],
-        clientFeedback: [],
-      },
-    ],
-    previousReviews: [],
-    finalChecklist: [
-      { label: "All mandatory requirements approved", state: "Incomplete" },
-      { label: "No unresolved risk escalation", state: "Incomplete" },
-      { label: "Reviewer assigned", state: "Incomplete" },
-      { label: "Senior approval completed where necessary", state: "Incomplete" },
-    ],
-    timeline: [
-      {
-        id: "kyc-012-t1",
-        actor: "System",
-        action: "Escalation created",
-        at: "2026-07-08T12:20:00.000Z",
-        requirement: "Compliance Declarations",
-        statusChange: "Submitted to Escalated",
-        internal: true,
-      },
-    ],
-  },
-  {
-    id: "kyc-2026-011",
-    reference: "KYC-2026-011",
-    clientName: "Blue Rift Advisory",
-    clientType: "individual",
-    primaryContact: "Brian Omondi",
-    clientHref: "/admin/clients",
-    engagementReference: "ENG-2026-011",
-    engagementHref: "/admin/active-engagements",
-    service: "KRA notice response",
-    template: "Individual client onboarding",
-    status: "approved",
-    riskLevel: "low",
-    submittedAt: "2026-07-02T10:10:00.000Z",
-    reviewDueAt: "2026-07-05T17:00:00.000Z",
-    waitingTime: "Approved",
-    assignedReviewer: "Grace Wambui",
-    reviewerRole: "Compliance reviewer",
-    reviewerLoad: 7,
-    reviewerOverdue: 2,
-    reviewerTurnaround: "1.8 days",
-    completion: { submitted: 6, total: 6, approved: 6, mandatoryApproved: 5, mandatoryTotal: 5 },
-    documentIssues: [],
-    seniorReviewRequired: false,
-    overdue: false,
-    slaStatus: "On Track",
-    nextAction: "Engagement can proceed to letter generation.",
-    canProceed: true,
-    returningClientMode: "No Update Required",
-    alerts: [],
-    requirements: [
-      {
-        id: "identity",
-        section: "Client Identity",
-        name: "National ID",
-        instructions: "Confirm individual identity document and profile details.",
-        required: true,
-        status: "approved",
-        clientAnswer: "National ID uploaded.",
-        issues: [],
-        documentVersions: [
-          documentVersion(
-            "kyc-2026-011-doc-1",
-            "Current Version",
-            "national-id.pdf",
-            "Approved",
-            "2026-07-02T10:10:00.000Z",
-            "2026-08-25",
-          ),
-        ],
-        internalNotes: ["Identity confirmed."],
-        clientFeedback: [],
-      },
-    ],
-    previousReviews: [],
-    finalChecklist: [
-      { label: "All mandatory requirements approved", state: "Complete" },
-      { label: "No expired mandatory documents", state: "Complete" },
-      { label: "No unresolved replacement requests", state: "Complete" },
-      { label: "Reviewer assigned", state: "Complete" },
-      { label: "Senior approval completed where necessary", state: "Not Applicable" },
-    ],
-    timeline: [
-      {
-        id: "kyc-011-t1",
-        actor: "Grace Wambui",
-        action: "Full KYC approved",
-        at: "2026-07-03T16:45:00.000Z",
-        statusChange: "Under Review to Approved",
-        internal: false,
-      },
-    ],
-  },
-];
 
 function percent(value: number, total: number) {
   return total === 0 ? 0 : Math.round((value / total) * 100);
@@ -821,109 +507,15 @@ export function getKycProgress(submission: KycSubmission) {
   };
 }
 
-export async function getKycDashboardData(): Promise<KycDashboardData> {
-  const liveSubmissions = await getLiveKycSubmissions();
-  const allSubmissions = liveSubmissions.length > 0 ? liveSubmissions : submissions;
-  const pending = allSubmissions.filter((submission) =>
-    ["submitted", "pending_review", "under_review", "resubmitted"].includes(submission.status),
-  );
-  const changes = allSubmissions.filter((submission) => submission.status === "changes_requested");
-  const overdue = allSubmissions.filter((submission) => submission.overdue);
-  const elevated = allSubmissions.filter((submission) =>
-    ["elevated", "high"].includes(submission.riskLevel),
-  );
-  const approved = allSubmissions.filter((submission) => submission.status === "approved");
-  const expiring = getExpiringKycDocumentsSync();
-
-  return {
-    summaryCards: [
-      {
-        key: "pending",
-        label: "Pending Review",
-        value: String(pending.length),
-        supportingMetric: "1 unassigned",
-        statusLine: "Oldest waiting: 7 days",
-        href: "/admin/kyc?view=awaiting-review",
-        tone: "blue",
-      },
-      {
-        key: "changes",
-        label: "Changes Requested",
-        value: String(changes.length),
-        supportingMetric: "2 replacement documents pending",
-        statusLine: "Oldest client response: 6 days",
-        href: "/admin/kyc?status=changes_requested",
-        tone: "amber",
-      },
-      {
-        key: "overdue",
-        label: "Overdue Reviews",
-        value: String(overdue.length),
-        supportingMetric: "1 high-priority overdue",
-        statusLine: "Longest delay: 7 days",
-        href: "/admin/kyc?overdue=1",
-        tone: "red",
-      },
-      {
-        key: "risk",
-        label: "Elevated Risk",
-        value: String(elevated.length),
-        supportingMetric: "1 high-risk submission",
-        statusLine: "Senior review waiting",
-        href: "/admin/kyc?risk=elevated",
-        tone: "purple",
-      },
-      {
-        key: "approved",
-        label: "Approved This Month",
-        value: String(approved.length),
-        supportingMetric: "76% approval rate",
-        statusLine: "Average review: 1.9 days",
-        href: "/admin/kyc/reports",
-        tone: "green",
-      },
-      {
-        key: "expiring",
-        label: "Expiring Documents",
-        value: String(expiring.length),
-        supportingMetric: "1 already expired",
-        statusLine: "3 clients require refresh",
-        href: "/admin/kyc/expiring-documents",
-        tone: "orange",
-      },
-    ],
-    savedViews: [
-      { label: "Awaiting Review", href: "/admin/kyc?view=awaiting-review", count: pending.length },
-      { label: "Assigned to Me", href: "/admin/kyc?view=assigned-to-me", count: 2 },
-      { label: "Unassigned", href: "/admin/kyc?view=unassigned", count: 1 },
-      { label: "Overdue", href: "/admin/kyc?overdue=1", count: overdue.length },
-      { label: "Elevated Risk", href: "/admin/kyc?risk=elevated", count: elevated.length },
-      { label: "Changes Requested", href: "/admin/kyc?status=changes_requested", count: changes.length },
-      { label: "Expiring Documents", href: "/admin/kyc/expiring-documents", count: expiring.length },
-      { label: "Approved This Month", href: "/admin/kyc/reports", count: approved.length },
-    ],
-    submissions: allSubmissions,
-    permissionMatrix: KYC_PERMISSION_MATRIX,
-    reviewerRules: KYC_REVIEWER_RULES,
-  };
-}
-
-export async function getKycSubmissionDetail(submissionId: string) {
-  const liveSubmission = (await getLiveKycSubmissions()).find((submission) => submission.id === submissionId);
-  return liveSubmission ?? submissions.find((submission) => submission.id === submissionId) ?? null;
-}
-
-function getExpiringKycDocumentsSync() {
-  const today = new Date("2026-07-15T00:00:00.000Z");
-
+function expiringDocumentsFrom(submissions: KycSubmission[]) {
+  const now = Date.now();
   return submissions.flatMap((submission) =>
     submission.requirements.flatMap((requirement) =>
       requirement.documentVersions
         .filter((document) => document.expiryDate)
         .map((document) => {
           const expiry = new Date(`${document.expiryDate}T00:00:00.000Z`);
-          const daysRemaining = Math.ceil((expiry.getTime() - today.getTime()) / 86_400_000);
-
+          const daysRemaining = Math.ceil((expiry.getTime() - now) / DAY_MS);
           return {
             client: submission.clientName,
             document: document.filename,
@@ -933,7 +525,7 @@ function getExpiringKycDocumentsSync() {
             engagement: submission.engagementReference,
             kycStatus: KYC_STATUS_LABELS[submission.status],
             assignedReviewer: submission.assignedReviewer,
-            replacementStatus: requirement.status === "expired" ? "Replacement required" : "Current",
+            replacementStatus: daysRemaining < 0 ? "Replacement required" : "Current",
             riskLevel: KYC_RISK_LABELS[submission.riskLevel],
             href: `/admin/kyc/${submission.id}`,
           };
@@ -943,74 +535,80 @@ function getExpiringKycDocumentsSync() {
   );
 }
 
+export async function getKycDashboardData(): Promise<KycDashboardData> {
+  const allSubmissions = await listKycSubmissions();
+  const pending = allSubmissions.filter((submission) =>
+    ["submitted", "pending_review", "under_review", "resubmitted"].includes(submission.status),
+  );
+  const changes = allSubmissions.filter((submission) => submission.status === "changes_requested");
+  const overdue = allSubmissions.filter((submission) => submission.overdue);
+  const elevated = allSubmissions.filter((submission) => ["elevated", "high"].includes(submission.riskLevel));
+  const approved = allSubmissions.filter((submission) => submission.status === "approved");
+  const expiring = expiringDocumentsFrom(allSubmissions);
+  const unassigned = pending.filter((submission) => submission.assignedReviewer === "Unassigned").length;
+  const highRisk = elevated.filter((submission) => submission.riskLevel === "high").length;
+  const approvalRate = percent(approved.length, allSubmissions.length);
+  const expired = expiring.filter((document) => document.daysRemaining < 0).length;
+  const assigned = pending.length - unassigned;
+
+  return {
+    summaryCards: [
+      { key: "pending", label: "Pending Review", value: String(pending.length), supportingMetric: `${unassigned} unassigned`, statusLine: pending.length ? "Open the queue to continue reviews" : "No reviews are waiting", href: "/admin/kyc?view=awaiting-review", tone: "blue" },
+      { key: "changes", label: "Changes Requested", value: String(changes.length), supportingMetric: `${changes.reduce((total, item) => total + item.documentIssues.length, 0)} document issues`, statusLine: changes.length ? "Clients have updates to complete" : "No client updates are waiting", href: "/admin/kyc?status=changes_requested", tone: "amber" },
+      { key: "overdue", label: "Overdue Reviews", value: String(overdue.length), supportingMetric: `${overdue.filter((item) => item.riskLevel === "high").length} high risk`, statusLine: overdue.length ? "These reviews need attention" : "All reviews are within the target", href: "/admin/kyc?overdue=1", tone: "red" },
+      { key: "risk", label: "Elevated Risk", value: String(elevated.length), supportingMetric: `${highRisk} high risk`, statusLine: elevated.length ? "Senior review may be required" : "No elevated-risk submissions", href: "/admin/kyc?risk=elevated", tone: "purple" },
+      { key: "approved", label: "Approved", value: String(approved.length), supportingMetric: `${approvalRate}% approval rate`, statusLine: `${allSubmissions.length} total saved submissions`, href: "/admin/kyc/reports", tone: "green" },
+      { key: "expiring", label: "Expiring Documents", value: String(expiring.length), supportingMetric: `${expired} already expired`, statusLine: "Documents due within 60 days", href: "/admin/kyc/expiring-documents", tone: "orange" },
+    ],
+    savedViews: [
+      { label: "Awaiting Review", href: "/admin/kyc?view=awaiting-review", count: pending.length },
+      { label: "Assigned", href: "/admin/kyc?view=assigned", count: assigned },
+      { label: "Unassigned", href: "/admin/kyc?view=unassigned", count: unassigned },
+      { label: "Overdue", href: "/admin/kyc?overdue=1", count: overdue.length },
+      { label: "Elevated Risk", href: "/admin/kyc?risk=elevated", count: elevated.length },
+      { label: "Changes Requested", href: "/admin/kyc?status=changes_requested", count: changes.length },
+      { label: "Expiring Documents", href: "/admin/kyc/expiring-documents", count: expiring.length },
+      { label: "Approved", href: "/admin/kyc/reports", count: approved.length },
+    ],
+    submissions: allSubmissions,
+    permissionMatrix: KYC_PERMISSION_MATRIX,
+    reviewerRules: KYC_REVIEWER_RULES,
+  };
+}
+
+export async function getKycSubmissionDetail(submissionId: string) {
+  return (await listKycSubmissions()).find((submission) => submission.id === submissionId) ?? null;
+}
+
 export async function getExpiringKycDocuments() {
-  return getExpiringKycDocumentsSync();
+  return expiringDocumentsFrom(await listKycSubmissions());
 }
 
 export async function getKycTemplates() {
-  return [
-    {
-      name: "Corporate onboarding - tax advisory",
-      clientType: "Corporate",
-      requirements: 10,
-      mandatory: 8,
-      status: "Published",
-      owner: "Compliance admin",
-    },
-    {
-      name: "Returning client refresh",
-      clientType: "Returning client",
-      requirements: 7,
-      mandatory: 6,
-      status: "Published",
-      owner: "Engagement manager",
-    },
-    {
-      name: "Individual client onboarding",
-      clientType: "Individual",
-      requirements: 6,
-      mandatory: 5,
-      status: "Published",
-      owner: "Reviewer",
-    },
-    {
-      name: "High-risk senior review",
-      clientType: "Corporate",
-      requirements: 12,
-      mandatory: 11,
-      status: "Review",
-      owner: "Senior reviewer",
-    },
-  ];
+  await connectToDatabase();
+  const rows = await KycTemplateModel.find({ archivedAt: null })
+    .select("name clientType requirements mandatory status owner")
+    .sort({ status: 1, clientType: 1, name: 1 })
+    .lean()
+    .exec();
+  return rows.map((row) => ({
+    name: row.name,
+    clientType: row.clientType,
+    requirements: row.requirements,
+    mandatory: row.mandatory,
+    status: row.status,
+    owner: row.owner,
+  }));
 }
 
 export async function getKycRiskRules() {
-  return [
-    {
-      rule: "Beneficial owner is politically exposed",
-      risk: "High",
-      action: "Senior review required",
-      owner: "Senior reviewer",
-    },
-    {
-      rule: "Company name mismatch",
-      risk: "Elevated",
-      action: "Request replacement or escalate",
-      owner: "Compliance reviewer",
-    },
-    {
-      rule: "Expired mandatory identity document",
-      risk: "Standard",
-      action: "Request replacement",
-      owner: "Assigned reviewer",
-    },
-    {
-      rule: "Repeated replacement failure",
-      risk: "Elevated",
-      action: "Escalate review",
-      owner: "Engagement manager",
-    },
-  ];
+  await connectToDatabase();
+  const rows = await KycRiskRuleModel.find({ status: "active" })
+    .select("rule risk action owner")
+    .sort({ risk: -1, rule: 1 })
+    .lean()
+    .exec();
+  return rows.map((row) => ({ rule: row.rule, risk: row.risk, action: row.action, owner: row.owner }));
 }
 
 export type KycReviewerWorkloadRecord = {
@@ -1026,25 +624,15 @@ export type KycReviewerWorkloadRecord = {
   assigned: boolean;
 };
 
-function liveKycObjectId(submissionId: string) {
-  const value = submissionId.startsWith("client-kyc-")
-    ? submissionId.slice("client-kyc-".length)
-    : submissionId;
-  return Types.ObjectId.isValid(value) ? new Types.ObjectId(value) : null;
-}
-
 export async function getKycReviewerWorkload(submissionId?: string): Promise<KycReviewerWorkloadRecord[]> {
   await connectToDatabase();
-  const reviewers = (await UserModel.find({
-    roleKeys: "reviewer",
-    status: "active",
-    archivedAt: null,
-  })
+  const reviewers = (await UserModel.find({ roleKeys: "reviewer", status: "active", archivedAt: null })
     .select("email firstName lastName roleKeys")
     .lean()
     .exec()) as LiveKycUser[];
   const reviewerIds = reviewers.map((reviewer) => reviewer._id);
-  const overdueBefore = new Date(Date.now() - 2 * 86_400_000);
+  const overdueBefore = new Date(Date.now() - 2 * DAY_MS);
+  const submissionObjectId = submissionId ? liveKycObjectId(submissionId) : null;
   const [workloads, overdueWorkloads, selectedSubmission] = await Promise.all([
     ClientKycSubmissionModel.aggregate<{ _id: Types.ObjectId; count: number }>([
       { $match: { assignedReviewerUserId: { $in: reviewerIds }, status: { $in: ["submitted", "under_review", "changes_requested"] } } },
@@ -1054,8 +642,8 @@ export async function getKycReviewerWorkload(submissionId?: string): Promise<Kyc
       { $match: { assignedReviewerUserId: { $in: reviewerIds }, status: { $in: ["submitted", "under_review"] }, submittedAt: { $lt: overdueBefore } } },
       { $group: { _id: "$assignedReviewerUserId", count: { $sum: 1 } } },
     ]).exec(),
-    submissionId && liveKycObjectId(submissionId)
-      ? ClientKycSubmissionModel.findById(liveKycObjectId(submissionId)).select("assignedReviewerUserId").lean().exec()
+    submissionObjectId
+      ? ClientKycSubmissionModel.findById(submissionObjectId).select("assignedReviewerUserId").lean().exec()
       : null,
   ]);
   const workloadByReviewer = new Map(workloads.map((item) => [item._id.toString(), item.count]));
@@ -1067,7 +655,7 @@ export async function getKycReviewerWorkload(submissionId?: string): Promise<Kyc
       const currentReviews = workloadByReviewer.get(reviewer._id.toString()) ?? 0;
       return {
         id: reviewer._id.toString(),
-        name: liveUserName(reviewer),
+        name: userName(reviewer),
         email: reviewer.email,
         role: "Reviewer",
         currentReviews,
@@ -1085,21 +673,15 @@ export async function getKycReviewerWorkload(submissionId?: string): Promise<Kyc
     });
 }
 
-export async function assignKycReviewer(
-  submissionId: string,
-  reviewerUserId: string,
-  actor: Principal,
-) {
+export async function assignKycReviewer(submissionId: string, reviewerUserId: string, actor: Principal) {
   assertPermission(actor, "kyc.assign");
   const submissionObjectId = liveKycObjectId(submissionId);
-  if (!submissionObjectId || !Types.ObjectId.isValid(reviewerUserId) || !Types.ObjectId.isValid(actor.id)) {
-    return false;
-  }
+  if (!submissionObjectId || !Types.ObjectId.isValid(reviewerUserId) || !Types.ObjectId.isValid(actor.id)) return false;
   await connectToDatabase();
   const [submission, reviewer] = await Promise.all([
     ClientKycSubmissionModel.findById(submissionObjectId).exec(),
     UserModel.findOne({ _id: reviewerUserId, roleKeys: "reviewer", status: "active", archivedAt: null })
-      .select("email firstName lastName")
+      .select("email firstName lastName roleKeys")
       .lean()
       .exec(),
   ]);
@@ -1129,7 +711,7 @@ export async function assignKycReviewer(
       resourceType: "ClientKycSubmission",
       resourceId: submission._id.toString(),
       previousValues: { reviewerUserId: previousReviewerUserId },
-      newValues: { reviewerUserId, reviewerName: liveUserName(reviewer as LiveKycUser) },
+      newValues: { reviewerUserId, reviewerName: userName(reviewer as LiveKycUser) },
     }),
   ]);
   return true;
@@ -1144,26 +726,20 @@ export async function reviewKycRequirement(input: {
 }) {
   const submissionObjectId = liveKycObjectId(input.submissionId);
   if (!submissionObjectId || !Types.ObjectId.isValid(input.actor.id)) return false;
-  const expectedPrefix = `live-${submissionObjectId.toString()}-`;
-  if (!input.requirementId.startsWith(expectedPrefix)) return false;
+  if (!input.requirementId.startsWith(`live-${submissionObjectId.toString()}-`)) return false;
   await connectToDatabase();
   const submission = await ClientKycSubmissionModel.findById(submissionObjectId).exec();
   if (!submission) return false;
 
-  const reviewedAt = new Date();
-  const previousIndex = submission.requirementReviews.findIndex(
-    (review) => review.requirementId === input.requirementId,
-  );
-  const previous = previousIndex >= 0
-    ? submission.requirementReviews[previousIndex]
-    : undefined;
+  const previousIndex = submission.requirementReviews.findIndex((review) => review.requirementId === input.requirementId);
+  const previous = previousIndex >= 0 ? submission.requirementReviews[previousIndex] : undefined;
   if (previousIndex >= 0) submission.requirementReviews.splice(previousIndex, 1);
   submission.requirementReviews.push({
     requirementId: input.requirementId,
     decision: input.decision,
     note: input.note,
     reviewedByUserId: new Types.ObjectId(input.actor.id),
-    reviewedAt,
+    reviewedAt: new Date(),
   });
   submission.status = ["replacement_requested", "rejected"].includes(input.decision)
     ? "changes_requested"
@@ -1195,16 +771,23 @@ export async function reviewKycRequirement(input: {
 }
 
 export async function getKycReports() {
+  const [dashboard, reviewers] = await Promise.all([getKycDashboardData(), getKycReviewerWorkload()]);
+  const submissions = dashboard.submissions;
+  const pending = submissions.filter((item) => ["pending_review", "under_review"].includes(item.status)).length;
+  const approved = submissions.filter((item) => item.status === "approved").length;
+  const overdue = submissions.filter((item) => item.overdue).length;
+  const changes = submissions.filter((item) => item.status === "changes_requested").length;
+  const highRisk = submissions.filter((item) => item.riskLevel === "high").length;
+  const expired = expiringDocumentsFrom(submissions).filter((item) => item.daysRemaining < 0).length;
   return [
-    { name: "Pending KYC Reviews", metric: "3 open", href: "/admin/kyc?view=awaiting-review" },
-    { name: "KYC Status", metric: "4 active records", href: "/admin/kyc" },
-    { name: "KYC Approval Rate", metric: "76%", href: "/admin/reports" },
-    { name: "Review Turnaround Time", metric: "1.9 days", href: "/admin/reports" },
-    { name: "KYC SLA Performance", metric: "2 overdue", href: "/admin/kyc?overdue=1" },
-    { name: "Changes Requested", metric: "1 active", href: "/admin/kyc?status=changes_requested" },
-    { name: "Expired Documents", metric: "1 expired", href: "/admin/kyc/expiring-documents" },
-    { name: "High-Risk Submissions", metric: "1 high", href: "/admin/kyc?risk=high" },
-    { name: "Reviewer Workload", metric: "3 reviewers", href: "/admin/kyc/reviewers" },
+    { name: "Pending KYC Reviews", metric: `${pending} open`, href: "/admin/kyc?view=awaiting-review" },
+    { name: "KYC Status", metric: `${submissions.length} saved records`, href: "/admin/kyc" },
+    { name: "KYC Approval Rate", metric: `${percent(approved, submissions.length)}%`, href: "/admin/reports" },
+    { name: "KYC SLA Performance", metric: `${overdue} overdue`, href: "/admin/kyc?overdue=1" },
+    { name: "Changes Requested", metric: `${changes} active`, href: "/admin/kyc?status=changes_requested" },
+    { name: "Expired Documents", metric: `${expired} expired`, href: "/admin/kyc/expiring-documents" },
+    { name: "High-Risk Submissions", metric: `${highRisk} high`, href: "/admin/kyc?risk=high" },
+    { name: "Reviewer Workload", metric: `${reviewers.length} reviewers`, href: "/admin/kyc/reviewers" },
   ];
 }
 

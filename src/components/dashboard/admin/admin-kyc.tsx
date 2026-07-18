@@ -1,5 +1,5 @@
 import { KycReviewCentre } from "@/components/dashboard/kyc/kyc-review-centre";
-import { getKycDashboardData } from "@/repositories/kyc-repository";
+import { getKycDashboardData } from "@/features/kyc/service";
 
 export async function AdminKyc() {
   const data = await getKycDashboardData();

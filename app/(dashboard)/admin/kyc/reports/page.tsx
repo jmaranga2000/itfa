@@ -1,5 +1,5 @@
 import { KycSimpleTablePage } from "@/components/dashboard/kyc/kyc-support-pages";
-import { getKycReports } from "@/repositories/kyc-repository";
+import { getKycReports } from "@/features/kyc/service";
 
 export default async function AdminKycReportsPage() {
   const rows = await getKycReports();

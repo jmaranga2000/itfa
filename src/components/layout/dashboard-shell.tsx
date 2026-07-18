@@ -45,6 +45,7 @@ import {
   X,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
+import { AdminGlobalSearch } from "@/components/dashboard/admin/admin-global-search";
 import { LiveNotificationBell } from "@/components/dashboard/communication/live-notification-bell";
 import { buttonClassName } from "@/components/ui/button";
 import { signOutAction } from "@/features/auth/actions";
@@ -444,31 +445,33 @@ export function DashboardShell({
             </div>
 
             <div className="hidden min-w-0 flex-1 justify-center px-4 xl:flex">
-              <label className="relative w-full max-w-xl">
-                <span className="sr-only">Go to a page in {roleLabel}</span>
-                <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <select
-                  className="h-10 w-full appearance-none rounded-md border border-border bg-background pl-9 pr-8 text-sm text-foreground outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                  onChange={(event) => {
-                    if (event.target.value) {
-                      router.push(event.target.value);
-                    }
-                  }}
-                  value=""
-                >
-                  <option value="">Go to a page...</option>
-                  {navItems.map((group) => (
-                    <optgroup key={group.label} label={group.label}>
-                      {(group.children ?? []).filter((item) => item.href).map((item) => (
-                        <option key={item.href} value={item.href}>
-                          {item.label}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
-                <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              </label>
+              {portal === "admin" ? (
+                <AdminGlobalSearch />
+              ) : (
+                <label className="relative w-full max-w-xl">
+                  <span className="sr-only">Go to a page in {roleLabel}</span>
+                  <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <select
+                    className="h-10 w-full appearance-none rounded-md border border-border bg-background pl-9 pr-8 text-sm text-foreground outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                    onChange={(event) => {
+                      if (event.target.value) router.push(event.target.value);
+                    }}
+                    value=""
+                  >
+                    <option value="">Go to a page...</option>
+                    {navItems.map((group) => (
+                      <optgroup key={group.label} label={group.label}>
+                        {(group.children ?? []).filter((item) => item.href).map((item) => (
+                          <option key={item.href} value={item.href}>
+                            {item.label}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                  <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                </label>
+              )}
             </div>
 
             <div className="flex shrink-0 items-center gap-2">

@@ -7,6 +7,17 @@ const clientKycDocumentSchema = new Schema(
     contentType: { type: String, required: true },
     size: { type: Number, required: true },
     uploadedAt: { type: Date, default: Date.now },
+    documentType: { type: String, default: "", trim: true },
+    documentDate: { type: Date, default: null },
+    expiryDate: { type: Date, default: null, index: true },
+    version: { type: Number, min: 1, default: 1 },
+    checksum: { type: String, default: "", trim: true },
+    reviewStatus: {
+      type: String,
+      enum: ["submitted", "approved", "replacement_requested", "rejected"],
+      default: "submitted",
+    },
+    rejectionReason: { type: String, default: "", trim: true },
   },
   { _id: true },
 );

@@ -30,7 +30,7 @@ import {
   getKycClientTypeLabel,
   type KycRequirement,
   type KycSubmission,
-} from "@/repositories/kyc-repository";
+} from "@/features/kyc/service";
 
 function dateLabel(value: string | null) {
   if (!value) {

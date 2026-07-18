@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { KycReviewWorkspace } from "@/components/dashboard/kyc/kyc-review-workspace";
 import { requireStaffRoute } from "@/features/staff/server";
-import { getKycSubmissionDetail } from "@/repositories/kyc-repository";
+import { getKycSubmissionDetail } from "@/features/kyc/service";
 import { canStaffAccessKycSubmission } from "@/repositories/request-onboarding-repository";
 
 export default async function StaffKycSubmissionPage({

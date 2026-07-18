@@ -1,5 +1,5 @@
 import { KycSimpleTablePage } from "@/components/dashboard/kyc/kyc-support-pages";
-import { getExpiringKycDocuments } from "@/repositories/kyc-repository";
+import { getExpiringKycDocuments } from "@/features/kyc/service";
 
 export default async function AdminKycExpiringDocumentsPage() {
   const rows = await getExpiringKycDocuments();

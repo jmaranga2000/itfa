@@ -28,7 +28,7 @@ import {
   getKycClientTypeLabel,
   type KycDashboardData,
   type KycSubmission,
-} from "@/repositories/kyc-repository";
+} from "@/features/kyc/service";
 
 const summaryIcons = {
   pending: ClipboardCheck,
