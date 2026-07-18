@@ -32,6 +32,8 @@ export type RequestStaffAssignmentRecord = {
   assignedAt: string;
 };
 
+const ASSIGNABLE_REQUEST_ROLES = ["super_admin", "admin", ...STAFF_ACCOUNT_ROLES] as const;
+
 function staffName(staff: { firstName?: string; lastName?: string; email: string }) {
   return `${staff.firstName ?? ""} ${staff.lastName ?? ""}`.trim() || staff.email;
 }
@@ -105,10 +107,10 @@ export async function assignStaffToRequest(
 
   const staff = await UserModel.findOne({
     _id: new Types.ObjectId(staffUserId),
-    roleKeys: { $in: STAFF_ACCOUNT_ROLES },
+    roleKeys: { $in: ASSIGNABLE_REQUEST_ROLES },
     status: "active",
   })
-    .select("firstName lastName email")
+    .select("firstName lastName email roleKeys")
     .lean()
     .exec();
   if (!staff) return false;
@@ -156,7 +158,9 @@ export async function assignStaffToRequest(
     description: `${reference}: ${service}. Open the request to review the client details and next action.`,
     relatedModule: "engagements",
     relatedRecordId: requestId,
-    actionUrl: `/staff/requests/${requestId}`,
+    actionUrl: staff.roleKeys.some((role) => role === "admin" || role === "super_admin")
+      ? `/admin/requests/${requestId}`
+      : `/staff/requests/${requestId}`,
     createdByUserId: actor.id,
   });
   if (databaseRequest) {

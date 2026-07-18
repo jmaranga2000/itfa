@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, Clock, Link2 } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, Clock, Link2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { buttonClassName } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -78,20 +78,32 @@ function daysOverdue(value: string | null) {
   return Math.max(0, Math.ceil((Date.now() - new Date(value).getTime()) / 86_400_000));
 }
 
-export function WorkflowTasks({ tasks }: { tasks: WorkflowTaskListItem[] }) {
+export function WorkflowTasks({
+  backHref,
+  backLabel,
+  tasks,
+}: {
+  backHref: string;
+  backLabel: string;
+  tasks: WorkflowTaskListItem[];
+}) {
   const overdue = tasks.filter((task) => task.status === "overdue");
   const blocked = tasks.filter((task) => task.status === "blocked");
   const waiting = tasks.filter((task) => task.status.startsWith("waiting"));
 
   return (
     <div className="grid gap-5">
-      <section className="rounded-md border border-border bg-card p-5">
-        <h1 className="mt-3 text-2xl font-bold tracking-normal text-foreground">
-          Tasks
-        </h1>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-          See what needs doing, who is responsible and which tasks are delayed or blocked.
-        </p>
+      <section className="flex flex-col justify-between gap-4 rounded-md border border-border bg-card p-5 sm:flex-row sm:items-start">
+        <div>
+          <h1 className="text-2xl font-bold tracking-normal text-foreground">Tasks</h1>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+            See what needs doing, who is responsible and which tasks are delayed or blocked.
+          </p>
+        </div>
+        <Link className={buttonClassName({ variant: "secondary", className: "shrink-0" })} href={backHref}>
+          <ArrowLeft aria-hidden="true" className="h-4 w-4" />
+          {backLabel}
+        </Link>
       </section>
 
       <section className="grid gap-px overflow-hidden rounded-md border border-border bg-border md:grid-cols-4">
@@ -111,12 +123,12 @@ export function WorkflowTasks({ tasks }: { tasks: WorkflowTaskListItem[] }) {
       </section>
 
       <section>
-        <Card>
+        <Card className="min-w-0 max-w-full overflow-hidden">
           <CardHeader>
             <CardTitle>Task queue</CardTitle>
             <CardDescription>Compact table for assignment, dependency and status review.</CardDescription>
           </CardHeader>
-          <CardContent className="overflow-x-auto">
+          <CardContent className="block w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain p-0 [scrollbar-gutter:stable]">
             <Table className="min-w-[920px]">
               <TableHeader>
                 <TableRow>
@@ -127,6 +139,7 @@ export function WorkflowTasks({ tasks }: { tasks: WorkflowTaskListItem[] }) {
                   <TableHead>Status</TableHead>
                   <TableHead>Due</TableHead>
                   <TableHead>Signals</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -160,6 +173,12 @@ export function WorkflowTasks({ tasks }: { tasks: WorkflowTaskListItem[] }) {
                           <Badge tone="red">{daysOverdue(task.dueDate)}d overdue</Badge>
                         ) : null}
                       </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={task.href}>
+                        Continue work
+                        <ArrowRight aria-hidden="true" className="h-4 w-4" />
+                      </Link>
                     </TableCell>
                   </TableRow>
                 ))}

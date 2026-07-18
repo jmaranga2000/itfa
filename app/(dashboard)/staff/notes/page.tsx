@@ -1,9 +1,9 @@
 import { StaffNotes } from "@/components/dashboard/staff/staff-notes";
 import { requireStaffRoute } from "@/features/staff/server";
-import { getStaffWorkData } from "@/repositories/staff-work-repository";
+import { listStaffNotes } from "@/repositories/staff-note-repository";
 
-export default async function StaffNotesPage() {
+export default async function StaffNotesPage({ searchParams }: { searchParams: Promise<{ archived?: string }> }) {
   const { principal } = await requireStaffRoute("notes");
-  const data = await getStaffWorkData(principal);
-  return <StaffNotes notes={data.notes} />;
+  const [notes, query] = await Promise.all([listStaffNotes(principal), searchParams]);
+  return <StaffNotes archived={query.archived === "1"} notes={notes} />;
 }

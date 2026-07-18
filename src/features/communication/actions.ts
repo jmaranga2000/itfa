@@ -21,6 +21,7 @@ import {
   createAdminNotification,
   updateAdminNotification,
 } from "@/repositories/admin-notification-repository";
+import { getWorkflowForPrincipal } from "@/repositories/workflow-repository";
 
 const adminNotificationSchema = z.object({
   title: z.string().trim().min(3).max(180),
@@ -41,6 +42,17 @@ const directMessageSchema = messageSchema.extend({
   clientUserId: z.string().trim().min(1),
   subject: z.string().trim().min(3).max(180),
 });
+
+const workflowMessageSchema = messageSchema.extend({
+  workflowId: z.string().trim().min(1),
+  subject: z.string().trim().min(3).max(180),
+});
+
+export type WorkflowMessageState = {
+  status: "idle" | "success" | "error";
+  message: string;
+  conversationId?: string;
+};
 
 function messageReturnPath(value: FormDataEntryValue | null, conversationId: string) {
   const path = String(value ?? "");
@@ -195,4 +207,49 @@ export async function createStaffClientConversationAction(formData: FormData) {
   revalidatePath("/client/messages");
   revalidatePath("/client/notifications");
   redirect(`/staff/messages?conversation=${conversationId}&sent=1`);
+}
+
+export async function createWorkflowClientConversationAction(
+  _previousState: WorkflowMessageState,
+  formData: FormData,
+): Promise<WorkflowMessageState> {
+  const sender = await requirePermission("messages.send");
+  const parsed = workflowMessageSchema.safeParse({
+    workflowId: formData.get("workflowId"),
+    subject: formData.get("subject"),
+    body: formData.get("body"),
+  });
+
+  if (!parsed.success) {
+    return { status: "error", message: "Add a subject and message before sending." };
+  }
+
+  const workflow = await getWorkflowForPrincipal(sender, parsed.data.workflowId);
+  if (!workflow?.clientUserId) {
+    return { status: "error", message: "This engagement does not have a client account to message." };
+  }
+
+  try {
+    const conversationId = await createDirectClientConversation({
+      clientUserId: workflow.clientUserId,
+      sender,
+      subject: parsed.data.subject,
+      body: parsed.data.body,
+      engagementId: workflow.id,
+      relatedModule: "engagements",
+      relatedRecordId: workflow.id,
+    });
+    revalidatePath("/admin/messages");
+    revalidatePath("/client/messages");
+    revalidatePath("/client/notifications");
+    revalidatePath(`/admin/workflows/${workflow.id}`);
+    return {
+      status: "success",
+      message: `Message sent to ${workflow.clientName}.`,
+      conversationId,
+    };
+  } catch (error) {
+    console.error("Unable to send workflow client message.", error);
+    return { status: "error", message: "The message could not be sent. Please try again." };
+  }
 }

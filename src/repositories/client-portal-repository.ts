@@ -75,7 +75,13 @@ export async function getClientDocuments(principal: Principal): Promise<ClientDo
   if (!Types.ObjectId.isValid(principal.id)) return [];
   const [workflows, storedDocuments] = await Promise.all([
     listWorkflowsForPrincipal(principal),
-    ClientDocumentModel.find({ clientUserId: new Types.ObjectId(principal.id) }).sort({ uploadedAt: -1 }).lean().exec(),
+    ClientDocumentModel.find({
+      clientUserId: new Types.ObjectId(principal.id),
+      $or: [
+        { documentKind: { $in: ["general", "signed_engagement_letter", "final_deliverable"] } },
+        { documentKind: "draft_deliverable", status: { $in: ["approved", "final"] } },
+      ],
+    }).sort({ uploadedAt: -1 }).lean().exec(),
   ]);
   const workflowById = new Map(workflows.map((workflow) => [workflow.id, workflow]));
   const stored = (storedDocuments as unknown as RawDocument[]).map((document): ClientDocumentRecord => ({

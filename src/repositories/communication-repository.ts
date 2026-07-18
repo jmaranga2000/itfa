@@ -196,6 +196,9 @@ export type CreateDirectConversationInput = {
   sender: Principal;
   subject: string;
   body: string;
+  engagementId?: string | null;
+  relatedModule?: CommunicationModule;
+  relatedRecordId?: string | null;
 };
 
 export type PublishAnnouncementInput = {
@@ -763,7 +766,7 @@ export async function createDirectClientConversation(input: CreateDirectConversa
   const now = new Date();
   const conversation = await CommunicationConversationModel.create({
     title: input.subject,
-    type: "direct",
+    type: input.engagementId ? "engagement" : "direct",
     status: "waiting_for_client",
     participants: [
       {
@@ -781,8 +784,9 @@ export async function createDirectClientConversation(input: CreateDirectConversa
         lastReadAt: null,
       },
     ],
-    relatedModule: "messages",
-    relatedRecordId: null,
+    relatedModule: input.relatedModule ?? "messages",
+    relatedRecordId: input.relatedRecordId ?? null,
+    engagementId: toObjectId(input.engagementId),
     actionUrl: "/client/messages",
     lastMessagePreview: "",
     lastMessageAt: null,

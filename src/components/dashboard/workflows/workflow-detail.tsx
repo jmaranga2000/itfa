@@ -25,6 +25,9 @@ import {
 import type { WorkflowInstanceRecord } from "@/repositories/workflow-repository";
 import type { WorkflowPriority } from "@/features/workflows/types";
 import { cn } from "@/lib/utils";
+import { WorkflowMessageDialog } from "@/components/dashboard/workflows/workflow-message-dialog";
+import { EngagementWorkspace } from "@/components/dashboard/engagements/engagement-workspace";
+import type { EngagementDocumentRecord } from "@/repositories/engagement-workspace-repository";
 
 function dateLabel(value: string | null) {
   if (!value) {
@@ -177,12 +180,18 @@ function TransitionPanel({ workflow }: { workflow: WorkflowInstanceRecord }) {
 
 export function WorkflowDetail({
   workflow,
+  documents,
   transitionError,
   transitioned = false,
+  workspaceError,
+  workspaceNotice,
 }: {
   workflow: WorkflowInstanceRecord;
+  documents: EngagementDocumentRecord[];
   transitionError?: string;
   transitioned?: boolean;
+  workspaceError?: string;
+  workspaceNotice?: string;
 }) {
   const messageHref = workflow.clientUserId
     ? `/admin/messages/new?clientId=${encodeURIComponent(workflow.clientUserId)}`
@@ -241,12 +250,12 @@ export function WorkflowDetail({
               <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href="/admin/active-engagements">
                 Back to active work
               </Link>
-              <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href="/admin/tasks">
+              <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={`/admin/tasks?returnTo=${encodeURIComponent(`/admin/workflows/${workflow.id}`)}`}>
                 Open task queue
               </Link>
-              <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={messageHref}>
-                Message client
-              </Link>
+              {workflow.clientUserId ? (
+                <WorkflowMessageDialog clientName={workflow.clientName} reference={workflow.reference} workflowId={workflow.id} />
+              ) : null}
             </div>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
               {workflow.serviceName} · {workflow.templateName} v{workflow.templateVersion}
@@ -269,6 +278,14 @@ export function WorkflowDetail({
       </section>
 
       <StageTracker workflow={workflow} />
+
+      <EngagementWorkspace
+        documents={documents}
+        error={workspaceError}
+        notice={workspaceNotice}
+        portal="admin"
+        workflow={workflow}
+      />
 
       <section className="grid min-w-0 max-w-full gap-5">
         <div className="grid min-w-0 gap-5">

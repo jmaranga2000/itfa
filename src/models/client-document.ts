@@ -8,7 +8,7 @@ const clientDocumentSchema = new Schema(
     engagementLetterId: { type: Schema.Types.ObjectId, default: null, index: true },
     documentKind: {
       type: String,
-      enum: ["general", "signed_engagement_letter"],
+      enum: ["general", "signed_engagement_letter", "draft_deliverable", "final_deliverable", "technical_evidence"],
       default: "general",
       index: true,
     },
