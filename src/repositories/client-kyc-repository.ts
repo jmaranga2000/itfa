@@ -3,6 +3,20 @@ import { getQuestionnaireProgress } from "@/features/kyc/client-questionnaire";
 import { connectToDatabase } from "@/lib/db/mongoose";
 import { ClientKycSubmissionModel } from "@/models/client-kyc-submission";
 
+export const CLIENT_KYC_DOCUMENT_TYPES = [
+  "identity_card",
+  "tax_pin",
+  "proof_of_location",
+] as const;
+
+export type ClientKycDocumentType = (typeof CLIENT_KYC_DOCUMENT_TYPES)[number];
+
+export const CLIENT_KYC_DOCUMENT_LABELS: Record<ClientKycDocumentType, string> = {
+  identity_card: "Identity card",
+  tax_pin: "Tax PIN certificate",
+  proof_of_location: "Proof of location",
+};
+
 export type ClientKycDocument = {
   id: string;
   r2Key: string;
@@ -10,6 +24,9 @@ export type ClientKycDocument = {
   contentType: string;
   size: number;
   uploadedAt: string;
+  documentType: ClientKycDocumentType;
+  version: number;
+  reviewStatus: "submitted" | "approved" | "replacement_requested" | "rejected";
 };
 
 export type ClientKycSubmission = {
@@ -34,6 +51,9 @@ type StoredSubmission = {
     contentType?: string;
     size?: number;
     uploadedAt?: Date;
+    documentType?: string;
+    version?: number;
+    reviewStatus?: ClientKycDocument["reviewStatus"];
   }>;
   status?: ClientKycSubmission["status"];
   submittedAt?: Date | null;
@@ -59,6 +79,27 @@ function asAnswers(value: unknown): Record<string, string> {
   return Object.fromEntries(
     Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
   );
+}
+
+export function resolveClientKycDocumentType(
+  document: Pick<ClientKycDocument, "documentType" | "filename"> | { documentType?: string; filename?: string },
+): ClientKycDocumentType {
+  const value = `${document.documentType ?? ""} ${document.filename ?? ""}`.toLowerCase();
+  if (value.includes("tax") || value.includes("kra") || value.includes("pin")) return "tax_pin";
+  if (value.includes("location") || value.includes("address") || value.includes("utility")) return "proof_of_location";
+  return "identity_card";
+}
+
+export function hasClientKycDocument(
+  submission: Pick<ClientKycSubmission, "documents">,
+  documentType: ClientKycDocumentType,
+) {
+  return submission.documents.some((document) => resolveClientKycDocumentType(document) === documentType);
+}
+
+export function hasRequiredClientKycDocuments(submission: Pick<ClientKycSubmission, "documents">) {
+  return hasClientKycDocument(submission, "identity_card")
+    && hasClientKycDocument(submission, "tax_pin");
 }
 
 function emptySubmission(): ClientKycSubmission {
@@ -95,6 +136,9 @@ function toSubmission(record: StoredSubmission | null): ClientKycSubmission {
       contentType: document.contentType ?? "application/octet-stream",
       size: document.size ?? 0,
       uploadedAt: document.uploadedAt?.toISOString() ?? new Date(0).toISOString(),
+      documentType: resolveClientKycDocumentType(document),
+      version: document.version ?? 1,
+      reviewStatus: document.reviewStatus ?? "submitted",
     })),
     status: record.status ?? "draft",
     submittedAt: record.submittedAt?.toISOString() ?? null,
@@ -151,23 +195,32 @@ export async function saveClientKycAnswers(userId: string, answers: Record<strin
   return getClientKycSubmission(userId);
 }
 
-export async function addClientKycDocument(
+export async function addClientKycDocuments(
   userId: string,
-  document: Omit<ClientKycDocument, "id" | "uploadedAt">,
+  documents: Array<Pick<ClientKycDocument, "r2Key" | "filename" | "contentType" | "size" | "documentType">>,
 ) {
   await ensureSubmission(userId);
+
+  const current = await getClientKycSubmission(userId);
+  const nextDocuments = documents.map((document) => ({
+    r2Key: document.r2Key,
+    filename: document.filename,
+    contentType: document.contentType,
+    size: document.size,
+    documentType: document.documentType,
+    version: current.documents.filter(
+      (item) => resolveClientKycDocumentType(item) === document.documentType,
+    ).length + 1,
+    uploadedAt: new Date(),
+    reviewStatus: "submitted" as const,
+    rejectionReason: "",
+  }));
 
   await ClientKycSubmissionModel.updateOne(
     { userId: asObjectId(userId) },
     {
       $push: {
-        documents: {
-          r2Key: document.r2Key,
-          filename: document.filename,
-          contentType: document.contentType,
-          size: document.size,
-          uploadedAt: new Date(),
-        },
+        documents: { $each: nextDocuments },
       },
     },
   ).exec();
@@ -182,11 +235,15 @@ export async function submitClientKycForReview(userId: string) {
     return { submitted: false, reason: "incomplete" as const };
   }
 
+  if (!hasRequiredClientKycDocuments(submission)) {
+    return { submitted: false, reason: "missing-required-documents" as const };
+  }
+
   if (["submitted", "under_review", "approved"].includes(submission.status)) {
     return {
       submitted: true,
       reason: "already-submitted" as const,
-      documentsMissing: submission.documents.length === 0,
+      documentsMissing: !hasClientKycDocument(submission, "proof_of_location"),
     };
   }
 
@@ -198,6 +255,6 @@ export async function submitClientKycForReview(userId: string) {
   return {
     submitted: true,
     reason: "submitted" as const,
-    documentsMissing: submission.documents.length === 0,
+    documentsMissing: !hasClientKycDocument(submission, "proof_of_location"),
   };
 }

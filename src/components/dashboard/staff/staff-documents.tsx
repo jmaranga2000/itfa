@@ -10,7 +10,7 @@ import {
 import type { StaffDocumentRecord } from "@/repositories/staff-work-repository";
 
 export function StaffDocuments({ documents }: { documents: StaffDocumentRecord[] }) {
-  const awaitingReview = documents.filter((document) => document.status === "pending_review").length;
+  const awaitingReview = documents.filter((document) => ["pending_review", "submitted", "under_review"].includes(document.status)).length;
   const approved = documents.filter((document) => ["approved", "final"].includes(document.status)).length;
 
   return (
@@ -53,7 +53,7 @@ export function StaffDocuments({ documents }: { documents: StaffDocumentRecord[]
                   <TableCell>{staffStatusLabel(document.visibility)}</TableCell>
                   <TableCell>{staffDate(document.uploadedAt)}</TableCell>
                   <TableCell className="text-right">
-                    <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={`/staff/engagements/${document.workflowId}`}>
+                    <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={document.href}>
                       Open
                       <ArrowRight aria-hidden="true" className="h-4 w-4" />
                     </Link>

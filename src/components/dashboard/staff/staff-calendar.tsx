@@ -43,7 +43,7 @@ export function StaffCalendar({ events }: { events: StaffCalendarRecord[] }) {
                   <p className="mt-1 text-sm text-muted-foreground">{event.clientName}</p>
                 </div>
               </div>
-              <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={`/staff/engagements/${event.workflowId}`}>
+              <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={event.href}>
                 Open
                 <ArrowRight aria-hidden="true" className="h-4 w-4" />
               </Link>

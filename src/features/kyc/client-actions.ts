@@ -7,9 +7,13 @@ import { getCurrentUser } from "@/features/auth/server";
 import { CLIENT_KYC_QUESTIONS } from "@/features/kyc/client-questionnaire";
 import { getR2Client, getR2Configuration } from "@/lib/r2";
 import {
-  addClientKycDocument,
+  CLIENT_KYC_DOCUMENT_LABELS,
+  addClientKycDocuments,
+  getClientKycSubmission,
+  hasClientKycDocument,
   saveClientKycAnswers,
   submitClientKycForReview,
+  type ClientKycDocumentType,
 } from "@/repositories/client-kyc-repository";
 import { getClientKycAccess, notifyKycSubmitted } from "@/repositories/request-onboarding-repository";
 
@@ -46,45 +50,49 @@ export async function saveClientKycQuestionnaireAction(formData: FormData) {
 
 export async function uploadClientKycReplacementAction(formData: FormData) {
   const principal = await requireClientKycUser();
-  const document = formData.get("replacementDocument");
+  const submission = await getClientKycSubmission(principal.id);
+  const inputs: Array<{ field: string; type: ClientKycDocumentType; required: boolean }> = [
+    { field: "identityDocument", type: "identity_card", required: true },
+    { field: "taxPinDocument", type: "tax_pin", required: true },
+    { field: "locationDocument", type: "proof_of_location", required: false },
+  ];
+  const uploads = inputs.flatMap((input) => {
+    const value = formData.get(input.field);
+    return value instanceof File && value.size > 0 ? [{ ...input, file: value }] : [];
+  });
 
-  if (!(document instanceof File) || document.size === 0) {
-    redirect("/client/kyc/upload-replacement?error=missing-file");
+  for (const input of inputs.filter((item) => item.required)) {
+    const included = uploads.some((upload) => upload.type === input.type);
+    if (!included && !hasClientKycDocument(submission, input.type)) {
+      redirect(`/client/kyc/upload-replacement?error=${input.type === "identity_card" ? "identity-required" : "tax-required"}`);
+    }
   }
-
-  if (document.size > MAX_DOCUMENT_SIZE) {
+  if (uploads.length === 0) redirect("/client/kyc/upload-replacement?error=missing-file");
+  if (uploads.some((upload) => upload.file.size > MAX_DOCUMENT_SIZE)) {
     redirect("/client/kyc/upload-replacement?error=file-too-large");
   }
-
-  if (!allowedDocumentTypes.has(document.type)) {
+  if (uploads.some((upload) => !allowedDocumentTypes.has(upload.file.type))) {
     redirect("/client/kyc/upload-replacement?error=unsupported-file");
   }
 
-  const filename = document.name.replace(/[^a-zA-Z0-9._-]/g, "-") || "replacement-document";
-  const key = `kyc/${principal.id}/replacements/${randomUUID()}-${filename}`;
-
   try {
     const configuration = getR2Configuration();
-    const content = Buffer.from(await document.arrayBuffer());
-
-    await getR2Client().send(
-      new PutObjectCommand({
+    const storedDocuments = await Promise.all(uploads.map(async ({ file, type }) => {
+      const filename = file.name.replace(/[^a-zA-Z0-9._-]/g, "-") || `${type}-document`;
+      const key = `kyc/${principal.id}/${type}/${randomUUID()}-${filename}`;
+      await getR2Client().send(new PutObjectCommand({
         Bucket: configuration.bucketName,
         Key: key,
-        Body: content,
-        ContentType: document.type,
+        Body: Buffer.from(await file.arrayBuffer()),
+        ContentType: file.type,
         ContentDisposition: `attachment; filename="${filename}"`,
-      }),
-    );
-
-    await addClientKycDocument(principal.id, {
-      r2Key: key,
-      filename,
-      contentType: document.type,
-      size: document.size,
-    });
+        Metadata: { documentType: type, documentLabel: CLIENT_KYC_DOCUMENT_LABELS[type] },
+      }));
+      return { r2Key: key, filename, contentType: file.type, size: file.size, documentType: type };
+    }));
+    await addClientKycDocuments(principal.id, storedDocuments);
   } catch (error) {
-    console.error("Unable to upload the client KYC replacement document.", error);
+    console.error("Unable to upload the client KYC documents.", error);
     redirect("/client/kyc/upload-replacement?error=upload-failed");
   }
 
@@ -96,7 +104,7 @@ export async function submitClientKycForReviewAction() {
   const result = await submitClientKycForReview(principal.id);
 
   if (!result.submitted) {
-    redirect("/client/kyc?error=complete-questionnaire");
+    redirect(`/client/kyc?error=${result.reason === "missing-required-documents" ? "required-documents" : "complete-questionnaire"}`);
   }
 
   if (result.reason === "submitted") {

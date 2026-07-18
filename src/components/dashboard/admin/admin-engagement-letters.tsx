@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { AdminPageSurface } from "@/components/dashboard/admin/admin-page-surface";
 import { EngagementLetterDocument } from "@/components/dashboard/engagement-letters/engagement-letter-document";
+import { EngagementLetterFiles } from "@/components/dashboard/engagement-letters/engagement-letter-files";
 import { Badge } from "@/components/ui/badge";
 import { buttonClassName } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -143,6 +144,8 @@ export function AdminEngagementLetterDetail({ letter, query }: {
           </div>
         </form>
       ) : <EngagementLetterDocument letter={letter} />}
+
+      <EngagementLetterFiles letter={letter} />
 
       <div className="grid gap-5 lg:grid-cols-2">
         <Card>

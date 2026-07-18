@@ -25,7 +25,7 @@ export function StaffNotes({ notes }: { notes: StaffNoteRecord[] }) {
                   <p className="mt-1 text-xs font-medium text-muted-foreground">{note.reference} / {note.clientName}</p>
                   <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-foreground">{note.body}</p>
                 </div>
-                <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={`/staff/engagements/${note.workflowId}`}>
+                <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={note.href}>
                   Open work
                   <ArrowRight aria-hidden="true" className="h-4 w-4" />
                 </Link>

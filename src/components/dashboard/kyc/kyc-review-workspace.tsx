@@ -6,11 +6,8 @@ import {
   Eye,
   FileText,
   Lock,
-  RotateCcw,
   ShieldAlert,
   UserPlus,
-  ZoomIn,
-  ZoomOut,
 } from "lucide-react";
 import {
   approveClientKycSubmissionAction,
@@ -90,8 +87,11 @@ export function KycReviewWorkspace({
   decision,
   error,
 }: KycReviewWorkspaceProps) {
-  const selectedRequirement = submission.requirements[0];
-  const selectedDocument = selectedRequirement?.documentVersions[0];
+  const uploadedDocuments = submission.requirements.flatMap((requirement) =>
+    requirement.documentVersions.map((document) => ({ requirement, document })),
+  );
+  const selectedRequirement = uploadedDocuments[0]?.requirement ?? submission.requirements[0];
+  const selectedDocument = uploadedDocuments[0]?.document;
   const grouped = groupRequirements(submission.requirements);
   const basePath = `/${portal}/kyc`;
   const returnPath = `${basePath}/${submission.id}`;
@@ -328,39 +328,32 @@ export function KycReviewWorkspace({
                         Storage URLs are hidden; preview actions are controlled.
                       </p>
                     </div>
-                    <div className="flex gap-2">
-                      {[ZoomIn, ZoomOut, RotateCcw, Download].map((Icon, index) => (
-                        <button
-                          aria-label={["Zoom in", "Zoom out", "Rotate", "Download"][index]}
-                          className="grid h-9 w-9 place-items-center rounded-md border border-border bg-secondary text-secondary-foreground"
-                          key={String(index)}
-                          type="button"
-                        >
-                          <Icon aria-hidden="true" className="h-4 w-4" />
-                        </button>
-                      ))}
-                    </div>
+                    {selectedDocument ? (
+                      <div className="flex gap-2">
+                        <a aria-label="Open document preview" className="grid h-9 w-9 place-items-center rounded-md border border-border bg-secondary text-secondary-foreground" href={selectedDocument.previewHref} rel="noreferrer" target="_blank"><Eye aria-hidden="true" className="h-4 w-4" /></a>
+                        <a aria-label="Download document" className="grid h-9 w-9 place-items-center rounded-md border border-border bg-secondary text-secondary-foreground" href={selectedDocument.downloadHref}><Download aria-hidden="true" className="h-4 w-4" /></a>
+                      </div>
+                    ) : null}
                   </div>
-                  <div className="grid min-h-80 place-items-center bg-muted/40 p-6">
-                    <div className="grid max-w-sm place-items-center gap-3 text-center">
-                      <FileText aria-hidden="true" className="h-14 w-14 text-muted-foreground" />
-                      <p className="font-semibold text-foreground">
-                        {selectedDocument?.filename ?? "No document uploaded"}
-                      </p>
-                      <p className="text-sm leading-6 text-muted-foreground">
-                        Preview placeholder for supported PDF/image documents. Non-previewable files
-                        show metadata and secure download controls.
-                      </p>
+                  {selectedDocument ? (
+                    <iframe className="h-[520px] w-full bg-white" src={selectedDocument.previewHref} title={`Preview ${selectedDocument.filename}`} />
+                  ) : (
+                    <div className="grid min-h-80 place-items-center bg-muted/40 p-6">
+                      <div className="grid max-w-sm place-items-center gap-3 text-center">
+                        <FileText aria-hidden="true" className="h-14 w-14 text-muted-foreground" />
+                        <p className="font-semibold text-foreground">No document uploaded</p>
+                        <p className="text-sm leading-6 text-muted-foreground">The client has not submitted evidence for this KYC record.</p>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </section>
 
                 <section className="grid gap-3 md:grid-cols-2">
-                  {(selectedRequirement.documentVersions ?? []).map((document) => (
+                  {uploadedDocuments.map(({ requirement, document }) => (
                     <div className="rounded-md border border-border px-4 py-3" key={document.id}>
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="text-sm font-semibold text-foreground">{document.label}</p>
-                        <Badge tone={document.reviewStatus === "Approved" ? "green" : "slate"}>
+                        <div><p className="text-sm font-semibold text-foreground">{requirement.name}</p><p className="mt-1 text-xs text-muted-foreground">{document.filename}</p></div>
+                        <Badge tone={document.reviewStatus.toLowerCase() === "approved" ? "green" : "slate"}>
                           v{document.version}
                         </Badge>
                       </div>
@@ -387,6 +380,10 @@ export function KycReviewWorkspace({
                           {document.rejectionReason}
                         </p>
                       ) : null}
+                      <div className="mt-3 flex gap-2 border-t border-border pt-3">
+                        <a className={buttonClassName({ variant: "secondary", size: "sm" })} href={document.previewHref} rel="noreferrer" target="_blank"><Eye aria-hidden="true" className="h-4 w-4" />Preview</a>
+                        <a className={buttonClassName({ variant: "secondary", size: "sm" })} href={document.downloadHref}><Download aria-hidden="true" className="h-4 w-4" />Download</a>
+                      </div>
                     </div>
                   ))}
                 </section>

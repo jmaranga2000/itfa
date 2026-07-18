@@ -38,6 +38,8 @@ export type KycDocumentVersion = {
   checksum: string;
   reviewStatus: string;
   rejectionReason?: string;
+  previewHref: string;
+  downloadHref: string;
 };
 
 export type KycRequirement = {
@@ -229,8 +231,9 @@ function dateOnly(value?: Date | null) {
 }
 
 function documentVersion(document: LiveKycDocument, submittedAt: Date): KycDocumentVersion {
+  const documentId = document._id?.toString() ?? document.r2Key ?? document.filename ?? "document";
   return {
-    id: document._id?.toString() ?? document.r2Key ?? document.filename ?? "document",
+    id: documentId,
     label: document.documentType || "Submitted document",
     filename: document.filename ?? "Uploaded file",
     fileType: document.contentType?.split("/").at(-1)?.toUpperCase() ?? "File",
@@ -243,6 +246,8 @@ function documentVersion(document: LiveKycDocument, submittedAt: Date): KycDocum
     checksum: document.checksum || "Not recorded",
     reviewStatus: document.reviewStatus?.replaceAll("_", " ") ?? "submitted",
     rejectionReason: document.rejectionReason || undefined,
+    previewHref: `/api/kyc/documents/${documentId}`,
+    downloadHref: `/api/kyc/documents/${documentId}?download=1`,
   };
 }
 
@@ -349,16 +354,21 @@ async function listKycSubmissions(): Promise<KycSubmission[]> {
       key: string;
       name: string;
       section: KycRequirementSection;
+      documentTypes: string[];
       tokens: string[];
+      required: boolean;
     }> = [
-      { key: "identification", name: "Identification", section: "Client Identity", tokens: ["national", "id", "passport"] },
-      { key: "tax-pin", name: "Tax PIN", section: "Tax Information", tokens: ["kra", "pin", "tax"] },
-      { key: "proof-of-address", name: "Proof of address", section: "Address Verification", tokens: ["address", "utility", "proof"] },
+      { key: "identification", name: "Identification", section: "Client Identity", documentTypes: ["identity_card"], tokens: ["national", "identity", "id", "passport"], required: true },
+      { key: "tax-pin", name: "Tax PIN", section: "Tax Information", documentTypes: ["tax_pin"], tokens: ["kra", "pin", "tax"], required: true },
+      { key: "proof-of-address", name: "Proof of location", section: "Address Verification", documentTypes: ["proof_of_location"], tokens: ["location", "address", "utility", "proof"], required: false },
     ];
     const evidenceRequirements: KycRequirement[] = evidenceDefinitions.map((definition) => {
       const id = `live-${record._id.toString()}-${definition.key}`;
       const review = reviewsByRequirement.get(id);
-      const document = (record.documents ?? []).find((item) => {
+      const document = [...(record.documents ?? [])]
+        .sort((left, right) => (right.uploadedAt?.getTime() ?? 0) - (left.uploadedAt?.getTime() ?? 0))
+        .find((item) => {
+        if (item.documentType && definition.documentTypes.includes(item.documentType)) return true;
         const searchable = `${item.documentType ?? ""} ${item.filename ?? ""}`.toLowerCase();
         return definition.tokens.some((token) => searchable.includes(token));
       });
@@ -372,7 +382,7 @@ async function listKycSubmissions(): Promise<KycSubmission[]> {
         section: definition.section,
         name: definition.name,
         instructions: `Confirm the uploaded ${definition.name.toLowerCase()} before the engagement proceeds.`,
-        required: true,
+        required: definition.required,
         status: statusValue,
         clientAnswer: document ? "Document uploaded" : "No document uploaded",
         issues,
@@ -741,6 +751,30 @@ export async function reviewKycRequirement(input: {
     reviewedByUserId: new Types.ObjectId(input.actor.id),
     reviewedAt: new Date(),
   });
+  const documentTypeByRequirementSuffix: Record<string, string> = {
+    identification: "identity_card",
+    "tax-pin": "tax_pin",
+    "proof-of-address": "proof_of_location",
+  };
+  const requirementSuffix = Object.keys(documentTypeByRequirementSuffix).find((suffix) => input.requirementId.endsWith(`-${suffix}`));
+  if (requirementSuffix) {
+    const documentType = documentTypeByRequirementSuffix[requirementSuffix];
+    const document = [...submission.documents]
+      .reverse()
+      .find((item) => item.documentType === documentType);
+    if (document) {
+      document.reviewStatus = input.decision === "approved"
+        ? "approved"
+        : input.decision === "rejected"
+          ? "rejected"
+          : input.decision === "replacement_requested"
+            ? "replacement_requested"
+            : "submitted";
+      document.rejectionReason = ["replacement_requested", "rejected"].includes(input.decision)
+        ? input.note
+        : "";
+    }
+  }
   submission.status = ["replacement_requested", "rejected"].includes(input.decision)
     ? "changes_requested"
     : "under_review";

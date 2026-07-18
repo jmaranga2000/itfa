@@ -17,7 +17,7 @@ export default async function StaffDashboardPage({ searchParams }: { searchParam
   return (
     <StaffDashboard
       accessRestricted={query.access === "restricted"}
-      assignedCount={work.workflows.length + work.requests.length}
+      assignedCount={work.workflows.length + work.requests.length + work.reviews.filter((review) => review.status !== "approved").length}
       summary={communication.summary}
       workspace={getStaffWorkspace(role)}
     />

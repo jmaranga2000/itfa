@@ -1,5 +1,6 @@
 import { Types } from "mongoose";
 import type { Principal } from "@/features/authorization/access-control";
+import type { WorkflowPriority, WorkflowTaskStatus } from "@/features/workflows/types";
 import { getAdminRequest } from "@/content/admin-requests";
 import { connectToDatabase } from "@/lib/db/mongoose";
 import { ClientKycSubmissionModel } from "@/models/client-kyc-submission";
@@ -46,6 +47,7 @@ export type StaffDocumentRecord = {
   workflowId: string;
   reference: string;
   clientName: string;
+  href: string;
 };
 
 export type StaffReviewRecord = {
@@ -66,15 +68,17 @@ export type StaffNoteRecord = {
   clientName: string;
   reference: string;
   workflowId: string;
+  href: string;
 };
 
 export type StaffCalendarRecord = {
   id: string;
   title: string;
   date: string;
-  type: "engagement" | "task" | "client_action";
+  type: "engagement" | "task" | "client_action" | "kyc_review";
   clientName: string;
   workflowId: string;
+  href: string;
 };
 
 export type StaffWorkData = {
@@ -114,6 +118,29 @@ type RawClient = {
   email: string;
   firstName?: string;
   lastName?: string;
+};
+
+type RawStaffKycSubmission = {
+  _id: Types.ObjectId;
+  userId: Types.ObjectId;
+  assignedReviewerUserId?: Types.ObjectId | null;
+  status: string;
+  questionnaireComplete: boolean;
+  submittedAt?: Date | null;
+  documents?: Array<{
+    _id?: Types.ObjectId;
+    filename: string;
+    documentType?: string;
+    reviewStatus?: string;
+    version?: number;
+    uploadedAt?: Date;
+  }>;
+  requirementReviews?: Array<{
+    requirementId: string;
+    decision: string;
+    note?: string;
+    reviewedAt: Date;
+  }>;
 };
 
 function clientName(client: RawClient) {
@@ -181,6 +208,7 @@ function buildClients(
   workflows: WorkflowInstanceRecord[],
   requests: StaffAssignedRequest[],
   users: RawClient[],
+  reviews: StaffReviewRecord[],
 ) {
   const usersById = new Map(users.map((user) => [user._id.toString(), user]));
   const records = new Map<string, StaffClientRecord>();
@@ -237,35 +265,73 @@ function buildClients(
     keyByName.set(normalizedName, key);
   }
 
+  for (const review of reviews) {
+    const user = usersById.get(review.clientUserId);
+    if (!user) continue;
+    const key = review.clientUserId;
+    const name = clientName(user);
+    const existing = records.get(key);
+    const next: StaffClientRecord = existing ?? {
+      key,
+      userId: key,
+      name,
+      email: user.email,
+      organization: name,
+      services: [],
+      workflowIds: [],
+      activeEngagements: 0,
+      pendingRequests: 0,
+      lastActivityAt: null,
+    };
+    if (!next.services.includes("KYC review")) next.services.push("KYC review");
+    if (!next.lastActivityAt || (review.submittedAt && review.submittedAt > next.lastActivityAt)) {
+      next.lastActivityAt = review.submittedAt;
+    }
+    records.set(key, next);
+    keyByName.set(name.trim().toLowerCase(), key);
+  }
+
   return Array.from(records.values()).sort((left, right) => left.name.localeCompare(right.name));
 }
 
 export async function getStaffWorkData(principal: Principal): Promise<StaffWorkData> {
   await connectToDatabase();
-  const [workflows, requests] = await Promise.all([
+  const staffObjectId = Types.ObjectId.isValid(principal.id) ? new Types.ObjectId(principal.id) : null;
+  const [workflows, requests, directlyAssignedKyc] = await Promise.all([
     listWorkflowsForPrincipal(principal),
     listAssignedRequests(principal),
+    staffObjectId
+      ? ClientKycSubmissionModel.find({
+          assignedReviewerUserId: staffObjectId,
+          status: { $ne: "draft" },
+        }).sort({ submittedAt: -1 }).lean().exec() as Promise<RawStaffKycSubmission[]>
+      : Promise.resolve([] as RawStaffKycSubmission[]),
   ]);
   const clientIds = Array.from(new Set([
     ...workflows.map((workflow) => workflow.clientUserId),
     ...requests.map((request) => request.clientUserId),
+    ...directlyAssignedKyc.map((submission) => submission.userId.toString()),
   ].filter(Boolean)))
     .filter((value): value is string => typeof value === "string" && Types.ObjectId.isValid(value))
     .map((value) => new Types.ObjectId(value));
-  const [users, kycSubmissions] = await Promise.all([
+  const [users, linkedKycSubmissions] = await Promise.all([
     UserModel.find({ _id: { $in: clientIds }, status: { $ne: "archived" } })
       .select("email firstName lastName")
       .lean()
       .exec() as Promise<RawClient[]>,
-    ClientKycSubmissionModel.find({ userId: { $in: clientIds } })
+    ClientKycSubmissionModel.find({ userId: { $in: clientIds }, status: { $ne: "draft" } })
       .sort({ submittedAt: -1 })
       .lean()
-      .exec(),
+      .exec() as Promise<RawStaffKycSubmission[]>,
   ]);
+  const kycById = new Map(
+    [...directlyAssignedKyc, ...linkedKycSubmissions].map((submission) => [submission._id.toString(), submission]),
+  );
+  const kycSubmissions = Array.from(kycById.values());
   const usersById = new Map(users.map((user) => [user._id.toString(), user]));
   const canSeeAllTasks = principal.permissions.includes("engagements.read_all");
 
-  const documents = workflows.flatMap((workflow) => workflow.documents.map((document) => ({
+  const workflowDocuments = workflows.flatMap((workflow) => workflow.documents.map((document) => ({
     id: document.documentId,
     name: document.name,
     status: document.status,
@@ -275,6 +341,7 @@ export async function getStaffWorkData(principal: Principal): Promise<StaffWorkD
     workflowId: workflow.id,
     reference: workflow.reference,
     clientName: workflow.clientName,
+    href: `/staff/engagements/${workflow.id}`,
   })));
   const notes = workflows.flatMap((workflow) => workflow.tasks
     .filter((task) => Boolean(task.internalNotes) && (canSeeAllTasks || task.assignedUserId === principal.id))
@@ -285,23 +352,24 @@ export async function getStaffWorkData(principal: Principal): Promise<StaffWorkD
       clientName: workflow.clientName,
       reference: workflow.reference,
       workflowId: workflow.id,
+      href: `/staff/engagements/${workflow.id}`,
     })));
   const calendar = workflows.flatMap((workflow): StaffCalendarRecord[] => {
     const events: StaffCalendarRecord[] = [];
     if (workflow.dueDate) events.push({
       id: `${workflow.id}-due`, title: `${workflow.reference} due`, date: workflow.dueDate,
-      type: "engagement", clientName: workflow.clientName, workflowId: workflow.id,
+      type: "engagement", clientName: workflow.clientName, workflowId: workflow.id, href: `/staff/engagements/${workflow.id}`,
     });
     for (const task of workflow.tasks) {
       if (task.dueDate && (canSeeAllTasks || task.assignedUserId === principal.id)) events.push({
         id: `${workflow.id}-${task.key}`, title: task.title, date: task.dueDate,
-        type: "task", clientName: workflow.clientName, workflowId: workflow.id,
+        type: "task", clientName: workflow.clientName, workflowId: workflow.id, href: `/staff/engagements/${workflow.id}`,
       });
     }
     for (const action of workflow.clientActions) {
       if (action.dueDate) events.push({
         id: `${workflow.id}-${action.key}`, title: action.title, date: action.dueDate,
-        type: "client_action", clientName: workflow.clientName, workflowId: workflow.id,
+        type: "client_action", clientName: workflow.clientName, workflowId: workflow.id, href: `/staff/engagements/${workflow.id}`,
       });
     }
     return events;
@@ -319,16 +387,97 @@ export async function getStaffWorkData(principal: Principal): Promise<StaffWorkD
       submittedAt: submission.submittedAt?.toISOString() ?? null,
     };
   });
+  const kycDocuments: StaffDocumentRecord[] = kycSubmissions.flatMap((submission) => {
+    const user = usersById.get(submission.userId.toString());
+    return (submission.documents ?? []).map((document) => ({
+      id: document._id?.toString() ?? `${submission._id.toString()}-${document.filename}`,
+      name: document.filename,
+      status: document.reviewStatus ?? "submitted",
+      version: document.version ?? 1,
+      visibility: "KYC review",
+      uploadedAt: document.uploadedAt?.toISOString() ?? submission.submittedAt?.toISOString() ?? new Date(0).toISOString(),
+      workflowId: `client-kyc-${submission._id.toString()}`,
+      reference: `KYC-${submission._id.toString().slice(-6).toUpperCase()}`,
+      clientName: user ? clientName(user) : "Client",
+      href: `/staff/kyc/client-kyc-${submission._id.toString()}`,
+    }));
+  });
+  const kycCalendar: StaffCalendarRecord[] = kycSubmissions.flatMap((submission) => {
+    if (!submission.submittedAt || submission.status === "approved") return [];
+    const user = usersById.get(submission.userId.toString());
+    return [{
+      id: `${submission._id.toString()}-review-due`,
+      title: `Review KYC-${submission._id.toString().slice(-6).toUpperCase()}`,
+      date: new Date(submission.submittedAt.getTime() + 2 * 86_400_000).toISOString(),
+      type: "kyc_review",
+      clientName: user ? clientName(user) : "Client",
+      workflowId: `client-kyc-${submission._id.toString()}`,
+      href: `/staff/kyc/client-kyc-${submission._id.toString()}`,
+    }];
+  });
+  const kycNotes: StaffNoteRecord[] = kycSubmissions.flatMap((submission) => {
+    const user = usersById.get(submission.userId.toString());
+    return (submission.requirementReviews ?? []).flatMap((review) => review.note ? [{
+      id: `${submission._id.toString()}-${review.requirementId}-${review.reviewedAt.toISOString()}`,
+      title: `KYC requirement ${review.decision.replaceAll("_", " ")}`,
+      body: review.note,
+      clientName: user ? clientName(user) : "Client",
+      reference: `KYC-${submission._id.toString().slice(-6).toUpperCase()}`,
+      workflowId: `client-kyc-${submission._id.toString()}`,
+      href: `/staff/kyc/client-kyc-${submission._id.toString()}`,
+    }] : []);
+  });
 
   return {
     workflows,
     requests,
-    clients: buildClients(workflows, requests, users),
-    documents,
+    clients: buildClients(workflows, requests, users, reviews),
+    documents: [...kycDocuments, ...workflowDocuments],
     reviews,
-    notes,
-    calendar,
+    notes: [...kycNotes, ...notes],
+    calendar: [...kycCalendar, ...calendar].sort((left, right) => left.date.localeCompare(right.date)),
   };
+}
+
+export async function canStaffContactClient(principal: Principal, clientUserId: string) {
+  if (!Types.ObjectId.isValid(clientUserId)) return false;
+  const data = await getStaffWorkData(principal);
+  return data.clients.some((client) => client.userId === clientUserId);
+}
+
+export async function listStaffKycTasks(principal: Principal) {
+  const data = await getStaffWorkData(principal);
+  return data.reviews.map((review) => {
+    const dueDate = review.submittedAt
+      ? new Date(new Date(review.submittedAt).getTime() + 2 * 86_400_000).toISOString()
+      : null;
+    const overdue = Boolean(dueDate && new Date(dueDate).getTime() < Date.now() && review.status !== "approved");
+    const status: WorkflowTaskStatus = review.status === "approved"
+      ? "completed"
+      : overdue
+        ? "overdue"
+        : review.status === "changes_requested"
+          ? "waiting_for_client"
+          : "in_progress";
+    const priority: WorkflowPriority = overdue ? "high" : "medium";
+    return {
+      workflowId: `client-kyc-${review.id}`,
+      engagement: `KYC-${review.id.slice(-6).toUpperCase()}`,
+      client: review.clientName,
+      service: "KYC review",
+      href: `/staff/kyc/client-kyc-${review.id}`,
+      key: `kyc-review-${review.id}`,
+      title: "Review client KYC submission",
+      assignedUserName: principal.email,
+      assignedRole: "Reviewer",
+      priority,
+      status,
+      dueDate,
+      dependencies: [],
+      clientActionRequired: review.status === "changes_requested",
+      blockerReason: review.questionnaireComplete ? null : "Client questionnaire is incomplete",
+    };
+  });
 }
 
 export async function getStaffClientRecord(

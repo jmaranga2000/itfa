@@ -1,7 +1,12 @@
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, ClipboardList, Clock3, FileUp, Send, ShieldCheck } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ClipboardList, Clock3, FileUp, MapPin, Send, ShieldCheck } from "lucide-react";
 import { submitClientKycForReviewAction } from "@/features/kyc/client-actions";
-import type { ClientKycSubmission } from "@/repositories/client-kyc-repository";
+import {
+  CLIENT_KYC_DOCUMENT_LABELS,
+  hasClientKycDocument,
+  hasRequiredClientKycDocuments,
+  type ClientKycSubmission,
+} from "@/repositories/client-kyc-repository";
 import type { ClientKycAccess } from "@/repositories/request-onboarding-repository";
 import { buttonClassName } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -55,9 +60,16 @@ export function ClientKyc({
       </div>
     );
   }
-  const readyForReview = submission.questionnaire.complete;
+  const requiredDocumentsReady = hasRequiredClientKycDocuments(submission);
+  const proofOfLocationReady = hasClientKycDocument(submission, "proof_of_location");
+  const documentTypesReceived = [
+    hasClientKycDocument(submission, "identity_card"),
+    hasClientKycDocument(submission, "tax_pin"),
+    proofOfLocationReady,
+  ].filter(Boolean).length;
+  const readyForReview = submission.questionnaire.complete && requiredDocumentsReady;
   const reviewSubmitted = ["submitted", "under_review", "approved"].includes(submission.status);
-  const documentsMissing = submission.documents.length === 0;
+  const documentsMissing = !requiredDocumentsReady;
 
   return (
     <div className="grid min-w-0 gap-5">
@@ -67,7 +79,7 @@ export function ClientKyc({
             <p className="text-sm font-semibold text-primary">Client verification</p>
             <h1 className="mt-2 text-2xl font-bold text-foreground">Complete your KYC</h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-              Complete the questionnaire and submit it for review. You may add supporting documents now or while the review is in progress.
+              Complete the questionnaire, upload your identity and Tax PIN documents, then submit everything for review.
             </p>
           </div>
           <Link className={buttonClassName({ className: "shrink-0" })} href="/client/kyc/questionnaire">
@@ -80,7 +92,7 @@ export function ClientKyc({
       {uploaded ? (
         <div className="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm font-medium text-emerald-800">
           <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
-          Your replacement document has been uploaded.
+          Your KYC documents have been uploaded.
         </div>
       ) : null}
 
@@ -104,18 +116,29 @@ export function ClientKyc({
         </div>
       ) : null}
 
+      {error === "required-documents" ? (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+          Upload both your identity card and Tax PIN certificate before submitting for review.
+        </div>
+      ) : null}
+
       {documentsMissing ? (
         <div className="flex items-start gap-3 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-amber-950" role="status">
           <AlertTriangle aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0" />
           <div className="min-w-0">
             <p className="text-sm font-semibold">Supporting documents are still needed</p>
-            <p className="mt-1 text-sm leading-6">
-              You can submit the questionnaire without a file, but the review may pause until you upload the requested evidence.
-            </p>
+            <p className="mt-1 text-sm leading-6">Your identity card and Tax PIN certificate are required before submission. Proof of location is optional but recommended.</p>
             <Link className="mt-2 inline-flex text-sm font-semibold underline underline-offset-4" href="/client/kyc/upload-replacement">
               Upload a document
             </Link>
           </div>
+        </div>
+      ) : null}
+
+      {!documentsMissing && !proofOfLocationReady ? (
+        <div className="flex items-start gap-3 rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sky-950" role="status">
+          <MapPin aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0" />
+          <div><p className="text-sm font-semibold">Proof of location is still recommended</p><p className="mt-1 text-sm leading-6">Your required files are complete. Add a recent utility bill, lease, or similar address document when available.</p></div>
         </div>
       ) : null}
 
@@ -135,12 +158,16 @@ export function ClientKyc({
         </Card>
         <Card>
           <CardHeader>
-            <CardDescription>Supporting document</CardDescription>
-            <CardTitle className="text-2xl font-bold">{submission.documents.length}</CardTitle>
+            <CardDescription>KYC documents</CardDescription>
+            <CardTitle className="text-2xl font-bold">{documentTypesReceived}/3</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-sm leading-6 text-muted-foreground">
-              {submission.documents.length ? "Document uploaded to the protected vault." : "Not uploaded yet. We will keep reminding you during review."}
+              {requiredDocumentsReady
+                ? proofOfLocationReady
+                  ? "All three document types have been received."
+                  : "Required documents received. Proof of location is still recommended."
+                : "Identity and Tax PIN documents are required."}
             </p>
           </CardContent>
         </Card>
@@ -180,8 +207,8 @@ export function ClientKyc({
             <div className="flex gap-3 border-l-2 border-primary pl-4">
               <FileUp aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
               <div>
-                <p className="text-sm font-semibold text-foreground">2. Upload a supporting document</p>
-                <p className="mt-1 text-sm leading-6 text-muted-foreground">Upload a clear PDF, JPG, or PNG file as soon as it is available.</p>
+                <p className="text-sm font-semibold text-foreground">2. Upload your KYC documents</p>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">Provide your identity card, Tax PIN certificate, and proof of location where available.</p>
               </div>
             </div>
             <div className="flex gap-3 border-l-2 border-primary pl-4">
@@ -206,14 +233,14 @@ export function ClientKyc({
             </Link>
             <Link className={buttonClassName({ variant: "secondary", className: "w-full" })} href="/client/kyc/upload-replacement">
               <FileUp aria-hidden="true" className="h-4 w-4" />
-              Upload replacement
+              Upload KYC documents
             </Link>
             <form action={submitClientKycForReviewAction}>
               <SubmitButton
                 className="w-full"
                 disabled={!readyForReview || reviewSubmitted}
                 pendingText="Submitting for review..."
-                title={!readyForReview ? "Complete the questionnaire first." : undefined}
+                title={!readyForReview ? "Complete the questionnaire and upload the required documents first." : undefined}
               >
                 <Send aria-hidden="true" className="h-4 w-4" />
                 {reviewSubmitted ? "Submitted for review" : "Submit for review"}
@@ -234,7 +261,7 @@ export function ClientKyc({
               <div className="flex items-center justify-between gap-4 rounded-md border border-border px-3 py-3" key={document.id}>
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-foreground">{document.filename}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">{document.contentType}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{CLIENT_KYC_DOCUMENT_LABELS[document.documentType]} | Version {document.version}</p>
                 </div>
                 <span className="shrink-0 text-sm text-muted-foreground">{formatFileSize(document.size)}</span>
               </div>

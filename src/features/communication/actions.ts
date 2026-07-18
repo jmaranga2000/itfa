@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requirePermission, requireUser } from "@/features/auth/server";
 import { requireStaffRoute } from "@/features/staff/server";
+import { canStaffContactClient } from "@/repositories/staff-work-repository";
 import {
   COMMUNICATION_MODULES,
 } from "@/features/communication/types";
@@ -185,6 +186,9 @@ export async function createStaffClientConversationAction(formData: FormData) {
     body: formData.get("body"),
   });
   if (!parsed.success) redirect("/staff/messages/new?error=invalid");
+  if (!(await canStaffContactClient(sender, parsed.data.clientUserId))) {
+    redirect("/staff/messages/new?error=unassigned");
+  }
 
   const conversationId = await createDirectClientConversation({ ...parsed.data, sender });
   revalidatePath("/staff/messages");

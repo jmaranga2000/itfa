@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowLeft, ArrowUpRight, CheckCircle2, Clock3, FileSignature, ShieldCheck } from "lucide-react";
 import { EngagementLetterDocument } from "@/components/dashboard/engagement-letters/engagement-letter-document";
+import { EngagementLetterFiles } from "@/components/dashboard/engagement-letters/engagement-letter-files";
 import { Badge } from "@/components/ui/badge";
 import { buttonClassName } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -58,6 +59,7 @@ export function ClientEngagementLetterDetail({ letter, signed, error }: {
       {signed ? <p className="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800"><CheckCircle2 className="h-4 w-4" />Your electronic signature was recorded successfully.</p> : null}
       {error && errorMessages[error] ? <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">{errorMessages[error]}</p> : null}
       <EngagementLetterDocument letter={letter} />
+      <EngagementLetterFiles letter={letter} />
       {canSign ? (
         <Card>
           <CardHeader><CardTitle>Sign this engagement letter</CardTitle><CardDescription>Your typed legal name, account, signing time and this document fingerprint will form the electronic signature evidence.</CardDescription></CardHeader>
