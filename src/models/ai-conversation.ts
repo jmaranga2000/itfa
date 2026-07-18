@@ -19,6 +19,7 @@ const aiConversationSchema = new Schema(
   {
     title: { type: String, required: true, trim: true },
     workspaceKey: { type: String, enum: AI_WORKSPACE_KEYS, required: true, index: true },
+    portal: { type: String, enum: ["admin", "staff", "client"], default: "admin", index: true },
     createdByUserId: { type: Schema.Types.ObjectId, required: true, index: true },
     createdByEmail: { type: String, required: true, index: true },
     model: { type: String, required: true },

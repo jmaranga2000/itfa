@@ -9,6 +9,12 @@ export const AI_WORKSPACE_KEYS = [
 
 export type AiWorkspaceKey = (typeof AI_WORKSPACE_KEYS)[number];
 
+export const CLIENT_AI_WORKSPACE_KEYS: readonly AiWorkspaceKey[] = [
+  "research",
+  "kra_assessment",
+  "document_drafting",
+];
+
 const sharedGuardrails = `
 You are an internal professional assistant for IFTA Consulting in Kenya.
 Use the facts supplied by the user and clearly identify missing facts. Never invent a statute, case, date, amount, filing deadline, quotation, document, or client instruction. Distinguish verified authority from analysis and assumptions. For current legal or tax claims, use available web search and prefer primary official sources such as Kenya Law, KRA, the National Treasury, Parliament, and tribunal or court decisions. Include direct source links when web search is used. State the date on which current-law research was checked. Treat all output as a professional working draft requiring review by a qualified IFTA adviser before it is sent, filed, or relied upon. Do not expose confidential information beyond what is needed for the task.
@@ -80,4 +86,10 @@ Act as a precise professional document drafter. Confirm the document type, audie
 
 export function isAiWorkspaceKey(value: string): value is AiWorkspaceKey {
   return (AI_WORKSPACE_KEYS as readonly string[]).includes(value);
+}
+
+export function aiInstructionsForPortal(workspaceKey: AiWorkspaceKey, portal: "admin" | "staff" | "client") {
+  if (portal !== "client") return AI_WORKSPACES[workspaceKey].instructions;
+  return `${AI_WORKSPACES[workspaceKey].instructions}
+You are speaking directly to an IFTA Consulting client. Use plain language and explain technical terms. Provide general information, preparation help, questions to raise with the IFTA adviser, and clearly labelled draft material. Do not present the response as a final legal, tax, financial, or filing decision. Do not instruct the client to file, submit, sign, pay, or rely on a document without professional review. Encourage the client to use the secure portal to ask the assigned IFTA team to confirm any material conclusion.`;
 }

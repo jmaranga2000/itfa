@@ -1,9 +1,9 @@
 import { createHash, randomBytes } from "node:crypto";
 import { Types } from "mongoose";
-import { createTransport } from "nodemailer";
 import { writeAuditLog } from "@/features/audit/audit-service";
 import { connectToDatabase } from "@/lib/db/mongoose";
 import { getServerEnv } from "@/lib/env";
+import { sendPortalEmail } from "@/lib/email/smtp";
 import { EmailVerificationTokenModel } from "@/models/email-verification-token";
 import {
   findUserByEmailForVerification,
@@ -51,35 +51,12 @@ export async function createEmailVerificationToken(userId: string, email: string
 }
 
 export async function sendVerificationEmail(email: string, verificationUrl: string) {
-  const env = getServerEnv();
   const recipient = email.trim().toLowerCase();
-
-  if (!env.GMAIL_SMTP_USER || !env.GMAIL_SMTP_APP_PASSWORD) {
-    return {
-      delivered: false,
-      reason: "Gmail SMTP is not configured.",
-    };
-  }
-
-  try {
-    const transporter = createTransport({
-      host: "smtp.gmail.com",
-      port: 465,
-      secure: true,
-      auth: {
-        user: env.GMAIL_SMTP_USER,
-        pass: env.GMAIL_SMTP_APP_PASSWORD,
-      },
-    });
-
-    const message = await transporter.sendMail({
-      from: {
-        name: "IFTA Consulting",
-        address: env.GMAIL_SMTP_USER,
-      },
-      to: recipient,
-      subject: "Verify your IFTA Consulting portal account",
-      html: `
+  const delivery = await sendPortalEmail({
+    recipientEmail: recipient,
+    subject: "Verify your IFTA Consulting portal account",
+    text: `Verify your IFTA Consulting account: ${verificationUrl}`,
+    html: `
         <div style="font-family: Arial, sans-serif; line-height: 1.6;">
           <h1>Verify your email</h1>
           <p>Use the button below to verify your IFTA Consulting client portal account.</p>
@@ -88,26 +65,8 @@ export async function sendVerificationEmail(email: string, verificationUrl: stri
           <p>${verificationUrl}</p>
         </div>
       `,
-    });
-
-    if (process.env.NODE_ENV !== "production") {
-      console.info("Gmail accepted a verification email.", {
-        messageId: message.messageId,
-        recipient,
-      });
-    }
-
-    return {
-      delivered: true,
-    };
-  } catch (error) {
-    console.error("Gmail rejected a verification email.", error);
-
-    return {
-      delivered: false,
-      reason: "Gmail rejected the message.",
-    };
-  }
+  });
+  return { delivered: delivery.delivered, reason: delivery.reason };
 }
 
 export async function createAndSendVerificationEmail(userId: string, email: string) {

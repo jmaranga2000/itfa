@@ -1,4 +1,4 @@
-import { AI_WORKSPACES, type AiWorkspaceKey } from "@/features/ai/workspaces";
+import { AI_WORKSPACES, aiInstructionsForPortal, type AiWorkspaceKey } from "@/features/ai/workspaces";
 import { getServerEnv } from "@/lib/env";
 
 type ConversationInput = { role: "user" | "assistant"; content: string };
@@ -18,6 +18,7 @@ type ResponsePayload = {
 
 export async function generateOpenAiWorkspaceResponse(input: {
   workspaceKey: AiWorkspaceKey;
+  portal?: "admin" | "staff" | "client";
   messages: ConversationInput[];
 }) {
   const env = getServerEnv();
@@ -32,7 +33,7 @@ export async function generateOpenAiWorkspaceResponse(input: {
     },
     body: JSON.stringify({
       model,
-      instructions: workspace.instructions,
+      instructions: aiInstructionsForPortal(input.workspaceKey, input.portal ?? "admin"),
       input: input.messages.map((message) => ({ role: message.role, content: message.content })),
       ...(workspace.useWebSearch ? { tools: [{ type: "web_search" }] } : {}),
       max_output_tokens: 5000,

@@ -21,6 +21,7 @@ export type AiConversationRecord = {
   title: string;
   workspaceKey: AiWorkspaceKey;
   workspaceLabel: string;
+  portal: "admin" | "staff" | "client";
   createdByUserId: string;
   createdByEmail: string;
   model: string;
@@ -45,6 +46,7 @@ type RawConversation = {
   _id: Types.ObjectId;
   title: string;
   workspaceKey: AiWorkspaceKey;
+  portal?: "admin" | "staff" | "client";
   createdByUserId: Types.ObjectId;
   createdByEmail: string;
   model: string;
@@ -60,6 +62,7 @@ function serialize(record: RawConversation): AiConversationRecord {
     title: record.title,
     workspaceKey: record.workspaceKey,
     workspaceLabel: AI_WORKSPACES[record.workspaceKey].label,
+    portal: record.portal ?? "admin",
     createdByUserId: record.createdByUserId.toString(),
     createdByEmail: record.createdByEmail,
     model: record.model,
@@ -122,21 +125,55 @@ export async function getAdminAiWorkspaceData(
   };
 }
 
+export async function getPortalAiWorkspaceData(
+  principal: Principal,
+  portal: "staff" | "client",
+  activeConversationId?: string,
+  startNewConversation = false,
+) {
+  await connectToDatabase();
+  const filter = { createdByUserId: new Types.ObjectId(principal.id), portal, archivedAt: null };
+  const conversations = (await AiConversationModel.find(filter)
+    .select("-messages")
+    .sort({ lastActivityAt: -1 })
+    .limit(50)
+    .lean()
+    .exec()) as unknown as RawConversation[];
+  const selectedId = startNewConversation
+    ? null
+    : activeConversationId && Types.ObjectId.isValid(activeConversationId)
+      ? activeConversationId
+      : conversations[0]?._id.toString();
+  const active = selectedId
+    ? await AiConversationModel.findOne({ ...filter, _id: selectedId }).lean().exec()
+    : null;
+  return {
+    configured: Boolean(getServerEnv().OPENAI_API_KEY),
+    conversations: conversations.map(serialize),
+    activeConversation: active ? serialize(active as unknown as RawConversation) : null,
+  };
+}
+
 export async function prepareAiConversationMessage(input: {
   principal: Principal;
   conversationId?: string;
   workspaceKey: AiWorkspaceKey;
   message: string;
+  portal?: "admin" | "staff" | "client";
 }) {
   await connectToDatabase();
   const now = new Date();
   const model = getServerEnv().OPENAI_DEFAULT_MODEL?.trim() || "gpt-5.6-luna";
+  const portal = input.portal ?? "admin";
   let conversation;
   if (input.conversationId && Types.ObjectId.isValid(input.conversationId)) {
     conversation = await AiConversationModel.findOne({
       _id: input.conversationId,
       createdByUserId: input.principal.id,
       archivedAt: null,
+      ...(portal === "admin"
+        ? { $or: [{ portal: "admin" }, { portal: { $exists: false } }] }
+        : { portal }),
     }).exec();
     if (!conversation) return null;
     conversation.messages.push({ role: "user", content: input.message, createdAt: now });
@@ -147,6 +184,7 @@ export async function prepareAiConversationMessage(input: {
     conversation = await AiConversationModel.create({
       title: input.message.replace(/\s+/g, " ").trim().slice(0, 72),
       workspaceKey: input.workspaceKey,
+      portal,
       createdByUserId: new Types.ObjectId(input.principal.id),
       createdByEmail: input.principal.email,
       model,
@@ -203,6 +241,20 @@ export async function archiveAiConversation(conversationId: string) {
   await connectToDatabase();
   const result = await AiConversationModel.updateOne(
     { _id: conversationId, archivedAt: null },
+    { $set: { archivedAt: new Date() } },
+  ).exec();
+  return result.modifiedCount > 0;
+}
+
+export async function archivePortalAiConversation(
+  conversationId: string,
+  principalId: string,
+  portal: "staff" | "client",
+) {
+  if (!Types.ObjectId.isValid(conversationId) || !Types.ObjectId.isValid(principalId)) return false;
+  await connectToDatabase();
+  const result = await AiConversationModel.updateOne(
+    { _id: conversationId, createdByUserId: principalId, portal, archivedAt: null },
     { $set: { archivedAt: new Date() } },
   ).exec();
   return result.modifiedCount > 0;

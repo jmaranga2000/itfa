@@ -9,6 +9,8 @@ export function getClientNavItems(cartCount = 0, kycOpen = false): DashboardNavI
     children: [
       { label: "Dashboard", href: "/client", icon: "gauge", symbol: "D" },
       { label: "Notifications", href: "/client/notifications", icon: "bell", symbol: "N" },
+      { label: "Calendar", href: "/client/calendar", icon: "calendar", symbol: "CA" },
+      { label: "My profile", href: "/client/profile", icon: "profile", symbol: "P" },
     ],
   },
   {

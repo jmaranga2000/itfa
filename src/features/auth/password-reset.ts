@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
-import { createTransport } from "nodemailer";
 import { connectToDatabase } from "@/lib/db/mongoose";
 import { getServerEnv } from "@/lib/env";
+import { sendPortalEmail } from "@/lib/email/smtp";
 import { AuthSessionModel } from "@/models/auth-session";
 import { PasswordResetTokenModel } from "@/models/password-reset-token";
 import { UserModel } from "@/models/user";
@@ -20,28 +20,11 @@ function buildResetUrl(token: string) {
 }
 
 async function sendPasswordResetEmail(email: string, resetUrl: string) {
-  const env = getServerEnv();
-
-  if (!env.GMAIL_SMTP_USER || !env.GMAIL_SMTP_APP_PASSWORD) {
-    return false;
-  }
-
-  try {
-    const transporter = createTransport({
-      host: "smtp.gmail.com",
-      port: 465,
-      secure: true,
-      auth: {
-        user: env.GMAIL_SMTP_USER,
-        pass: env.GMAIL_SMTP_APP_PASSWORD,
-      },
-    });
-
-    await transporter.sendMail({
-      from: { name: "IFTA Consulting", address: env.GMAIL_SMTP_USER },
-      to: email,
-      subject: "Reset your IFTA Consulting password",
-      html: `
+  const delivery = await sendPortalEmail({
+    recipientEmail: email,
+    subject: "Reset your IFTA Consulting password",
+    text: `Reset your IFTA Consulting password: ${resetUrl}`,
+    html: `
         <div style="font-family: Arial, sans-serif; line-height: 1.6;">
           <h1>Reset your password</h1>
           <p>Use the button below to choose a new password for your IFTA Consulting portal account.</p>
@@ -49,13 +32,8 @@ async function sendPasswordResetEmail(email: string, resetUrl: string) {
           <p>This link expires in one hour. If you did not request it, you can safely ignore this email.</p>
         </div>
       `,
-    });
-
-    return true;
-  } catch (error) {
-    console.error("Unable to send password reset email.", error);
-    return false;
-  }
+  });
+  return delivery.delivered;
 }
 
 export async function requestPasswordReset(email: string) {

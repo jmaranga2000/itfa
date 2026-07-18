@@ -1,6 +1,5 @@
-import { createTransport } from "nodemailer";
 import { getServerEnv } from "@/lib/env";
-import { validateExternalRecipient } from "@/lib/client-recipient";
+import { sendPortalEmail } from "@/lib/email/smtp";
 
 function escapeHtml(value: string) {
   return value
@@ -20,44 +19,16 @@ export async function sendNewPortalMessageEmail(input: {
 }) {
   const env = getServerEnv();
 
-  if (!env.GMAIL_SMTP_USER || !env.GMAIL_SMTP_APP_PASSWORD) {
-    return { delivered: false, reason: "Gmail SMTP is not configured." };
-  }
-
-  const recipient = validateExternalRecipient(input.recipientEmail, env.GMAIL_SMTP_USER);
-
-  if (!recipient.valid) {
-    return { delivered: false, reason: recipient.reason };
-  }
-
   const portalUrl = `${env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "")}/client/messages?conversation=${encodeURIComponent(input.conversationId)}`;
   const recipientName = escapeHtml(input.recipientName || "Client");
   const subject = escapeHtml(input.subject);
   const preview = escapeHtml(input.messagePreview.slice(0, 320));
 
-  try {
-    const transporter = createTransport({
-      host: "smtp.gmail.com",
-      port: 465,
-      secure: true,
-      auth: {
-        user: env.GMAIL_SMTP_USER,
-        pass: env.GMAIL_SMTP_APP_PASSWORD,
-      },
-    });
-
-    const result = await transporter.sendMail({
-      from: {
-        name: "IFTA Consulting",
-        address: env.GMAIL_SMTP_USER,
-      },
-      to: recipient.recipient,
-      envelope: {
-        from: env.GMAIL_SMTP_USER,
-        to: [recipient.recipient],
-      },
-      subject: `New portal message: ${input.subject}`,
-      html: `
+  return sendPortalEmail({
+    recipientEmail: input.recipientEmail,
+    subject: `New portal message: ${input.subject}`,
+    text: `Hello ${input.recipientName || "Client"}, you have a new secure portal message: ${input.messagePreview.slice(0, 320)}. Open ${portalUrl}`,
+    html: `
         <!doctype html>
         <html>
           <body style="margin:0;background:#f4f7f7;color:#03363D;font-family:Arial,sans-serif;">
@@ -97,11 +68,5 @@ export async function sendNewPortalMessageEmail(input: {
           </body>
         </html>
       `,
-    });
-
-    return { delivered: true, messageId: result.messageId };
-  } catch (error) {
-    console.error("Unable to send portal message email.", error);
-    return { delivered: false, reason: "Gmail rejected the message." };
-  }
+  });
 }
