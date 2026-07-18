@@ -94,6 +94,7 @@ export type DashboardNavItem = {
   symbol?: string;
   icon?: DashboardIconName;
   badge?: string;
+  badgeTone?: "default" | "danger";
   children?: DashboardNavItem[];
   defaultOpen?: boolean;
 };
@@ -347,7 +348,11 @@ export function DashboardShell({
                 <span
                   className={cn(
                     "rounded-full px-2 py-0.5 text-xs font-bold",
-                    active ? "bg-brand-deep/10 text-brand-deep" : "bg-white/10 text-brand-mist",
+                    item.badgeTone === "danger"
+                      ? "bg-red-500 text-white shadow-sm"
+                      : active
+                        ? "bg-brand-deep/10 text-brand-deep"
+                        : "bg-white/10 text-brand-mist",
                   )}
                 >
                   {item.badge}

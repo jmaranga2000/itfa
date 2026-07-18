@@ -5,6 +5,13 @@ const clientDocumentSchema = new Schema(
     clientUserId: { type: Schema.Types.ObjectId, required: true, index: true },
     workflowId: { type: Schema.Types.ObjectId, default: null, index: true },
     requestId: { type: Schema.Types.ObjectId, default: null, index: true },
+    engagementLetterId: { type: Schema.Types.ObjectId, default: null, index: true },
+    documentKind: {
+      type: String,
+      enum: ["general", "signed_engagement_letter"],
+      default: "general",
+      index: true,
+    },
     name: { type: String, required: true },
     storageKey: { type: String, required: true, unique: true },
     contentType: { type: String, required: true },

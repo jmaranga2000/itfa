@@ -334,7 +334,8 @@ async function getLiveKycSubmissions(): Promise<KycSubmission[]> {
       overdue: false,
       slaStatus: "On Track",
       nextAction: recordStatus === "approved" ? "KYC is complete. Continue with the active engagement." : "Review submitted KYC evidence.",
-      canProceed: recordStatus === "approved",
+       canProceed: ["submitted", "under_review"].includes(recordStatus)
+         && answerRequirements.filter((requirement) => requirement.required).every((requirement) => requirement.clientAnswer),
       returningClientMode: "Full KYC",
       alerts: [],
       requirements,

@@ -4,7 +4,7 @@ export type AdminRequest = {
   client: string;
   clientContact: string;
   service: string;
-  status: "Admin review" | "Clarification" | "Ready to convert" | "KYC required" | "Quotation requested" | "Quotation preparing" | "Quotation sent" | "Converted";
+  status: "Admin review" | "Clarification" | "Ready to convert" | "KYC required" | "Letter signature" | "Quotation requested" | "Quotation preparing" | "Quotation sent" | "Converted";
   priority: "High" | "Medium";
   owner: string;
   submitted: string;
@@ -16,6 +16,7 @@ export type AdminRequest = {
   timeline: Array<{ at: string; title: string; detail: string }>;
   source?: "legacy" | "database";
   workflowId?: string | null;
+  isNew?: boolean;
 };
 
 export const adminRequests: readonly AdminRequest[] = [

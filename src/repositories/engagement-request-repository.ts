@@ -44,6 +44,10 @@ export type EngagementRequestRecord = {
   quotationAmount: number | null;
   quotationCurrency: string;
   workflowId: string | null;
+  isNew: boolean;
+  adminApprovedAt: string | null;
+  kycUnlockedAt: string | null;
+  kycApprovedAt: string | null;
   submittedAt: string;
   timeline: Array<{ at: string; title: string; detail: string; clientVisible: boolean }>;
 };
@@ -70,6 +74,10 @@ type RawRequest = {
   quotationAmount?: number | null;
   quotationCurrency?: string;
   workflowId?: Types.ObjectId | null;
+  adminViewedAt?: Date | null;
+  adminApprovedAt?: Date | null;
+  kycUnlockedAt?: Date | null;
+  kycApprovedAt?: Date | null;
   submittedAt: Date;
   timeline?: Array<{ at: Date; title: string; detail?: string; clientVisible?: boolean }>;
 };
@@ -97,6 +105,10 @@ function serialize(request: RawRequest): EngagementRequestRecord {
     quotationAmount: request.quotationAmount ?? null,
     quotationCurrency: request.quotationCurrency ?? "KES",
     workflowId: request.workflowId?.toString() ?? null,
+    isNew: !request.adminViewedAt,
+    adminApprovedAt: request.adminApprovedAt?.toISOString() ?? null,
+    kycUnlockedAt: request.kycUnlockedAt?.toISOString() ?? null,
+    kycApprovedAt: request.kycApprovedAt?.toISOString() ?? null,
     submittedAt: request.submittedAt.toISOString(),
     timeline: (request.timeline ?? []).map((item) => ({
       at: item.at.toISOString(), title: item.title, detail: item.detail ?? "", clientVisible: item.clientVisible ?? true,
@@ -124,13 +136,16 @@ function statusLabel(status: EngagementRequestStatus): AdminRequest["status"] {
 
 export function engagementRequestToAdminRecord(request: EngagementRequestRecord): AdminRequest {
   const serviceNames = request.items.map((item) => item.serviceTitle);
+  const workflowStatus = request.status === "approved"
+    ? request.kycApprovedAt ? "Letter signature" : "KYC required"
+    : statusLabel(request.status);
   return {
     id: request.id,
     reference: request.reference,
     client: request.clientName,
     clientContact: request.clientEmail,
     service: serviceNames.join(", "),
-    status: statusLabel(request.status),
+    status: workflowStatus,
     priority: request.priority === "high" ? "High" : "Medium",
     owner: "Engagement manager",
     submitted: new Intl.DateTimeFormat("en-KE", { day: "numeric", month: "short", year: "numeric" }).format(new Date(request.submittedAt)),
@@ -138,7 +153,11 @@ export function engagementRequestToAdminRecord(request: EngagementRequestRecord)
       ? "Prepare and send pricing quotation"
       : request.status === "converted"
         ? "Continue in the active engagement"
-        : "Confirm scope, KYC and assigned staff",
+        : request.status === "approved" && request.kycApprovedAt
+          ? "Collect the completed engagement letter"
+          : request.status === "approved"
+            ? "Complete the client KYC review"
+            : "Confirm scope and assign staff",
     requestSummary: request.clientNotes || `The client selected ${serviceNames.join(", ")}.`,
     requestedOutcome: request.expectedOutcome || "Confirm a responsible scope, fee and delivery plan.",
     scope: request.items.flatMap((item) => [item.serviceTitle, ...item.serviceSummary ? [item.serviceSummary] : []]),
@@ -150,6 +169,7 @@ export function engagementRequestToAdminRecord(request: EngagementRequestRecord)
     })),
     source: "database",
     workflowId: request.workflowId,
+    isNew: request.isNew,
   };
 }
 
@@ -212,6 +232,20 @@ export async function createEngagementRequestFromCart(input: {
     actionUrl: "/client/engagements",
     createdByUserId: input.principal.id,
   });
+  const administrators = await UserModel.find({
+    roleKeys: { $in: ["admin", "super_admin", "engagement_manager"] },
+    status: "active",
+  }).select("_id").lean().exec();
+  await Promise.all(administrators.map((administrator) => createCommunicationNotification({
+    recipientUserId: administrator._id.toString(),
+    type: "engagement_update",
+    title: input.requestType === "quotation" ? "New quotation request" : "New engagement request",
+    description: `${clientName} submitted ${request.reference} for ${cart.items.map((item) => item.title).join(", ")}.`,
+    relatedModule: "engagements",
+    relatedRecordId: request._id.toString(),
+    actionUrl: `/admin/requests/${request._id}`,
+    createdByUserId: input.principal.id,
+  })));
   await writeAuditLog({
     actor: input.principal,
     action: input.requestType === "quotation" ? "request.quotation_submitted" : "request.checkout_submitted",
@@ -243,6 +277,23 @@ export async function listEngagementRequestsForAdmin() {
   return (requests as unknown as RawRequest[]).map(serialize);
 }
 
+export async function countNewEngagementRequests() {
+  await connectToDatabase();
+  return EngagementRequestModel.countDocuments({
+    status: { $nin: ["rejected", "converted"] },
+    adminViewedAt: null,
+  }).exec();
+}
+
+export async function markEngagementRequestViewed(requestId: string) {
+  if (!Types.ObjectId.isValid(requestId)) return;
+  await connectToDatabase();
+  await EngagementRequestModel.updateOne(
+    { _id: requestId, adminViewedAt: null },
+    { $set: { adminViewedAt: new Date() } },
+  ).exec();
+}
+
 export async function getEngagementRequestForAdmin(requestId: string) {
   await connectToDatabase();
   if (!Types.ObjectId.isValid(requestId)) return null;
@@ -265,7 +316,11 @@ export async function convertEngagementRequestToWorkflow(requestId: string, acto
   if (!Types.ObjectId.isValid(requestId)) return null;
   const request = await EngagementRequestModel.findOne({
     _id: requestId,
-    status: { $in: ["admin_review", "approved"] },
+    status: "approved",
+    workflowId: null,
+    adminApprovedAt: { $ne: null },
+    kycApprovedAt: { $ne: null },
+    engagementLetterId: { $ne: null },
   }).exec();
   if (!request) return null;
   const serviceNames = request.items.map((item) => item.serviceTitle);
@@ -288,6 +343,11 @@ export async function convertEngagementRequestToWorkflow(requestId: string, acto
   const assignedName = assignedStaff
     ? `${assignedStaff.firstName ?? ""} ${assignedStaff.lastName ?? ""}`.trim() || assignedStaff.email
     : "";
+  const activeStageIndex = template.stages.findIndex((stage) => stage.key === "active_work");
+  const startStageIndex = activeStageIndex >= 0
+    ? activeStageIndex
+    : Math.min(3, template.stages.length - 1);
+  const startStage = template.stages[startStageIndex];
   const workflow = await WorkflowInstanceModel.create({
     reference: `ENG-${now.getFullYear()}-${randomBytes(3).toString("hex").toUpperCase()}`,
     clientName: request.clientName,
@@ -299,13 +359,13 @@ export async function convertEngagementRequestToWorkflow(requestId: string, acto
     templateVersion: template.version,
     templateSnapshot: template,
     status: "active",
-    currentStageKey: template.stages[0].key,
+    currentStageKey: startStage.key,
     riskLevel: "low",
-    nextAction: template.stages[0].clientTitle,
+    nextAction: startStage.clientTitle,
     responsibleUserId: assignedStaff?._id ?? null,
     responsibleUserName: assignedName,
     startDate: now,
-    dueDate: addDays(now, template.stages.reduce((total, stage) => total + stage.expectedDurationDays, 0)),
+    dueDate: addDays(now, template.stages.slice(startStageIndex).reduce((total, stage) => total + stage.expectedDurationDays, 0)),
     lastActivityAt: now,
     team: assignedStaff ? [{
       userId: assignedStaff._id,
@@ -328,37 +388,46 @@ export async function convertEngagementRequestToWorkflow(requestId: string, acto
       requiredDocuments: stage.requiredDocuments,
       approvalRequired: stage.approvalRequired,
       clientVisible: stage.clientVisible,
-      status: index === 0 ? "in_progress" : "not_started",
-      enteredAt: index === 0 ? now : null,
-      dueAt: index === 0 ? addDays(now, stage.expectedDurationDays) : null,
+      status: index < startStageIndex ? "completed" : index === startStageIndex ? "in_progress" : "not_started",
+      enteredAt: index <= startStageIndex ? now : null,
+      completedAt: index < startStageIndex ? now : null,
+      dueAt: index === startStageIndex ? addDays(now, stage.expectedDurationDays) : null,
     })),
     tasks: template.stages.flatMap((stage, stageIndex) => stage.tasks.map((task) => ({
       key: task.key,
       stageKey: stage.key,
       title: task.title,
       description: task.description,
-      assignedUserId: stageIndex === 0 ? assignedStaff?._id ?? null : null,
-      assignedUserName: stageIndex === 0 ? assignedName : "",
+      assignedUserId: stageIndex === startStageIndex ? assignedStaff?._id ?? null : null,
+      assignedUserName: stageIndex === startStageIndex ? assignedName : "",
       assignedRole: task.assignedRole,
       priority: task.priority,
-      status: stageIndex === 0 ? "ready" : "not_started",
-      dueDate: stageIndex === 0 ? addDays(now, task.dueOffsetDays) : null,
+      status: stageIndex < startStageIndex ? "completed" : stageIndex === startStageIndex ? "ready" : "not_started",
+      startDate: stageIndex <= startStageIndex ? now : null,
+      completedAt: stageIndex < startStageIndex ? now : null,
+      completedByUserId: stageIndex < startStageIndex && Types.ObjectId.isValid(actor.id) ? new Types.ObjectId(actor.id) : null,
+      dueDate: stageIndex === startStageIndex ? addDays(now, task.dueOffsetDays) : null,
       dependencies: task.dependencies,
-      checklist: task.checklist.map((label) => ({ label, completed: false })),
+      checklist: task.checklist.map((label) => ({ label, completed: stageIndex < startStageIndex })),
       requiredDocuments: task.requiredDocuments,
       clientVisible: task.clientVisible,
       approvalRequired: task.approvalRequired,
     }))),
     milestones: template.milestones.map((title, index) => ({ key: `milestone-${index + 1}`, title, status: "pending", clientVisible: true })),
-    approvals: template.approvalPoints,
-    clientActions: [{
-      key: "complete-kyc",
-      title: "Complete client verification",
-      instructions: "Complete the KYC questionnaire and upload the requested evidence.",
-      assignedClientUserId: request.clientUserId,
-      status: "pending",
-      priority: "high",
-    }],
+    approvals: template.approvalPoints.map((approval) => {
+      const stageIndex = template.stages.findIndex((stage) => stage.key === approval.stageKey);
+      return stageIndex >= 0 && stageIndex < startStageIndex
+        ? {
+            ...approval,
+            status: "approved",
+            approverUserId: Types.ObjectId.isValid(actor.id) ? new Types.ObjectId(actor.id) : null,
+            approverName: actor.email,
+            approvalDate: now,
+            decision: "Approved before engagement activation",
+          }
+        : approval;
+    }),
+    clientActions: [],
     financial: { invoiceStatus: "draft", paymentStatus: "pending", balanceDue: request.quotationAmount ?? 0, currency: request.quotationCurrency },
     completionChecklist: template.completionConditions.map((label) => ({ label, completed: false })),
     archive: { status: "not_ready" },
@@ -389,6 +458,18 @@ export async function convertEngagementRequestToWorkflow(requestId: string, acto
     actionUrl: "/client/engagements",
     createdByUserId: actor.id,
   });
+  if (assignedStaff) {
+    await createCommunicationNotification({
+      recipientUserId: assignedStaff._id.toString(),
+      type: "engagement_update",
+      title: "Assigned engagement is now active",
+      description: `${workflow.reference} for ${request.clientName} is ready for delivery work.`,
+      relatedModule: "engagements",
+      relatedRecordId: workflow._id.toString(),
+      actionUrl: `/staff/engagements/${workflow._id}`,
+      createdByUserId: actor.id,
+    });
+  }
   await writeAuditLog({ actor, action: "request.converted", resourceType: "EngagementRequest", resourceId: requestId, newValues: { workflowId: workflow._id.toString() } });
   return workflow._id.toString();
 }

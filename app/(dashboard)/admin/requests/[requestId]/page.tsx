@@ -21,17 +21,14 @@ import { SubmitButton } from "@/components/ui/submit-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getAdminRequest } from "@/content/admin-requests";
 import { requirePermission } from "@/features/auth/server";
-import {
-  convertEngagementRequestAction,
-} from "@/features/client/request-admin-actions";
-import { prepareEngagementLetterAction } from "@/features/engagement-letters/actions";
+import { approveEngagementRequestAction } from "@/features/client/request-admin-actions";
 import { getEngagementLetterForRequest } from "@/repositories/engagement-letter-repository";
-import { engagementRequestToAdminRecord, getEngagementRequestForAdmin } from "@/repositories/engagement-request-repository";
+import { engagementRequestToAdminRecord, getEngagementRequestForAdmin, markEngagementRequestViewed } from "@/repositories/engagement-request-repository";
 import { getRequestStaffAssignment } from "@/repositories/staff-assignment-repository";
 
 function statusTone(status: string) {
   if (status === "Ready to convert") return "green" as const;
-  if (status === "Clarification" || status === "KYC required") return "gold" as const;
+  if (status === "Clarification" || status === "KYC required" || status === "Letter signature") return "gold" as const;
   return "teal" as const;
 }
 
@@ -72,7 +69,7 @@ export default async function AdminRequestDetailPage({
   searchParams,
 }: {
   params: Promise<{ requestId: string }>;
-  searchParams: Promise<{ assigned?: string; quoted?: string; error?: string }>;
+  searchParams: Promise<{ assigned?: string; approved?: string; quoted?: string; error?: string }>;
 }) {
   const [{ requestId }, query] = await Promise.all([
     params,
@@ -80,6 +77,7 @@ export default async function AdminRequestDetailPage({
     requirePermission("engagements.read_all"),
   ]);
   const databaseRequest = await getEngagementRequestForAdmin(requestId);
+  if (databaseRequest?.isNew) await markEngagementRequestViewed(requestId);
   const request = databaseRequest ? engagementRequestToAdminRecord(databaseRequest) : getAdminRequest(requestId);
 
   if (!request) notFound();
@@ -105,6 +103,11 @@ export default async function AdminRequestDetailPage({
       {query.quoted === "1" ? (
         <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
           The quotation was sent to the client for acceptance.
+        </p>
+      ) : null}
+      {query.approved === "1" ? (
+        <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
+          Request approved. KYC will open automatically when a staff member is assigned.
         </p>
       ) : null}
       {query.error === "letter-required" ? (
@@ -155,19 +158,34 @@ export default async function AdminRequestDetailPage({
                   <BadgeDollarSign aria-hidden="true" className="h-4 w-4" />
                   {databaseRequest.status === "quotation_sent" ? "Open quotation" : "Prepare quotation"}
                 </Link>
+              ) : request.workflowId ? (
+                <Link className={buttonClassName()} href={`/admin/workflows/${request.workflowId}`}>
+                  <BriefcaseBusiness aria-hidden="true" className="h-4 w-4" />
+                  Open engagement
+                </Link>
               ) : engagementLetter ? (
                 <Link className={buttonClassName()} href={`/admin/engagement-letters/${engagementLetter.id}`}>
                   <FileSignature aria-hidden="true" className="h-4 w-4" />
                   Open engagement letter
                 </Link>
-              ) : request.source === "database" && !request.workflowId ? (
-                <form action={convertEngagementRequestAction}>
+              ) : databaseRequest && !databaseRequest.adminApprovedAt ? (
+                <form action={approveEngagementRequestAction}>
                   <input name="requestId" type="hidden" value={request.id} />
-                  <SubmitButton pendingText="Preparing engagement letter...">
-                    <FileSignature aria-hidden="true" className="h-4 w-4" />
-                    Approve and prepare letter
+                  <SubmitButton pendingText="Approving request...">
+                    <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
+                    Approve request
                   </SubmitButton>
                 </form>
+              ) : databaseRequest && !assignment ? (
+                <Link className={buttonClassName()} href={`/admin/staff?assignRequest=${encodeURIComponent(request.id)}`}>
+                  <UserRoundCheck aria-hidden="true" className="h-4 w-4" />
+                  Assign staff
+                </Link>
+              ) : databaseRequest && !databaseRequest.kycApprovedAt ? (
+                <Link className={buttonClassName()} href="/admin/kyc">
+                  <ShieldCheck aria-hidden="true" className="h-4 w-4" />
+                  Open KYC queue
+                </Link>
               ) : (
                 <Link className={buttonClassName()} href={request.workflowId ? `/admin/workflows/${request.workflowId}` : action.href}>
                   <ActionIcon aria-hidden="true" className="h-4 w-4" />
@@ -351,6 +369,14 @@ export default async function AdminRequestDetailPage({
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
+                  {databaseRequest?.adminApprovedAt ? (
+                    <CheckCircle2 aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+                  ) : (
+                    <Clock3 aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                  )}
+                  <div><p className="text-sm font-semibold text-foreground">Administration approval</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{databaseRequest?.adminApprovedAt ? "The request has been approved." : "The request is waiting for an approval decision."}</p></div>
+                </div>
+                <div className="flex items-start gap-3">
                   {assignment ? (
                     <CheckCircle2
                       aria-hidden="true"
@@ -370,6 +396,16 @@ export default async function AdminRequestDetailPage({
                         : "No staff member has been assigned yet."}
                     </p>
                   </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  {databaseRequest?.kycApprovedAt ? (
+                    <CheckCircle2 aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+                  ) : databaseRequest?.kycUnlockedAt ? (
+                    <Clock3 aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+                  ) : (
+                    <ShieldCheck aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
+                  )}
+                  <div><p className="text-sm font-semibold text-foreground">Client KYC</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{databaseRequest?.kycApprovedAt ? "KYC is approved." : databaseRequest?.kycUnlockedAt ? "KYC is open or pending review." : "KYC opens after approval and staff assignment."}</p></div>
                 </div>
                 <div className="flex items-start gap-3">
                   {engagementLetter?.status === "completed" ? (
@@ -392,19 +428,28 @@ export default async function AdminRequestDetailPage({
                 </div>
               </div>
 
-              {engagementLetter ? (
+              {request.workflowId ? (
+                <Link className={buttonClassName({ className: "w-full" })} href={`/admin/workflows/${request.workflowId}`}>
+                  <BriefcaseBusiness aria-hidden="true" className="h-4 w-4" />
+                  Open active engagement
+                </Link>
+              ) : engagementLetter ? (
                 <Link className={buttonClassName({ className: "w-full" })} href={`/admin/engagement-letters/${engagementLetter.id}`}>
                   <FileSignature aria-hidden="true" className="h-4 w-4" />
                   Review engagement letter
                 </Link>
-              ) : databaseRequest ? (
-                <form action={prepareEngagementLetterAction}>
+              ) : databaseRequest && !databaseRequest.adminApprovedAt ? (
+                <form action={approveEngagementRequestAction}>
                   <input name="requestId" type="hidden" value={request.id} />
-                  <SubmitButton className="w-full" pendingText="Preparing letter...">
-                    <FileSignature aria-hidden="true" className="h-4 w-4" />
-                    Prepare engagement letter
+                  <SubmitButton className="w-full" pendingText="Approving request...">
+                    <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
+                    Approve request
                   </SubmitButton>
                 </form>
+              ) : databaseRequest && !assignment ? (
+                <Link className={buttonClassName({ className: "w-full" })} href={`/admin/staff?assignRequest=${encodeURIComponent(request.id)}`}><UserRoundCheck className="h-4 w-4" />Assign staff</Link>
+              ) : databaseRequest && !databaseRequest.kycApprovedAt ? (
+                <Link className={buttonClassName({ className: "w-full" })} href="/admin/kyc"><ShieldCheck className="h-4 w-4" />Review KYC</Link>
               ) : (
                 <Link className={buttonClassName({ className: "w-full" })} href={action.href}>
                   <ActionIcon aria-hidden="true" className="h-4 w-4" />
@@ -416,7 +461,7 @@ export default async function AdminRequestDetailPage({
                   className: "w-full",
                   variant: "secondary",
                 })}
-                href="/admin/messages"
+                href={`/admin/messages?returnTo=${encodeURIComponent(`/admin/requests/${request.id}`)}`}
               >
                 <MessageSquareText aria-hidden="true" className="h-4 w-4" />
                 Message client

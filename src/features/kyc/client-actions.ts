@@ -11,6 +11,7 @@ import {
   saveClientKycAnswers,
   submitClientKycForReview,
 } from "@/repositories/client-kyc-repository";
+import { getClientKycAccess, notifyKycSubmitted } from "@/repositories/request-onboarding-repository";
 
 const MAX_DOCUMENT_SIZE = 10 * 1024 * 1024;
 const allowedDocumentTypes = new Set(["application/pdf", "image/jpeg", "image/png"]);
@@ -24,6 +25,10 @@ async function requireClientKycUser() {
 
   if (!principal.roleKeys.includes("client") && !principal.roleKeys.includes("client_representative")) {
     redirect("/client");
+  }
+
+  if (!(await getClientKycAccess(principal.id))) {
+    redirect("/client/kyc?error=locked");
   }
 
   return principal;
@@ -92,6 +97,10 @@ export async function submitClientKycForReviewAction() {
 
   if (!result.submitted) {
     redirect("/client/kyc?error=complete-questionnaire");
+  }
+
+  if (result.reason === "submitted") {
+    await notifyKycSubmitted(principal.id, principal);
   }
 
   redirect(`/client/kyc?submitted=1${result.documentsMissing ? "&documents=missing" : ""}`);

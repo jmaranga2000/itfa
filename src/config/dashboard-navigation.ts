@@ -1,6 +1,6 @@
 import type { DashboardNavItem } from "@/components/layout/dashboard-shell";
 
-export function getClientNavItems(cartCount = 0): DashboardNavItem[] {
+export function getClientNavItems(cartCount = 0, kycOpen = false): DashboardNavItem[] {
   return [
   {
     label: "Overview",
@@ -20,7 +20,7 @@ export function getClientNavItems(cartCount = 0): DashboardNavItem[] {
       { label: "My engagements", href: "/client/engagements", icon: "briefcase", symbol: "E" },
       { label: "Engagement letters", href: "/client/engagement-letters", icon: "fileText", symbol: "EL" },
       { label: "Service cart", href: "/client/cart", icon: "creditCard", symbol: "C", ...(cartCount > 0 ? { badge: String(cartCount) } : {}) },
-      { label: "KYC", href: "/client/kyc", icon: "fileCheck", symbol: "K", badge: "Open" },
+      { label: "KYC", href: "/client/kyc", icon: "fileCheck", symbol: "K", badge: kycOpen ? "Open" : "Locked" },
     ],
   },
   {
@@ -181,3 +181,17 @@ export const adminNavItems: DashboardNavItem[] = [
     ],
   },
 ];
+
+export function getAdminNavItems(newRequestCount = 0): DashboardNavItem[] {
+  return adminNavItems.map((group) => ({
+    ...group,
+    children: group.children?.map((item) => item.href === "/admin/requests"
+      ? {
+          ...item,
+          ...(newRequestCount > 0
+            ? { badge: newRequestCount > 99 ? "99+" : String(newRequestCount), badgeTone: "danger" as const }
+            : {}),
+        }
+      : item),
+  }));
+}

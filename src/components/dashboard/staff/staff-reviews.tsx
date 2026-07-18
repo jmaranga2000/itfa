@@ -51,8 +51,8 @@ export function StaffReviews({ reviews }: { reviews: StaffReviewRecord[] }) {
                   <TableCell>{review.documentCount}</TableCell>
                   <TableCell>{staffDate(review.submittedAt)}</TableCell>
                   <TableCell className="text-right">
-                    <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={`/staff/clients/${review.clientUserId}`}>
-                      View client
+                    <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={`/staff/kyc/client-kyc-${review.id}`}>
+                      Review KYC
                       <ArrowRight aria-hidden="true" className="h-4 w-4" />
                     </Link>
                   </TableCell>

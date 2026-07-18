@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, ClipboardList, FileUp, Send, ShieldCheck } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ClipboardList, Clock3, FileUp, Send, ShieldCheck } from "lucide-react";
 import { submitClientKycForReviewAction } from "@/features/kyc/client-actions";
 import type { ClientKycSubmission } from "@/repositories/client-kyc-repository";
+import type { ClientKycAccess } from "@/repositories/request-onboarding-repository";
 import { buttonClassName } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { SubmitButton } from "@/components/ui/submit-button";
@@ -24,15 +25,36 @@ function formatFileSize(size: number) {
 
 export function ClientKyc({
   error,
+  access,
   submission,
   submitted,
   uploaded,
 }: {
   error?: string;
+  access: ClientKycAccess | null;
   submission: ClientKycSubmission;
   submitted: boolean;
   uploaded: boolean;
 }) {
+  if (!access) {
+    return (
+      <div className="grid min-w-0 gap-5">
+        <section className="rounded-md border border-border border-l-4 border-l-primary bg-card p-5">
+          <p className="text-sm font-semibold text-primary">Client verification</p>
+          <h1 className="mt-2 text-2xl font-bold text-foreground">KYC is not open yet</h1>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+            KYC becomes available after IFTA approves your engagement request and assigns the responsible staff member.
+          </p>
+        </section>
+        <Card>
+          <CardContent className="flex items-start gap-4 p-5">
+            <ShieldCheck aria-hidden="true" className="mt-0.5 h-6 w-6 shrink-0 text-primary" />
+            <div><h2 className="font-bold text-foreground">Waiting for administration setup</h2><p className="mt-1 text-sm leading-6 text-muted-foreground">You will receive an email and a live portal alert when KYC is ready. No questionnaire or upload can be submitted before then.</p><Link className={buttonClassName({ className: "mt-4", variant: "secondary" })} href="/client/engagements">View my requests</Link></div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
   const readyForReview = submission.questionnaire.complete;
   const reviewSubmitted = ["submitted", "under_review", "approved"].includes(submission.status);
   const documentsMissing = submission.documents.length === 0;
@@ -66,6 +88,13 @@ export function ClientKyc({
         <div className="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm font-medium text-emerald-800">
           <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
           Your KYC has been submitted for review.
+        </div>
+      ) : null}
+
+      {submission.status === "submitted" || submission.status === "under_review" ? (
+        <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-amber-950">
+          <Clock3 aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0" />
+          <div><p className="text-sm font-semibold">KYC approval pending</p><p className="mt-1 text-sm leading-6">Your information has been submitted. The assigned reviewer or administrator will notify you after approval.</p></div>
         </div>
       ) : null}
 

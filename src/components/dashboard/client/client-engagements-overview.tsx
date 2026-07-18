@@ -26,6 +26,13 @@ function requestTone(status: EngagementRequestRecord["status"]) {
   return "teal" as const;
 }
 
+function requestLabel(request: EngagementRequestRecord) {
+  if (request.status !== "approved") return requestLabels[request.status];
+  if (!request.kycUnlockedAt) return "Approved, team assignment pending";
+  if (!request.kycApprovedAt) return "Complete KYC";
+  return "Engagement letter ready";
+}
+
 function dateLabel(value: string) {
   return new Intl.DateTimeFormat("en-KE", { dateStyle: "medium" }).format(new Date(value));
 }
@@ -74,7 +81,7 @@ export function ClientEngagementsOverview({
               <CardHeader className="flex flex-col justify-between gap-3 md:flex-row md:items-start">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <Badge tone={requestTone(request.status)}>{requestLabels[request.status]}</Badge>
+                    <Badge tone={requestTone(request.status)}>{requestLabel(request)}</Badge>
                     <span className="text-xs font-semibold text-muted-foreground">{request.reference}</span>
                   </div>
                   <CardTitle className="mt-3">{request.items.map((item) => item.serviceTitle).join(", ")}</CardTitle>
@@ -91,7 +98,7 @@ export function ClientEngagementsOverview({
               </CardHeader>
               <CardContent className="grid gap-4 border-t border-border pt-4">
                 <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted-foreground">
-                  <span className="inline-flex items-center gap-2"><Clock3 className="h-4 w-4" />{requestLabels[request.status]}</span>
+                  <span className="inline-flex items-center gap-2"><Clock3 className="h-4 w-4" />{requestLabel(request)}</span>
                   <span className="inline-flex items-center gap-2"><FileText className="h-4 w-4" />{request.items.length} selected service{request.items.length === 1 ? "" : "s"}</span>
                 </div>
                 {request.status === "quotation_sent" ? (
@@ -103,6 +110,10 @@ export function ClientEngagementsOverview({
                       Accept quotation
                     </SubmitButton>
                   </form>
+                ) : request.status === "approved" && request.kycUnlockedAt && !request.kycApprovedAt ? (
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-primary/30 bg-primary/5 p-3"><p className="text-sm font-medium text-foreground">Complete your KYC information so the review team can prepare your engagement letter.</p><Link className={buttonClassName()} href="/client/kyc">Continue KYC</Link></div>
+                ) : request.status === "approved" && request.kycApprovedAt ? (
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-primary/30 bg-primary/5 p-3"><p className="text-sm font-medium text-foreground">Your letter is ready to review and sign before work begins.</p><Link className={buttonClassName()} href="/client/documents">Review letter</Link></div>
                 ) : null}
               </CardContent>
             </Card>

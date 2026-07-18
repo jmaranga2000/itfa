@@ -9,6 +9,7 @@ import {
   getEngagementRequestForAdmin,
 } from "@/repositories/engagement-request-repository";
 import { createCommunicationNotification } from "@/repositories/communication-repository";
+import { notifyClientOfStaffAssignment } from "@/repositories/request-onboarding-repository";
 import { connectToDatabase } from "@/lib/db/mongoose";
 import { RequestStaffAssignmentModel } from "@/models/request-staff-assignment";
 import { UserModel } from "@/models/user";
@@ -158,6 +159,9 @@ export async function assignStaffToRequest(
     actionUrl: `/staff/requests/${requestId}`,
     createdByUserId: actor.id,
   });
+  if (databaseRequest) {
+    await notifyClientOfStaffAssignment(requestId, actor, staffName(staff));
+  }
 
   return true;
 }

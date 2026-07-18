@@ -245,6 +245,7 @@ export async function ensureEngagementLetterForRequest(requestId: string, actor:
     EngagementRequestModel.findOne({
       _id: requestId,
       status: { $in: ["admin_review", "approved", "quotation_sent"] },
+      kycApprovedAt: { $ne: null },
     }).exec(),
     getPlatformSettings(),
     publishedLetterTemplate(),
@@ -560,6 +561,109 @@ export async function signEngagementLetter(input: {
       status: record.status,
     },
   });
+  return { ok: true as const, letter: serialize(record.toObject() as unknown as RawLetter) };
+}
+
+export async function recordUploadedSignedEngagementLetter(input: {
+  letterId: string;
+  principal: Principal;
+  documentId: string;
+  storageKey: string;
+  filename: string;
+}) {
+  if (!Types.ObjectId.isValid(input.letterId) || !Types.ObjectId.isValid(input.documentId)) {
+    return { ok: false as const, reason: "missing" as const };
+  }
+  await connectToDatabase();
+  const record = await EngagementLetterModel.findOne({
+    _id: input.letterId,
+    clientUserId: input.principal.id,
+    status: { $in: ["awaiting_signatures", "partially_signed"] },
+  }).exec();
+  if (!record) return { ok: false as const, reason: "unavailable" as const };
+  if (record.expiresAt.getTime() < Date.now()) return { ok: false as const, reason: "expired" as const };
+  if (hash(record.content) !== record.contentHash) return { ok: false as const, reason: "changed" as const };
+
+  const now = new Date();
+  for (const signer of record.signers.filter((item) => item.required && item.status !== "signed")) {
+    signer.status = "signed";
+    signer.method = "uploaded";
+    signer.signatureText = "Verified in uploaded executed copy";
+    signer.signedByUserId = signer.role === "client" && Types.ObjectId.isValid(input.principal.id)
+      ? new Types.ObjectId(input.principal.id)
+      : null;
+    signer.signedAt = now;
+    signer.contentHash = record.contentHash;
+    signer.signatureHash = hash([
+      record._id.toString(),
+      record.contentHash,
+      signer.role,
+      input.documentId,
+      input.storageKey,
+      now.toISOString(),
+    ].join("|"));
+  }
+  record.status = "completed";
+  record.completedAt = now;
+  record.signedCopyDocumentId = new Types.ObjectId(input.documentId);
+  record.signedCopyStorageKey = input.storageKey;
+  record.signedCopyFilename = input.filename;
+  record.signedCopyUploadedAt = now;
+  await record.save();
+
+  await EngagementRequestModel.updateOne(
+    { _id: record.requestId, status: { $ne: "converted" } },
+    {
+      $set: { status: "approved" },
+      $push: {
+        timeline: {
+          at: now,
+          title: "Signed engagement letter received",
+          detail: `${record.reference} was uploaded as a fully executed copy.`,
+          clientVisible: true,
+        },
+      },
+    },
+  ).exec();
+
+  const administrators = await UserModel.find({
+    roleKeys: { $in: ["admin", "super_admin", "engagement_manager"] },
+    status: "active",
+  }).select("_id").lean().exec();
+  await Promise.allSettled([
+    createCommunicationNotification({
+      recipientUserId: record.clientUserId.toString(),
+      type: "engagement_update",
+      title: "Signed engagement letter received",
+      description: `${record.reference} was received and your engagement is being activated.`,
+      relatedModule: "engagements",
+      relatedRecordId: record._id.toString(),
+      actionUrl: "/client/documents",
+      createdByUserId: input.principal.id,
+    }),
+    ...administrators.map((administrator) => createCommunicationNotification({
+      recipientUserId: administrator._id.toString(),
+      type: "engagement_update" as const,
+      title: "Executed engagement letter uploaded",
+      description: `${record.clientName} uploaded the signed copy of ${record.reference}.`,
+      relatedModule: "engagements" as const,
+      relatedRecordId: record._id.toString(),
+      actionUrl: `/admin/engagement-letters/${record._id}`,
+      createdByUserId: input.principal.id,
+    })),
+    writeAuditLog({
+      actor: input.principal,
+      action: "engagement_letter.signed_copy_uploaded",
+      resourceType: "EngagementLetter",
+      resourceId: record._id.toString(),
+      newValues: {
+        status: "completed",
+        documentId: input.documentId,
+        filename: input.filename,
+        completedAt: now.toISOString(),
+      },
+    }),
+  ]);
   return { ok: true as const, letter: serialize(record.toObject() as unknown as RawLetter) };
 }
 

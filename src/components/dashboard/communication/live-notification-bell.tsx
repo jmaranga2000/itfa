@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Bell, BellRing, ExternalLink, Smartphone } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { buttonClassName } from "@/components/ui/button";
 
 type LiveNotification = {
@@ -26,14 +26,21 @@ export function LiveNotificationBell({ notificationsHref }: { notificationsHref:
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<LiveNotification[]>([]);
+  const notificationFingerprint = useRef<string | null>(null);
   const [pushState, setPushState] = useState<"hidden" | "available" | "enabled" | "blocked">("hidden");
 
   const refresh = useCallback(async () => {
     const response = await fetch("/api/notifications/unread", { cache: "no-store" });
     if (!response.ok) return;
     const data = await response.json() as { notifications?: LiveNotification[] };
-    setNotifications(data.notifications ?? []);
-  }, []);
+    const nextNotifications = data.notifications ?? [];
+    const nextFingerprint = nextNotifications.map((notification) => notification.id).join("|");
+    if (notificationFingerprint.current !== null && notificationFingerprint.current !== nextFingerprint) {
+      router.refresh();
+    }
+    notificationFingerprint.current = nextFingerprint;
+    setNotifications(nextNotifications);
+  }, [router]);
 
   useEffect(() => {
     const initialRefresh = window.setTimeout(() => void refresh(), 0);

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {
   AlertTriangle,
+  CheckCircle2,
   Download,
   Eye,
   FileText,
@@ -11,9 +12,11 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
+import { approveClientKycSubmissionAction } from "@/features/kyc/review-actions";
 import { Badge } from "@/components/ui/badge";
 import { buttonClassName } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { SubmitButton } from "@/components/ui/submit-button";
 import {
   KycProgressBar,
   KycRequirementStatusBadge,
@@ -58,13 +61,50 @@ function groupRequirements(requirements: KycRequirement[]) {
   }, {});
 }
 
-export function KycReviewWorkspace({ submission }: { submission: KycSubmission }) {
+type KycReviewWorkspaceProps = {
+  submission: KycSubmission;
+  portal?: "admin" | "staff";
+  approved?: boolean;
+  error?: string;
+};
+
+function portalHref(href: string, portal: "admin" | "staff") {
+  if (portal === "admin") return href;
+  if (href === "/admin/active-engagements") return "/staff/requests";
+  if (href.startsWith("/admin/workflows/")) {
+    return href.replace("/admin/workflows/", "/staff/engagements/");
+  }
+  return href.replace("/admin/", "/staff/");
+}
+
+export function KycReviewWorkspace({
+  submission,
+  portal = "admin",
+  approved = false,
+  error,
+}: KycReviewWorkspaceProps) {
   const selectedRequirement = submission.requirements[0];
   const selectedDocument = selectedRequirement?.documentVersions[0];
   const grouped = groupRequirements(submission.requirements);
+  const basePath = `/${portal}/kyc`;
+  const returnPath = `${basePath}/${submission.id}`;
 
   return (
     <div className="grid gap-5">
+      {approved ? (
+        <div className="flex items-start gap-3 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-900">
+          <CheckCircle2 aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0" />
+          <div>
+            <p className="text-sm font-semibold">KYC approved and engagement letter generated</p>
+            <p className="mt-1 text-xs">The client has been notified and can review the letter in Documents.</p>
+          </div>
+        </div>
+      ) : null}
+      {error ? (
+        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-900">
+          KYC could not be approved. Confirm that the questionnaire is submitted and the request is assigned.
+        </div>
+      ) : null}
       <section className="sticky top-16 z-20 rounded-md border border-border bg-card p-5 shadow-sm">
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
           <div className="min-w-0">
@@ -109,22 +149,36 @@ export function KycReviewWorkspace({ submission }: { submission: KycSubmission }
             </div>
           </div>
           <div className="flex flex-wrap gap-2 xl:justify-end">
-            <Link className={buttonClassName({ variant: "secondary" })} href="/admin/kyc">
+            <Link className={buttonClassName({ variant: "secondary" })} href={basePath}>
               Back to KYC
             </Link>
-            <Link className={buttonClassName({ variant: "secondary" })} href="/admin/kyc/reviewers">
-              <UserPlus aria-hidden="true" className="h-4 w-4" />
-              Assign Reviewer
-            </Link>
-            <Link className={buttonClassName({ variant: "secondary" })} href={submission.clientHref}>
+            {portal === "admin" ? (
+              <Link className={buttonClassName({ variant: "secondary" })} href="/admin/kyc/reviewers">
+                <UserPlus aria-hidden="true" className="h-4 w-4" />
+                Assign Reviewer
+              </Link>
+            ) : null}
+            <Link className={buttonClassName({ variant: "secondary" })} href={portalHref(submission.clientHref, portal)}>
               View Client
             </Link>
-            <Link className={buttonClassName({ variant: "secondary" })} href={submission.engagementHref}>
+            <Link className={buttonClassName({ variant: "secondary" })} href={portalHref(submission.engagementHref, portal)}>
               View Engagement
             </Link>
-            <button className={buttonClassName()} type="button" disabled={!submission.canProceed}>
-              Approve KYC
-            </button>
+            {submission.status === "approved" ? (
+              <span className="inline-flex h-10 items-center gap-2 rounded-md bg-emerald-100 px-4 text-sm font-semibold text-emerald-800">
+                <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
+                Approved
+              </span>
+            ) : (
+              <form action={approveClientKycSubmissionAction}>
+                <input name="submissionId" type="hidden" value={submission.id} />
+                <input name="returnPath" type="hidden" value={returnPath} />
+                <SubmitButton disabled={!submission.canProceed} pendingText="Approving KYC...">
+                  <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
+                  Approve KYC
+                </SubmitButton>
+              </form>
+            )}
           </div>
         </div>
       </section>

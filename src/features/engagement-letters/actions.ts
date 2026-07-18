@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireAnyPermission, requireUser } from "@/features/auth/server";
+import { activateCompletedEngagementLetter } from "@/features/engagements/activation-service";
 import {
   ensureEngagementLetterForRequest,
   sendEngagementLetter,
@@ -90,6 +91,7 @@ export async function signAdminEngagementLetterAction(formData: FormData) {
     principal,
   });
   if (!result.ok) redirect(`/admin/engagement-letters/${letterId}?error=${result.reason}`);
+  await activateCompletedEngagementLetter(letterId, principal);
   refreshLetterPaths(letterId, result.letter.requestId);
   redirect(`/admin/engagement-letters/${letterId}?signed=1`);
 }
@@ -108,6 +110,7 @@ export async function signClientEngagementLetterAction(formData: FormData) {
     principal,
   });
   if (!result.ok) redirect(`/client/engagement-letters/${letterId}?error=${result.reason}`);
+  await activateCompletedEngagementLetter(letterId, principal);
   refreshLetterPaths(letterId, result.letter.requestId);
   redirect(`/client/engagement-letters/${letterId}?signed=1`);
 }

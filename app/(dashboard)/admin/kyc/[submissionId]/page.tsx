@@ -1,18 +1,22 @@
 import { notFound } from "next/navigation";
 import { KycReviewWorkspace } from "@/components/dashboard/kyc/kyc-review-workspace";
+import { requireAnyPermission } from "@/features/auth/server";
 import { getKycSubmissionDetail } from "@/repositories/kyc-repository";
 
 export default async function AdminKycSubmissionPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ submissionId: string }>;
+  searchParams: Promise<{ approved?: string; error?: string }>;
 }) {
-  const { submissionId } = await params;
+  await requireAnyPermission(["kyc.review", "kyc.approve"]);
+  const [{ submissionId }, query] = await Promise.all([params, searchParams]);
   const submission = await getKycSubmissionDetail(submissionId);
 
   if (!submission) {
     notFound();
   }
 
-  return <KycReviewWorkspace submission={submission} />;
+  return <KycReviewWorkspace approved={query.approved === "1"} error={query.error} submission={submission} />;
 }

@@ -1,10 +1,13 @@
 import Link from "next/link";
-import { Download, FilePlus2, FolderOpen, MessageSquareReply } from "lucide-react";
+import { Download, Eye, FilePlus2, FileSignature, FolderOpen, MessageSquareReply, Upload } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { buttonClassName } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { SubmitButton } from "@/components/ui/submit-button";
+import { uploadSignedEngagementLetterAction } from "@/features/client/document-actions";
 import type { ClientDocumentRecord } from "@/repositories/client-portal-repository";
+import type { EngagementLetterRecord } from "@/repositories/engagement-letter-repository";
 
 function statusTone(status: string) {
   if (["approved", "final"].includes(status)) return "green" as const;
@@ -16,13 +19,27 @@ function dateLabel(value: string) {
   return new Intl.DateTimeFormat("en-KE", { dateStyle: "medium" }).format(new Date(value));
 }
 
-export function ClientDocuments({ documents, notice }: { documents: ClientDocumentRecord[]; notice?: string }) {
+const signedUploadErrors: Record<string, string> = {
+  "signed-missing": "Choose a signed copy and confirm that all required parties have signed it.",
+  "signed-size": "The signed copy must be 10 MB or smaller.",
+  "signed-type": "Upload the signed copy as a PDF, JPG or PNG file.",
+  "signed-letter": "This engagement letter is not available for signed-copy upload.",
+  "signed-upload": "The signed copy could not be stored. Please try again.",
+};
+
+export function ClientDocuments({ documents, letters, notice, error }: {
+  documents: ClientDocumentRecord[];
+  letters: EngagementLetterRecord[];
+  notice?: string;
+  error?: string;
+}) {
   const shared = documents.filter((document) => document.direction === "received").length;
   const feedback = documents.filter((document) => document.status === "replacement_requested").length;
 
   return (
     <div className="grid min-w-0 gap-5">
       {notice ? <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">{notice}</p> : null}
+      {error && signedUploadErrors[error] ? <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">{signedUploadErrors[error]}</p> : null}
       <section className="flex flex-col justify-between gap-4 rounded-md border border-border bg-card p-5 md:flex-row md:items-center">
         <div>
           <Badge tone="teal">Engagement files</Badge>
@@ -35,6 +52,46 @@ export function ClientDocuments({ documents, notice }: { documents: ClientDocume
           <Link className={buttonClassName()} href="/client/documents/upload"><FilePlus2 className="h-4 w-4" />Upload document</Link>
         </div>
       </section>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-start gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-brand-soft text-brand-deep"><FileSignature className="h-5 w-5" /></span>
+            <div><CardTitle>Engagement letters</CardTitle><CardDescription>Review, download and return the signed agreement before work begins.</CardDescription></div>
+          </div>
+        </CardHeader>
+        <CardContent className="grid gap-3">
+          {letters.length === 0 ? (
+            <EmptyState title="No engagement letter yet" description="Your letter will appear after IFTA approves your KYC." />
+          ) : letters.map((letter) => {
+            const clientSigner = letter.signers.find((signer) => signer.role === "client");
+            const needsSignedCopy = clientSigner?.status === "pending" && letter.status !== "completed";
+            return (
+              <div className="border-t border-border py-4 first:border-t-0 first:pt-0" key={letter.id}>
+                <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2"><p className="font-semibold text-foreground">{letter.subject}</p><Badge tone={letter.status === "completed" ? "green" : "gold"}>{letter.status === "completed" ? "Signed" : "Signature required"}</Badge></div>
+                    <p className="mt-1 text-sm text-muted-foreground">{letter.reference} | Issued {dateLabel(letter.generatedAt)}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={`/client/engagement-letters/${letter.id}`}><Eye className="h-4 w-4" />View</Link>
+                    <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={`/api/client/engagement-letters/${letter.id}`}><Download className="h-4 w-4" />Download</Link>
+                  </div>
+                </div>
+                {needsSignedCopy ? (
+                  <form action={uploadSignedEngagementLetterAction} className="mt-4 grid gap-3 rounded-md border border-border bg-muted/20 p-4" encType="multipart/form-data">
+                    <input name="letterId" type="hidden" value={letter.id} />
+                    <div><p className="text-sm font-semibold text-foreground">Upload the fully signed copy</p><p className="mt-1 text-xs leading-5 text-muted-foreground">PDF, JPG or PNG, up to 10 MB. You can also sign electronically from View.</p></div>
+                    <input accept="application/pdf,image/jpeg,image/png" className="block w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground file:mr-3 file:rounded file:border-0 file:bg-brand-soft file:px-3 file:py-1.5 file:font-semibold file:text-brand-deep" name="signedCopy" required type="file" />
+                    <label className="flex items-start gap-3 text-sm leading-6 text-foreground"><input className="mt-1 h-4 w-4 shrink-0 accent-primary" name="signedConfirmation" required type="checkbox" /><span>I confirm this copy has been signed by all required parties and is ready to activate the engagement.</span></label>
+                    <div className="flex justify-end"><SubmitButton pendingText="Uploading signed copy..."><Upload className="h-4 w-4" />Upload signed letter</SubmitButton></div>
+                  </form>
+                ) : null}
+              </div>
+            );
+          })}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

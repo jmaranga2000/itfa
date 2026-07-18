@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {
   AlertCircle,
+  ArrowLeft,
   ArrowUpRight,
   Megaphone,
   Paperclip,
@@ -89,12 +90,16 @@ export function CommunicationConsole({
   baseHref,
   newMessageHref,
   principalId,
+  returnHref,
+  returnLabel = "Back",
 }: {
   data: CommunicationHubData;
   audienceLabel: string;
   baseHref: string;
   newMessageHref?: string;
   principalId: string;
+  returnHref?: string;
+  returnLabel?: string;
 }) {
   const activeConversation = data.activeConversation;
 
@@ -112,6 +117,12 @@ export function CommunicationConsole({
             </p>
           </div>
           <div className="flex flex-col items-stretch gap-3 sm:items-end">
+            {returnHref ? (
+              <Link className={buttonClassName({ variant: "secondary" })} href={returnHref}>
+                <ArrowLeft aria-hidden="true" className="h-4 w-4" />
+                {returnLabel}
+              </Link>
+            ) : null}
             {newMessageHref ? (
               <Link className={buttonClassName()} href={newMessageHref}>
                 <Plus aria-hidden="true" className="h-4 w-4" />
@@ -158,7 +169,7 @@ export function CommunicationConsole({
                         ? "border-accent bg-muted"
                         : "border-border hover:border-accent hover:bg-muted/60",
                     )}
-                    href={`${baseHref}?conversation=${encodeURIComponent(conversation.id)}`}
+                    href={`${baseHref}?conversation=${encodeURIComponent(conversation.id)}${returnHref ? `&returnTo=${encodeURIComponent(returnHref)}` : ""}`}
                     key={conversation.id}
                   >
                     <div className="flex min-w-0 items-start justify-between gap-2">

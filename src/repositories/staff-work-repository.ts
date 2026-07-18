@@ -20,6 +20,7 @@ export type StaffAssignedRequest = {
   priority: string;
   nextAction: string;
   assignedAt: string;
+  clientUserId: string | null;
 };
 
 export type StaffClientRecord = {
@@ -105,6 +106,7 @@ type RawEngagementRequest = {
   status: string;
   priority: string;
   items: Array<{ serviceTitle: string }>;
+  clientUserId: Types.ObjectId;
 };
 
 type RawClient = {
@@ -133,7 +135,7 @@ async function listAssignedRequests(principal: Principal): Promise<StaffAssigned
     .map((requestId) => new Types.ObjectId(requestId));
   const databaseRequests = databaseRequestIds.length
     ? (await EngagementRequestModel.find({ _id: { $in: databaseRequestIds } })
-        .select("reference clientName status priority items.serviceTitle")
+        .select("reference clientName clientUserId status priority items.serviceTitle")
         .lean()
         .exec()) as unknown as RawEngagementRequest[]
     : [];
@@ -141,7 +143,7 @@ async function listAssignedRequests(principal: Principal): Promise<StaffAssigned
     databaseRequests.map((request) => [request._id.toString(), request]),
   );
 
-  return assignments.flatMap((assignment) => {
+  return assignments.flatMap<StaffAssignedRequest>((assignment) => {
     const request = getAdminRequest(assignment.requestId);
     if (request) {
       return [{
@@ -153,6 +155,7 @@ async function listAssignedRequests(principal: Principal): Promise<StaffAssigned
         priority: request.priority,
         nextAction: request.nextAction,
         assignedAt: assignment.assignedAt.toISOString(),
+        clientUserId: null,
       }];
     }
 
@@ -169,6 +172,7 @@ async function listAssignedRequests(principal: Principal): Promise<StaffAssigned
         ? "Prepare and send the quotation"
         : "Review the request and begin the engagement",
       assignedAt: assignment.assignedAt.toISOString(),
+      clientUserId: databaseRequest.clientUserId.toString(),
     }];
   });
 }
@@ -242,7 +246,10 @@ export async function getStaffWorkData(principal: Principal): Promise<StaffWorkD
     listWorkflowsForPrincipal(principal),
     listAssignedRequests(principal),
   ]);
-  const clientIds = Array.from(new Set(workflows.map((workflow) => workflow.clientUserId).filter(Boolean)))
+  const clientIds = Array.from(new Set([
+    ...workflows.map((workflow) => workflow.clientUserId),
+    ...requests.map((request) => request.clientUserId),
+  ].filter(Boolean)))
     .filter((value): value is string => typeof value === "string" && Types.ObjectId.isValid(value))
     .map((value) => new Types.ObjectId(value));
   const [users, kycSubmissions] = await Promise.all([

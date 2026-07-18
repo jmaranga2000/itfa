@@ -26,7 +26,7 @@ function statusTone(status: string) {
     return "green" as const;
   }
 
-  if (status === "Clarification" || status === "KYC required") {
+  if (status === "Clarification" || status === "KYC required" || status === "Letter signature") {
     return "gold" as const;
   }
 
@@ -38,16 +38,17 @@ function priorityTone(priority: string) {
 }
 
 export function AdminRequests({ requests = adminRequests }: { requests?: readonly AdminRequest[] }) {
+  const newRequests = requests.filter((request) => request.isNew);
   const readyToConvert = requests.filter((request) => request.status === "Ready to convert");
   const needsClient = requests.filter(
-    (request) => request.status === "Clarification" || request.status === "KYC required",
+    (request) => request.status === "Clarification" || request.status === "KYC required" || request.status === "Letter signature",
   );
   const highPriority = requests.filter((request) => request.priority === "High");
   const summary = [
     {
       label: "Open",
       value: requests.length,
-      helper: "Awaiting a decision",
+      helper: newRequests.length ? `${newRequests.length} new since last review` : "Awaiting a decision",
       icon: Inbox,
     },
     {
@@ -146,9 +147,10 @@ export function AdminRequests({ requests = adminRequests }: { requests?: readonl
               </TableHeader>
               <TableBody>
                 {requests.map((request) => (
-                  <TableRow key={request.reference}>
+                  <TableRow className={request.isNew ? "border-l-4 border-l-red-500 bg-red-50/80 dark:bg-red-950/20" : undefined} key={request.reference}>
                     <TableCell>
                       <div className="min-w-48">
+                        {request.isNew ? <Badge className="mb-2" tone="red">New request</Badge> : null}
                         <p className="font-semibold text-foreground">{request.client}</p>
                         <p className="mt-1 font-mono text-xs font-semibold text-primary">
                           {request.reference}
