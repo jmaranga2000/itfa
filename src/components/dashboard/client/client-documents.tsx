@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { Download, Eye, FilePlus2, FileSignature, FolderOpen, MessageSquareReply, Upload } from "lucide-react";
+import { CheckCircle2, Download, Eye, FilePlus2, FileSignature, FolderOpen, MessageSquareReply, RotateCcw, Upload } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { buttonClassName } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SubmitButton } from "@/components/ui/submit-button";
-import { uploadSignedEngagementLetterAction } from "@/features/client/document-actions";
+import { Textarea } from "@/components/ui/textarea";
+import { reviewClientDeliverableAction, uploadSignedEngagementLetterAction } from "@/features/client/document-actions";
 import type { ClientDocumentRecord } from "@/repositories/client-portal-repository";
 import type { EngagementLetterRecord } from "@/repositories/engagement-letter-repository";
 
@@ -35,6 +36,7 @@ export function ClientDocuments({ documents, letters, notice, error }: {
 }) {
   const shared = documents.filter((document) => document.direction === "received").length;
   const feedback = documents.filter((document) => document.status === "replacement_requested").length;
+  const clientReviewDocuments = documents.filter((document) => document.reviewRequired && document.workflowId);
 
   return (
     <div className="grid min-w-0 gap-5">
@@ -92,6 +94,32 @@ export function ClientDocuments({ documents, letters, notice, error }: {
           })}
         </CardContent>
       </Card>
+
+      {clientReviewDocuments.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Drafts waiting for your review</CardTitle>
+            <CardDescription>Read each draft, then approve it or clearly describe the changes you need.</CardDescription>
+          </CardHeader>
+          <CardContent className="divide-y divide-border p-0">
+            {clientReviewDocuments.map((document) => (
+              <form action={reviewClientDeliverableAction} className="grid min-w-0 gap-4 p-5" key={document.id}>
+                <input name="workflowId" type="hidden" value={document.workflowId ?? ""} />
+                <input name="documentId" type="hidden" value={document.id} />
+                <div className="flex min-w-0 flex-col justify-between gap-3 sm:flex-row sm:items-center">
+                  <div className="min-w-0"><p className="break-words font-semibold text-foreground">{document.name}</p><p className="mt-1 text-sm text-muted-foreground">{document.engagementReference}</p></div>
+                  {document.downloadHref ? <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={document.downloadHref}><Download className="h-4 w-4" />Open draft</Link> : null}
+                </div>
+                <div className="grid gap-2"><label className="text-sm font-semibold text-foreground" htmlFor={`client-review-${document.id}`}>Your review comments</label><Textarea id={`client-review-${document.id}`} name="feedback" placeholder="Confirm that the draft meets your needs, or explain the exact changes required." required /></div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <SubmitButton name="decision" pendingText="Sending review..." value="changes_requested" variant="secondary"><RotateCcw className="h-4 w-4" />Request changes</SubmitButton>
+                  <SubmitButton name="decision" pendingText="Sending approval..." value="approved"><CheckCircle2 className="h-4 w-4" />Approve draft</SubmitButton>
+                </div>
+              </form>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>

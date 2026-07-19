@@ -29,6 +29,8 @@ export default async function ClientDashboardLayout({
       roleLabel="Client portal"
       subtitle="Actions, documents, messages and invoices"
       title="Client workspace"
+      userEmail={principal.email}
+      userName={principal.displayName ?? principal.email}
     >
       {children}
     </DashboardShell>

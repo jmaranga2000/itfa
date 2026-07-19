@@ -59,6 +59,11 @@ function missingRequiredDocuments(workflow: WorkflowInstanceRecord) {
   );
 }
 
+function incompleteClientActions(workflow: WorkflowInstanceRecord) {
+  if (workflow.currentStageKey !== "client_review") return [];
+  return workflow.clientActions.filter((action) => !["approved", "completed"].includes(action.status));
+}
+
 export function validateWorkflowTransition({
   workflow,
   nextStageKey,
@@ -118,6 +123,11 @@ export function validateWorkflowTransition({
 
   if (approvals.length > 0 && !hasOverride) {
     reasons.push(`${approvals.length} approval gate(s) still need a decision.`);
+  }
+
+  const clientActions = incompleteClientActions(workflow);
+  if (clientActions.length > 0 && !hasOverride) {
+    reasons.push(`${clientActions.length} client review action(s) still need a response.`);
   }
 
   const blockedItems = workflow.progress.blockedItems;

@@ -107,6 +107,8 @@ export type DashboardShellProps = {
   homeHref: string;
   navItems: DashboardNavItem[];
   children: React.ReactNode;
+  userEmail: string;
+  userName: string;
   variant?: "default" | "admin";
 };
 
@@ -209,6 +211,8 @@ export function DashboardShell({
   homeHref,
   navItems,
   children,
+  userEmail,
+  userName,
   variant = "default",
 }: DashboardShellProps) {
   const pathname = usePathname();
@@ -233,6 +237,14 @@ export function DashboardShell({
   const quickCreateItems = getQuickCreateItems(portal);
   const portalRoot = portal === "admin" ? "/admin" : portal === "staff" ? "/staff" : "/client";
   const notificationsHref = `${portalRoot}/notifications`;
+  const profileHref = portal === "admin" ? "/admin/settings" : `${portalRoot}/profile`;
+  const userInitials = userName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.at(0))
+    .join("")
+    .toUpperCase() || "U";
   const shellStyle = {
     "--dashboard-sidebar-width": collapsed ? "84px" : "288px",
   } as CSSProperties;
@@ -389,6 +401,7 @@ export function DashboardShell({
                   <span className="min-w-0 leading-tight">
                     <span className="block truncate text-sm font-bold text-white">IFTA Consulting</span>
                     <span className="block truncate text-xs font-medium text-brand-mist/75">{roleLabel}</span>
+                    <span className="mt-0.5 block truncate text-xs font-semibold text-white/90">{userName}</span>
                   </span>
                 </Link>
                 <button
@@ -517,29 +530,29 @@ export function DashboardShell({
 
               <div className="relative">
                 <button
-                  aria-label="Open account menu"
+                  aria-label={`Open account menu for ${userName}`}
                   aria-expanded={profileOpen}
-                  className="grid h-10 w-10 place-items-center rounded-md border border-border bg-secondary text-secondary-foreground hover:bg-muted"
+                  className="flex h-10 max-w-48 items-center gap-2 rounded-md border border-border bg-secondary px-2 text-secondary-foreground hover:bg-muted"
                   onClick={() => {
                     setProfileOpen((current) => !current);
                     setQuickCreateOpen(false);
                   }}
                   type="button"
                 >
-                  <CircleUserRound aria-hidden="true" className="h-5 w-5" />
+                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand-deep text-xs font-bold text-white">{userInitials}</span>
+                  <span className="hidden truncate text-sm font-semibold 2xl:block">{userName}</span>
                 </button>
                 {profileOpen ? (
-                  <div className="absolute right-0 top-11 z-40 w-60 rounded-md border border-border bg-card p-2 shadow-xl">
+                  <div className="fixed left-3 right-3 top-[76px] z-[90] rounded-md border border-border bg-card p-2 shadow-xl sm:absolute sm:left-auto sm:right-0 sm:top-11 sm:w-72">
                     <div className="border-b border-border px-3 py-3">
-                      <p className="text-sm font-bold text-foreground">IFTA Consulting</p>
-                      <p className="mt-1 text-xs text-muted-foreground">{roleLabel}</p>
+                      <p className="truncate text-sm font-bold text-foreground">{userName}</p>
+                      <p className="mt-1 truncate text-xs text-muted-foreground">{userEmail}</p>
+                      <p className="mt-1 text-xs font-semibold text-primary">{roleLabel}</p>
                     </div>
-                    {portal === "admin" ? (
-                      <Link className="mt-2 flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium hover:bg-muted" href="/admin/settings">
-                        <Settings aria-hidden="true" className="h-4 w-4 text-muted-foreground" />
-                        Portal settings
-                      </Link>
-                    ) : null}
+                    <Link className="mt-2 flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium hover:bg-muted" href={profileHref}>
+                      {portal === "admin" ? <Settings aria-hidden="true" className="h-4 w-4 text-muted-foreground" /> : <CircleUserRound aria-hidden="true" className="h-4 w-4 text-muted-foreground" />}
+                      {portal === "admin" ? "Portal settings" : "My profile"}
+                    </Link>
                     <Link className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium hover:bg-muted" href="/">
                       <Home aria-hidden="true" className="h-4 w-4 text-muted-foreground" />
                       Public website
@@ -579,6 +592,7 @@ export function DashboardShell({
                   <div>
                     <p className="text-sm font-bold text-white">IFTA Consulting</p>
                     <p className="text-xs text-brand-mist/75">{roleLabel}</p>
+                    <p className="mt-0.5 max-w-48 truncate text-xs font-semibold text-white">{userName}</p>
                   </div>
                 </div>
                 <button

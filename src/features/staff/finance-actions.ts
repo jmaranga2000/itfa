@@ -1,5 +1,6 @@
 "use server";
 
+import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Types } from "mongoose";
@@ -96,7 +97,7 @@ export async function approveAndIssueInvoiceAction(formData: FormData) {
     actorId: actor.id,
     title: "Your invoice is ready",
     description: `The invoice for ${visibleWorkflow.serviceName} has been approved and issued.`,
-    actionUrl: `/client/invoices/${visibleWorkflow.id}`,
+    actionUrl: `/client/engagements/${visibleWorkflow.id}?tab=finance`,
     recordId: visibleWorkflow.id,
     relatedModule: "invoices",
   });
@@ -125,6 +126,8 @@ export async function reviewClientPaymentAction(formData: FormData) {
   await payment.save();
 
   if (decision.data === "verified") {
+    payment.receiptNumber = payment.receiptNumber ?? `RCP-${now.getFullYear()}-${randomBytes(3).toString("hex").toUpperCase()}`;
+    await payment.save();
     const balanceDue = Math.max(0, workflow.financial.balanceDue - payment.amount);
     await WorkflowInstanceModel.updateOne(
       { _id: workflow.id },
@@ -136,7 +139,7 @@ export async function reviewClientPaymentAction(formData: FormData) {
           lastActivityAt: now,
         },
         $push: { activity: {
-          type: "payment_recorded", title: "Payment verified", actorName: actor.email, actorUserId: actor.id,
+          type: "payment_recorded", title: "Payment Received", actorName: actor.email, actorUserId: actor.id,
           description: `${payment.currency} ${payment.amount.toLocaleString("en-KE")} verified.`, relatedResource: payment.transactionReference,
           clientVisible: true, createdAt: now,
         } },
@@ -156,7 +159,7 @@ export async function reviewClientPaymentAction(formData: FormData) {
     description: decision.data === "verified"
       ? `Your payment of ${payment.currency} ${payment.amount.toLocaleString("en-KE")} has been verified.`
       : (payment.reviewNote || "Please review and resubmit your payment details."),
-    actionUrl: "/client/payments",
+    actionUrl: `/client/engagements/${workflow.id}?tab=finance`,
     recordId: payment._id.toString(),
     relatedModule: "payments",
   });
@@ -164,5 +167,8 @@ export async function reviewClientPaymentAction(formData: FormData) {
   revalidatePath("/staff/invoices");
   revalidatePath("/client/payments");
   revalidatePath("/client/invoices");
+  revalidatePath(`/admin/active-engagements/${workflow.id}`);
+  revalidatePath(`/staff/engagements/${workflow.id}`);
+  revalidatePath(`/client/engagements/${workflow.id}`);
   redirect(`/staff/payments?updated=${decision.data}`);
 }

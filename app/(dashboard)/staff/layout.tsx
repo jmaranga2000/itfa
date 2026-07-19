@@ -5,7 +5,7 @@ import { getStaffNavItems, getStaffWorkspace } from "@/features/staff/workspace"
 export const dynamic = "force-dynamic";
 
 export default async function StaffDashboardLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  const { role } = await requireStaffWorkspace();
+  const { principal, role } = await requireStaffWorkspace();
   const workspace = getStaffWorkspace(role);
 
   return (
@@ -15,6 +15,8 @@ export default async function StaffDashboardLayout({ children }: Readonly<{ chil
       roleLabel={workspace.roleLabel}
       subtitle={workspace.subtitle}
       title={workspace.title}
+      userEmail={principal.email}
+      userName={principal.displayName ?? principal.email}
     >
       {children}
     </DashboardShell>

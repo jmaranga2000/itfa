@@ -10,7 +10,7 @@ export default async function AdminDashboardLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  await requireAnyPermission(["reports.read", "permissions.manage", "settings.manage"]);
+  const principal = await requireAnyPermission(["reports.read", "permissions.manage", "settings.manage"]);
   const newRequestCount = await countNewEngagementRequests();
 
   return (
@@ -20,6 +20,8 @@ export default async function AdminDashboardLayout({
       roleLabel="Admin Portal"
       subtitle="Clients, work, money and settings"
       title="Admin Portal"
+      userEmail={principal.email}
+      userName={principal.displayName ?? principal.email}
       variant="admin"
     >
       <div className="admin-content-simple">{children}</div>

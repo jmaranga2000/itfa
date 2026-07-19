@@ -28,6 +28,8 @@ function workflowFixture(overrides: Partial<WorkflowInstanceRecord> = {}): Workf
     clientName: "Client",
     clientUserId: "64d000000000000000000003",
     organizationName: "Client",
+    sourceRequestId: null,
+    engagementLetterId: null,
     serviceName: "Tax Advisory",
     templateName: "Tax Advisory Engagement",
     templateVersion: 1,
@@ -40,6 +42,11 @@ function workflowFixture(overrides: Partial<WorkflowInstanceRecord> = {}): Workf
     responsibleUserName: "Admin",
     responsibleUserId: admin.id,
     startDate: null,
+    activatedAt: null,
+    signedAt: null,
+    signedByUserId: null,
+    signedByName: "",
+    teamAssignedAt: null,
     dueDate: null,
     lastActivityAt: null,
     progress: {
@@ -114,6 +121,8 @@ function workflowFixture(overrides: Partial<WorkflowInstanceRecord> = {}): Workf
         completionNotes: "",
         approvalRequired: false,
         blockerReason: null,
+        createdByUserId: admin.id,
+        reviewHistory: [],
       },
     ],
     milestones: [],
@@ -125,8 +134,19 @@ function workflowFixture(overrides: Partial<WorkflowInstanceRecord> = {}): Workf
       paymentStatus: "pending",
       balanceDue: 0,
       currency: "KES",
+      invoices: [],
     },
     completionChecklist: [],
+    completion: {
+      notes: "",
+      summary: "",
+      completedAt: null,
+      completedByUserId: null,
+      completedByName: "",
+      archivedAt: null,
+      archivedByUserId: null,
+      archivedByName: "",
+    },
     archive: {
       status: "not_ready",
       retentionUntil: null,
@@ -134,6 +154,7 @@ function workflowFixture(overrides: Partial<WorkflowInstanceRecord> = {}): Workf
       legalHoldReason: "",
     },
     activity: [],
+    internalNotes: [],
     ...overrides,
   };
 
@@ -208,6 +229,53 @@ describe("workflow transition validation", () => {
 
     expect(result.allowed).toBe(false);
     expect(result.reasons.join(" ")).toContain("required task");
+  });
+
+  it("requires the client review response before moving to finance", () => {
+    const clientReviewStage = {
+      ...workflowFixture().stages[0],
+      key: "client_review",
+      name: "Client Review",
+      clientTitle: "Review deliverables",
+      order: 1,
+    };
+    const financeStage = {
+      ...workflowFixture().stages[1],
+      key: "finance",
+      name: "Invoice Completion",
+      clientTitle: "Invoice and payment",
+      order: 2,
+    };
+    const pendingWorkflow = workflowFixture({
+      currentStageKey: "client_review",
+      currentStageName: "Client Review",
+      stages: [clientReviewStage, financeStage],
+      tasks: [],
+      clientActions: [{
+        key: "review_deliverable",
+        title: "Review draft deliverable",
+        instructions: "Approve the draft or request changes.",
+        dueDate: null,
+        relatedTaskKey: "draft_deliverable",
+        requiredDocumentType: null,
+        priority: "medium",
+        assignedClientUserId: "64d000000000000000000003",
+        status: "pending",
+        response: "",
+        respondedAt: null,
+      }],
+    });
+
+    const blocked = validateWorkflowTransition({ workflow: pendingWorkflow, nextStageKey: "finance", actor: consultant });
+    const allowed = validateWorkflowTransition({
+      workflow: { ...pendingWorkflow, clientActions: [{ ...pendingWorkflow.clientActions[0], status: "completed" }] },
+      nextStageKey: "finance",
+      actor: consultant,
+    });
+
+    expect(blocked.allowed).toBe(false);
+    expect(blocked.reasons.join(" ")).toContain("client review action");
+    expect(allowed.allowed).toBe(true);
   });
 });
 

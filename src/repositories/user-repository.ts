@@ -440,6 +440,7 @@ export async function getPrincipalByUserId(userId: string): Promise<Principal | 
   return {
     id: user._id.toString(),
     email: user.email,
+    displayName: `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || user.email,
     roleKeys,
     permissions: Array.from(permissions),
     clientOrganizationIds: normalizeObjectIds(user.clientOrganizationIds),

@@ -21,6 +21,7 @@ import { CommunicationAnnouncementModel } from "@/models/communication-announcem
 import { CommunicationConversationModel } from "@/models/communication-conversation";
 import { CommunicationMessageModel } from "@/models/communication-message";
 import { CommunicationNotificationModel } from "@/models/communication-notification";
+import { ClientDocumentModel } from "@/models/client-document";
 import { EngagementRequestModel } from "@/models/engagement-request";
 import { RequestStaffAssignmentModel } from "@/models/request-staff-assignment";
 import { UserModel } from "@/models/user";
@@ -56,6 +57,7 @@ export type CommunicationMessage = {
   senderName: string;
   body: string;
   attachmentCount: number;
+  attachments: Array<{ fileName: string; fileType: string; fileSize: number | null; url: string }>;
   readByCount: number;
   createdAt: string;
   editedAt: string | null;
@@ -121,6 +123,7 @@ type RawConversation = {
   participants?: RawParticipant[];
   relatedModule?: CommunicationModule;
   relatedRecordId?: string | null;
+  engagementId?: Types.ObjectId | null;
   actionUrl: string;
   lastMessagePreview?: string;
   lastMessageAt?: Date | null;
@@ -134,7 +137,7 @@ type RawMessage = {
   senderUserId: Types.ObjectId;
   senderName: string;
   body: string;
-  attachments?: unknown[];
+  attachments?: Array<{ fileName: string; fileType: string; fileSize?: number | null; url: string }>;
   readReceipts?: unknown[];
   createdAt?: Date | null;
   editedAt?: Date | null;
@@ -189,6 +192,8 @@ export type CreateMessageInput = {
   conversationId: string;
   sender: Principal;
   body: string;
+  attachmentDocumentId?: string | null;
+  replyToMessageId?: string | null;
 };
 
 export type CreateDirectConversationInput = {
@@ -254,14 +259,18 @@ function participantRoleForPrincipal(principal: Principal): ConversationParticip
   return "staff";
 }
 
-function messageActionUrl(role: ConversationParticipantRole, conversationId: string) {
+function messageActionUrl(role: ConversationParticipantRole, conversationId: string, engagementId?: string | null) {
   const portal = role === "client" ? "client" : role === "staff" ? "staff" : "admin";
+  if (engagementId) {
+    const base = role === "admin" ? "/admin/active-engagements" : `/${portal}/engagements`;
+    return `${base}/${engagementId}?tab=messages`;
+  }
   return "/" + portal + "/messages?conversation=" + conversationId;
 }
 
-function conversationAccessFilter(principal: Principal): Record<string, unknown> {
+function conversationAccessFilter(principal: Principal, includeArchived = false): Record<string, unknown> {
   const principalId = toObjectId(principal.id);
-  const base = { archivedAt: null };
+  const base = includeArchived ? {} : { archivedAt: null };
 
   if (isAdminPrincipal(principal)) {
     return base;
@@ -343,6 +352,12 @@ function serializeMessage(message: RawMessage): CommunicationMessage {
     senderName: message.senderName,
     body: message.body,
     attachmentCount: message.attachments?.length ?? 0,
+    attachments: (message.attachments ?? []).map((attachment) => ({
+      fileName: attachment.fileName,
+      fileType: attachment.fileType,
+      fileSize: attachment.fileSize ?? null,
+      url: attachment.url,
+    })),
     readByCount: message.readReceipts?.length ?? 0,
     createdAt: requiredDate(message.createdAt),
     editedAt: serializeDate(message.editedAt),
@@ -395,7 +410,7 @@ function roleForUser(user: RawDirectoryUser): ConversationParticipantRole {
   return "staff";
 }
 
-async function assertConversationAccess(principal: Principal, conversationId: string) {
+async function assertConversationAccess(principal: Principal, conversationId: string, includeArchived = false) {
   await connectToDatabase();
 
   const objectId = toObjectId(conversationId);
@@ -406,7 +421,7 @@ async function assertConversationAccess(principal: Principal, conversationId: st
 
   const conversation = await CommunicationConversationModel.findOne({
     _id: objectId,
-    ...conversationAccessFilter(principal),
+    ...conversationAccessFilter(principal, includeArchived),
   })
     .lean()
     .exec();
@@ -430,12 +445,80 @@ export async function listConversationsForPrincipal(principal: Principal, limit 
   return (conversations as RawConversation[]).map(serializeConversation);
 }
 
+export async function getOrCreateEngagementConversation(
+  principal: Principal,
+  workflow: {
+    id: string;
+    reference: string;
+    clientName: string;
+    clientUserId: string | null;
+    status: string;
+    team: Array<{ userId: string | null }>;
+  },
+) {
+  await connectToDatabase();
+  if (!Types.ObjectId.isValid(workflow.id)) return null;
+  const existing = await CommunicationConversationModel.findOne({
+    engagementId: new Types.ObjectId(workflow.id),
+    ...(workflow.status === "archived" ? {} : { archivedAt: null }),
+  }).lean().exec();
+  if (["archived", "read_only"].includes(workflow.status)) {
+    return existing ? serializeConversation(existing as RawConversation) : null;
+  }
+
+  const participantIds = [...new Set([
+    workflow.clientUserId,
+    ...workflow.team.map((member) => member.userId),
+  ].filter((value): value is string => typeof value === "string" && Types.ObjectId.isValid(value)))];
+  const users = await UserModel.find({ _id: { $in: participantIds }, status: { $ne: "archived" } })
+    .select("email firstName lastName roleKeys")
+    .lean()
+    .exec() as RawDirectoryUser[];
+  if (users.length === 0) return null;
+  const now = new Date();
+  const previousReadAt = new Map(
+    ((existing as RawConversation | null)?.participants ?? [])
+      .map((participant) => [participant.userId.toString(), participant.lastReadAt] as const),
+  );
+  const participants = users.map((user) => ({
+    userId: user._id,
+    role: roleForUser(user),
+    displayName: displayName(user),
+    email: user.email,
+    lastReadAt: previousReadAt.get(user._id.toString())
+      ?? (user._id.toString() === principal.id ? now : null),
+  }));
+  if (existing) {
+    const synchronized = await CommunicationConversationModel.findByIdAndUpdate(
+      existing._id,
+      { $set: { title: `${workflow.reference} - ${workflow.clientName}`, participants } },
+      { new: true },
+    ).lean().exec();
+    return synchronized ? serializeConversation(synchronized as RawConversation) : null;
+  }
+  const conversation = await CommunicationConversationModel.create({
+    title: `${workflow.reference} - ${workflow.clientName}`,
+    type: "engagement",
+    status: "open",
+    participants,
+    relatedModule: "engagements",
+    relatedRecordId: workflow.id,
+    engagementId: new Types.ObjectId(workflow.id),
+    actionUrl: `/client/engagements/${workflow.id}?tab=messages`,
+    lastActivityAt: now,
+    createdByUserId: new Types.ObjectId(principal.id),
+    archivedAt: null,
+  });
+  return serializeConversation(conversation.toObject() as unknown as RawConversation);
+}
+
 export async function listMessagesForConversation(
   principal: Principal,
   conversationId: string,
   limit = 80,
+  includeArchived = false,
 ) {
-  const conversation = await assertConversationAccess(principal, conversationId);
+  const conversation = await assertConversationAccess(principal, conversationId, includeArchived);
 
   const messages = await CommunicationMessageModel.find({
     conversationId: conversation._id,
@@ -624,12 +707,26 @@ export async function createConversationMessage(input: CreateMessageInput) {
 
   const conversation = await assertConversationAccess(input.sender, input.conversationId);
   const now = new Date();
+  const attachmentId = toObjectId(input.attachmentDocumentId ?? null);
+  const attachment = attachmentId && conversation.engagementId
+    ? await ClientDocumentModel.findOne({ _id: attachmentId, workflowId: conversation.engagementId }).lean().exec()
+    : null;
+  const extension = attachment?.name.split(".").pop()?.toLowerCase();
+  const attachmentType = extension === "jpeg" ? "jpg" : extension === "doc" ? "docx" : extension;
   const message = await CommunicationMessageModel.create({
     conversationId: conversation._id,
     senderUserId: senderId,
     senderName: input.sender.email,
     body: input.body,
-    attachments: [],
+    attachments: attachment && attachmentType && ["pdf", "docx", "xlsx", "csv", "jpg", "png"].includes(attachmentType)
+      ? [{
+          fileName: attachment.name,
+          fileType: attachmentType,
+          fileSize: attachment.size,
+          url: `/api/engagements/${conversation.engagementId}/documents/${attachment._id}`,
+        }]
+      : [],
+    replyToMessageId: toObjectId(input.replyToMessageId ?? null),
     readReceipts: [{ userId: senderId, readAt: now }],
     deletedAt: null,
   });
@@ -661,7 +758,11 @@ export async function createConversationMessage(input: CreateMessageInput) {
         description: input.body.slice(0, 140),
         relatedModule: "messages",
         relatedRecordId: conversation._id.toString(),
-        actionUrl: messageActionUrl(participant.role, conversation._id.toString()),
+        actionUrl: messageActionUrl(
+          participant.role,
+          conversation._id.toString(),
+          conversation.engagementId?.toString() ?? null,
+        ),
         createdByUserId: input.sender.id,
       }),
     ),
@@ -711,6 +812,25 @@ export async function createConversationMessage(input: CreateMessageInput) {
           });
       }),
     );
+  }
+
+  if (conversation.engagementId) {
+    await WorkflowInstanceModel.updateOne(
+      { _id: conversation.engagementId },
+      {
+        $set: { lastActivityAt: now },
+        $push: { activity: {
+          type: "message_sent",
+          title: "Message Sent",
+          actorName: input.sender.displayName || input.sender.email,
+          actorUserId: senderId,
+          description: input.body.slice(0, 180),
+          relatedResource: conversation._id.toString(),
+          clientVisible: true,
+          createdAt: now,
+        } },
+      },
+    ).exec();
   }
 
   return message;

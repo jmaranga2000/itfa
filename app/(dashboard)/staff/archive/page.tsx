@@ -1,9 +1,8 @@
 import { StaffArchive } from "@/components/dashboard/staff/staff-operational-pages";
 import { requireStaffRoute } from "@/features/staff/server";
-import { getStaffWorkData } from "@/repositories/staff-work-repository";
+import { listArchivedWorkflowsForPrincipal } from "@/repositories/workflow-repository";
 
 export default async function StaffArchivePage() {
   const { principal } = await requireStaffRoute("archive");
-  const data = await getStaffWorkData(principal);
-  return <StaffArchive workflows={data.workflows} />;
+  return <StaffArchive workflows={await listArchivedWorkflowsForPrincipal(principal)} />;
 }

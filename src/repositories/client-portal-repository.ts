@@ -4,6 +4,7 @@ import { connectToDatabase } from "@/lib/db/mongoose";
 import { ClientDocumentModel } from "@/models/client-document";
 import { ClientPaymentModel } from "@/models/client-payment";
 import { WorkflowInstanceModel } from "@/models/workflow-instance";
+import { createCommunicationNotification } from "@/repositories/communication-repository";
 import {
   listArchivedWorkflowsForPrincipal,
   listWorkflowsForPrincipal,
@@ -13,12 +14,14 @@ import {
 export type ClientDocumentRecord = {
   id: string;
   name: string;
+  documentKind: string;
   workflowId: string | null;
   engagementReference: string;
   direction: "sent" | "received";
   status: string;
   feedback: string;
   clientResponse: string;
+  reviewRequired: boolean;
   uploadedAt: string;
   downloadHref: string | null;
 };
@@ -51,6 +54,7 @@ type RawDocument = {
   _id: Types.ObjectId;
   workflowId?: Types.ObjectId | null;
   name: string;
+  documentKind?: string;
   direction: "sent" | "received";
   status: string;
   feedback?: string;
@@ -85,8 +89,19 @@ export async function getClientDocuments(principal: Principal): Promise<ClientDo
   ]);
   const workflowById = new Map(workflows.map((workflow) => [workflow.id, workflow]));
   const stored = (storedDocuments as unknown as RawDocument[]).map((document): ClientDocumentRecord => ({
+    ...(() => {
+      const workflow = document.workflowId ? workflowById.get(document.workflowId.toString()) : undefined;
+      const reviewAction = workflow?.clientActions.find((action) => action.key === "review_deliverable");
+      return {
+        reviewRequired: document.documentKind === "draft_deliverable"
+          && document.status === "approved"
+          && workflow?.currentStageKey === "client_review"
+          && Boolean(reviewAction && !["approved", "completed"].includes(reviewAction.status)),
+      };
+    })(),
     id: document._id.toString(),
     name: document.name,
+    documentKind: document.documentKind ?? "general",
     workflowId: document.workflowId?.toString() ?? null,
     engagementReference: document.workflowId ? workflowById.get(document.workflowId.toString())?.reference ?? "Client document" : "Client document",
     direction: document.direction,
@@ -102,12 +117,14 @@ export async function getClientDocuments(principal: Principal): Promise<ClientDo
     .map((document): ClientDocumentRecord => ({
       id: `${workflow.id}-${document.documentId}`,
       name: document.name,
+      documentKind: "workflow_document",
       workflowId: workflow.id,
       engagementReference: workflow.reference,
       direction: "received",
       status: document.status,
       feedback: document.clientFeedback,
       clientResponse: "",
+      reviewRequired: false,
       uploadedAt: document.uploadedAt,
       downloadHref: null,
     })));
@@ -128,6 +145,78 @@ export async function respondToDocumentFeedback(principal: Principal, documentId
     { $set: { clientResponse: response, status: "pending_review" } },
   ).exec();
   return result.modifiedCount > 0;
+}
+
+export async function recordClientDeliverableReview(input: {
+  principal: Principal;
+  workflowId: string;
+  documentId: string;
+  decision: "approved" | "changes_requested";
+  feedback: string;
+}) {
+  await connectToDatabase();
+  if (!Types.ObjectId.isValid(input.principal.id) || !Types.ObjectId.isValid(input.workflowId) || !Types.ObjectId.isValid(input.documentId)) return false;
+  const workflow = await WorkflowInstanceModel.findOne({
+    _id: input.workflowId,
+    clientUserId: input.principal.id,
+    currentStageKey: "client_review",
+    archivedAt: null,
+  }).exec();
+  if (!workflow) return false;
+  const document = await ClientDocumentModel.findOne({
+    _id: input.documentId,
+    workflowId: input.workflowId,
+    clientUserId: input.principal.id,
+    documentKind: "draft_deliverable",
+    status: "approved",
+  }).exec();
+  if (!document) return false;
+  const clientAction = workflow.clientActions.find((action) => action.key === "review_deliverable");
+  const workflowDocument = workflow.documents.find((item) => item.documentId === input.documentId);
+  if (!clientAction || !workflowDocument) return false;
+
+  const now = new Date();
+  clientAction.status = input.decision === "approved" ? "completed" : "changes_requested";
+  workflowDocument.status = input.decision === "approved" ? "approved" : "replacement_requested";
+  workflowDocument.clientFeedback = input.feedback;
+  document.status = input.decision === "approved" ? "approved" : "replacement_requested";
+  document.clientResponse = input.feedback;
+  workflow.nextAction = input.decision === "approved"
+    ? "Client review complete. Advance the engagement to invoicing."
+    : "Prepare and release a revised draft for client review.";
+  const feedbackMilestone = workflow.milestones.find((milestone) => milestone.key === "client_feedback_received");
+  if (feedbackMilestone) {
+    feedbackMilestone.status = "completed";
+    feedbackMilestone.date = now;
+  }
+  workflow.activity.push({
+    type: "message_received",
+    title: input.decision === "approved" ? "Client approved the draft deliverable" : "Client requested deliverable changes",
+    actorName: input.principal.displayName ?? input.principal.email,
+    actorUserId: new Types.ObjectId(input.principal.id),
+    description: input.feedback,
+    relatedResource: input.documentId,
+    clientVisible: true,
+    createdAt: now,
+  });
+  workflow.lastActivityAt = now;
+  await Promise.all([workflow.save(), document.save()]);
+
+  const recipient = workflow.responsibleUserId
+    ?? workflow.team.find((member) => ["lead_consultant", "engagement_manager"].includes(member.role))?.userId;
+  if (recipient) {
+    await createCommunicationNotification({
+      recipientUserId: recipient.toString(),
+      type: "engagement_update",
+      title: input.decision === "approved" ? "Client approved the draft" : "Client requested changes",
+      description: `${workflow.clientName} responded to ${document.name}: ${input.feedback}`,
+      relatedModule: "engagements",
+      relatedRecordId: workflow._id.toString(),
+      actionUrl: `/staff/engagements/${workflow._id.toString()}`,
+      createdByUserId: input.principal.id,
+    });
+  }
+  return true;
 }
 
 export async function getClientInvoices(principal: Principal): Promise<ClientInvoiceRecord[]> {
@@ -204,6 +293,21 @@ export async function createClientPayment(input: {
       relatedResource: input.transactionReference, clientVisible: true, createdAt: new Date(),
     } } },
   ).exec();
+  const financeRecipients = workflow.team.flatMap((member) =>
+    member.role === "finance_officer" && member.userId
+      ? [member.userId.toString()]
+      : [],
+  );
+  await Promise.allSettled(financeRecipients.map((recipientUserId) => createCommunicationNotification({
+    recipientUserId,
+    type: "action_required",
+    title: "Payment submitted for review",
+    description: `${workflow.reference} has a ${workflow.financial.currency} ${input.amount.toLocaleString("en-KE")} payment awaiting verification.`,
+    relatedModule: "engagements",
+    relatedRecordId: workflow._id.toString(),
+    actionUrl: `/staff/engagements/${workflow._id.toString()}?tab=finance`,
+    createdByUserId: input.principal.id,
+  })));
   return payment._id.toString();
 }
 

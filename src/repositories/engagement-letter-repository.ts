@@ -21,6 +21,7 @@ export type EngagementLetterSignerRecord = {
   status: "pending" | "signed";
   signatureText: string | null;
   signedAt: string | null;
+  signedByUserId: string | null;
   signatureHash: string | null;
 };
 
@@ -100,6 +101,7 @@ type RawLetter = {
     status: "pending" | "signed";
     signatureText?: string | null;
     signedAt?: Date | null;
+    signedByUserId?: Types.ObjectId | null;
     signatureHash?: string | null;
   }>;
   generatedAt: Date;
@@ -159,6 +161,7 @@ function serialize(record: RawLetter): EngagementLetterRecord {
       status: signer.status,
       signatureText: signer.signatureText ?? null,
       signedAt: signer.signedAt?.toISOString() ?? null,
+      signedByUserId: signer.signedByUserId?.toString() ?? null,
       signatureHash: signer.signatureHash ?? null,
     })),
     generatedAt: record.generatedAt.toISOString(),

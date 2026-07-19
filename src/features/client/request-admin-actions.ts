@@ -3,11 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requirePermission } from "@/features/auth/server";
-import { convertEngagementRequestToWorkflow } from "@/repositories/engagement-request-repository";
+import { activateCompletedEngagementLetter } from "@/features/engagements/activation-service";
 import {
   engagementLetterIsCompleteForRequest,
   getEngagementLetterForRequest,
-  linkEngagementLetterToWorkflow,
 } from "@/repositories/engagement-letter-repository";
 import { approveEngagementRequest } from "@/repositories/request-onboarding-repository";
 
@@ -31,9 +30,9 @@ export async function convertEngagementRequestAction(formData: FormData) {
   if (!(await engagementLetterIsCompleteForRequest(requestId))) {
     redirect(`/admin/engagement-letters/${letter.id}?notice=signature-required`);
   }
-  const workflowId = await convertEngagementRequestToWorkflow(requestId, actor);
+  const result = await activateCompletedEngagementLetter(letter.id, actor);
+  const workflowId = result.workflowId;
   if (!workflowId) redirect(`/admin/requests/${requestId}?error=convert`);
-  await linkEngagementLetterToWorkflow(requestId, workflowId);
   revalidatePath("/admin/requests");
   revalidatePath(`/admin/requests/${requestId}`);
   revalidatePath("/admin/active-engagements");

@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Bell, BellRing, ExternalLink, Smartphone } from "lucide-react";
+import { Bell, BellRing, ExternalLink, Smartphone, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { buttonClassName } from "@/components/ui/button";
 
@@ -26,6 +26,7 @@ export function LiveNotificationBell({ notificationsHref }: { notificationsHref:
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<LiveNotification[]>([]);
+  const [dismissedAlertId, setDismissedAlertId] = useState<string | null>(null);
   const notificationFingerprint = useRef<string | null>(null);
   const [pushState, setPushState] = useState<"hidden" | "available" | "enabled" | "blocked">("hidden");
 
@@ -65,8 +66,10 @@ export function LiveNotificationBell({ notificationsHref }: { notificationsHref:
   }, []);
 
   const persistentAlert = useMemo(
-    () => notifications.find((notification) => notification.type === "task_assigned") ?? notifications[0] ?? null,
-    [notifications],
+    () => notifications.find((notification) => notification.type === "task_assigned" && notification.id !== dismissedAlertId)
+      ?? notifications.find((notification) => notification.id !== dismissedAlertId)
+      ?? null,
+    [dismissedAlertId, notifications],
   );
 
   function openNotification(notification: LiveNotification) {
@@ -111,10 +114,16 @@ export function LiveNotificationBell({ notificationsHref }: { notificationsHref:
           {notifications.length ? <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-danger px-1 text-[10px] font-bold text-white">{Math.min(notifications.length, 9)}</span> : null}
         </button>
         {open ? (
-          <div className="fixed left-4 right-4 top-[76px] z-[80] max-h-[calc(100dvh-92px)] overflow-hidden rounded-md border border-border bg-card shadow-xl sm:absolute sm:left-auto sm:right-0 sm:top-11 sm:max-h-[min(520px,calc(100dvh-5rem))] sm:w-[min(360px,calc(100vw-2rem))]">
-            <div className="flex items-center justify-between border-b border-border px-4 py-3"><p className="text-sm font-bold text-foreground">Unread notifications</p><a className="text-xs font-semibold text-primary" href={notificationsHref}>View all</a></div>
+          <div className="fixed bottom-3 left-3 right-3 top-[108px] z-[100] flex min-h-0 flex-col overflow-hidden rounded-md border border-border bg-card shadow-2xl sm:bottom-auto sm:left-auto sm:right-4 sm:top-20 sm:max-h-[min(560px,calc(100dvh-6rem))] sm:w-[min(390px,calc(100vw-2rem))]">
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-3">
+              <p className="min-w-0 truncate text-sm font-bold text-foreground">Unread notifications</p>
+              <div className="flex shrink-0 items-center gap-3">
+                <a className="text-xs font-semibold text-primary" href={notificationsHref}>View all</a>
+                <button aria-label="Close notifications" className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground" onClick={() => setOpen(false)} type="button"><X className="h-4 w-4" /></button>
+              </div>
+            </div>
             {pushState === "available" ? <button className="flex w-full items-center gap-3 border-b border-border bg-brand-soft px-4 py-3 text-left text-sm font-semibold text-brand-deep" onClick={() => void enablePush()} type="button"><Smartphone className="h-4 w-4" />Enable phone and computer alerts</button> : null}
-            <div className="max-h-[calc(100dvh-190px)] overflow-y-auto overscroll-contain p-2 sm:max-h-80">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2">
               {notifications.length === 0 ? <p className="p-4 text-center text-sm text-muted-foreground">You are all caught up.</p> : notifications.map((notification) => <button className="flex w-full min-w-0 gap-3 rounded-md px-3 py-3 text-left hover:bg-muted" key={notification.id} onClick={() => openNotification(notification)} type="button"><span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-md bg-brand-soft text-brand-deep"><BellRing className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block break-words text-sm font-semibold text-foreground">{notification.title}</span><span className="mt-1 line-clamp-2 block break-words text-xs leading-5 text-muted-foreground">{notification.description}</span></span></button>)}
             </div>
           </div>
@@ -122,10 +131,15 @@ export function LiveNotificationBell({ notificationsHref }: { notificationsHref:
       </div>
 
       {persistentAlert ? (
-        <aside aria-live="assertive" className="fixed bottom-4 left-4 right-4 z-[70] max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain rounded-md border border-primary/30 bg-card shadow-2xl sm:left-auto sm:w-[min(400px,calc(100vw-2rem))]">
+        <aside aria-live="assertive" className="fixed bottom-3 left-3 right-3 z-[70] max-h-[calc(100dvh-1.5rem)] max-w-[calc(100vw-1.5rem)] overflow-y-auto overscroll-contain rounded-md border border-primary/30 bg-card shadow-2xl sm:bottom-4 sm:left-auto sm:right-4 sm:w-[min(400px,calc(100vw-2rem))]">
           <div className="flex min-w-0 gap-3 border-l-4 border-l-primary p-3 sm:gap-4 sm:p-4">
             <Image alt="IFTA Consulting logo" className="h-12 w-12 rounded-md border border-border bg-white object-contain" height={48} src="/icons/icon-192.png" width={48} />
-            <div className="min-w-0 flex-1"><div className="flex items-center gap-2"><BellRing className="h-4 w-4 shrink-0 text-primary" /><p className="text-xs font-bold uppercase text-primary">New portal alert</p></div><h2 className="mt-2 break-words text-sm font-bold text-foreground">{persistentAlert.title}</h2><p className="mt-1 line-clamp-4 break-words text-sm leading-5 text-muted-foreground">{persistentAlert.description}</p><button className={buttonClassName({ className: "mt-3", size: "sm" })} onClick={() => openNotification(persistentAlert)} type="button">{persistentAlert.type === "task_assigned" ? "Open request" : "Open update"}<ExternalLink className="h-4 w-4" /></button></div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-start justify-between gap-2"><div className="flex min-w-0 items-center gap-2"><BellRing className="h-4 w-4 shrink-0 text-primary" /><p className="truncate text-xs font-bold uppercase text-primary">New portal alert</p></div><button aria-label="Dismiss portal alert" className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground" onClick={() => setDismissedAlertId(persistentAlert.id)} type="button"><X className="h-4 w-4" /></button></div>
+              <h2 className="mt-2 break-words text-sm font-bold text-foreground">{persistentAlert.title}</h2>
+              <p className="mt-1 line-clamp-4 break-words text-sm leading-5 text-muted-foreground">{persistentAlert.description}</p>
+              <button className={buttonClassName({ className: "mt-3 w-full justify-center sm:w-auto", size: "sm" })} onClick={() => openNotification(persistentAlert)} type="button">{persistentAlert.type === "task_assigned" ? "Open request" : "Open update"}<ExternalLink className="h-4 w-4" /></button>
+            </div>
           </div>
         </aside>
       ) : null}

@@ -5,6 +5,7 @@ import type { AppRole } from "@/features/authorization/roles";
 export type Principal = {
   id: string;
   email: string;
+  displayName?: string;
   roleKeys: AppRole[];
   permissions: Permission[];
   clientOrganizationIds: string[];

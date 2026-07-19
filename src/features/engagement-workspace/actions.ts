@@ -29,13 +29,19 @@ const allowedTypes = new Set([
 
 function returnPath(formData: FormData, workflowId: string) {
   const value = String(formData.get("returnPath") ?? "");
-  const allowed = [`/admin/workflows/${workflowId}`, `/staff/engagements/${workflowId}`];
+  const allowed = [
+    `/admin/workflows/${workflowId}`,
+    `/admin/active-engagements/${workflowId}`,
+    `/staff/engagements/${workflowId}`,
+  ];
   return allowed.includes(value) ? value : `/admin/workflows/${workflowId}`;
 }
 
 function refresh(workflowId: string) {
   revalidatePath(`/admin/workflows/${workflowId}`);
+  revalidatePath(`/admin/active-engagements/${workflowId}`);
   revalidatePath(`/staff/engagements/${workflowId}`);
+  revalidatePath(`/client/engagements/${workflowId}`);
   revalidatePath("/admin/tasks");
   revalidatePath("/staff/tasks");
   revalidatePath("/admin/documents");
@@ -50,11 +56,11 @@ export async function updateEngagementTaskAction(formData: FormData) {
   const taskKey = String(formData.get("taskKey") ?? "");
   const parsed = z.enum(WORKFLOW_TASK_STATUSES).safeParse(formData.get("status"));
   const back = returnPath(formData, workflowId);
-  if (!workflowId || !taskKey || !parsed.success) redirect(`${back}?workspaceError=task`);
+  if (!workflowId || !taskKey || !parsed.success) redirect(`${back}?tab=tasks&error=task`);
   const updated = await updateEngagementTask({ principal, workflowId, taskKey, status: parsed.data });
-  if (!updated) redirect(`${back}?workspaceError=task-access`);
+  if (!updated) redirect(`${back}?tab=tasks&error=task-access`);
   refresh(workflowId);
-  redirect(`${back}?workspace=task#engagement-workspace`);
+  redirect(`${back}?tab=tasks&saved=task`);
 }
 
 export async function reviewEngagementDocumentAction(formData: FormData) {
@@ -64,23 +70,24 @@ export async function reviewEngagementDocumentAction(formData: FormData) {
   const comments = String(formData.get("comments") ?? "").trim().slice(0, 3000);
   const decision = z.enum(["approved", "changes_requested"]).safeParse(formData.get("decision"));
   const back = returnPath(formData, workflowId);
-  if (!workflowId || !documentId || !comments || !decision.success) redirect(`${back}?workspaceError=review`);
+  if (!workflowId || !documentId || !comments || !decision.success) redirect(`${back}?tab=documents&error=review`);
   const reviewed = await recordEngagementTechnicalReview({ principal, workflowId, documentId, comments, decision: decision.data });
-  if (!reviewed) redirect(`${back}?workspaceError=review-access`);
+  if (!reviewed) redirect(`${back}?tab=documents&error=review-access`);
   refresh(workflowId);
-  redirect(`${back}?workspace=review#engagement-workspace`);
+  redirect(`${back}?tab=documents&saved=review`);
 }
 
 export async function uploadEngagementDocumentAction(formData: FormData) {
   const principal = await requireUser();
   const workflowId = String(formData.get("workflowId") ?? "");
   const title = String(formData.get("title") ?? "").trim().slice(0, 180);
+  const replacesDocumentId = String(formData.get("replacesDocumentId") ?? "");
   const kind = z.enum(ENGAGEMENT_DOCUMENT_KINDS).safeParse(formData.get("documentKind"));
   const file = formData.get("document");
   const back = returnPath(formData, workflowId);
-  if (!workflowId || title.length < 3 || !kind.success || !(file instanceof File) || !file.size) redirect(`${back}?workspaceError=document`);
-  if (file.size > MAX_FILE_SIZE) redirect(`${back}?workspaceError=document-size`);
-  if (!allowedTypes.has(file.type)) redirect(`${back}?workspaceError=document-type`);
+  if (!workflowId || title.length < 3 || !kind.success || !(file instanceof File) || !file.size) redirect(`${back}?tab=documents&error=document`);
+  if (file.size > MAX_FILE_SIZE) redirect(`${back}?tab=documents&error=document-size`);
+  if (!allowedTypes.has(file.type)) redirect(`${back}?tab=documents&error=document-type`);
 
   const cleanFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-") || "engagement-file";
   const extension = cleanFileName.includes(".") ? `.${cleanFileName.split(".").pop()}` : "";
@@ -105,13 +112,14 @@ export async function uploadEngagementDocumentAction(formData: FormData) {
       storageKey,
       contentType: file.type,
       size: file.size,
+      replacesDocumentId: replacesDocumentId || null,
     });
     if (!documentId) throw new Error("Document record was not created.");
   } catch (error) {
     console.error("Unable to upload engagement document.", error);
     await getR2Client().send(new DeleteObjectCommand({ Bucket: configuration.bucketName, Key: storageKey })).catch(() => undefined);
-    redirect(`${back}?workspaceError=document-upload`);
+    redirect(`${back}?tab=documents&error=document-upload`);
   }
   refresh(workflowId);
-  redirect(`${back}?workspace=document#engagement-workspace`);
+  redirect(`${back}?tab=documents&saved=document`);
 }

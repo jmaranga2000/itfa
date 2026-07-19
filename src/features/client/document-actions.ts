@@ -10,7 +10,8 @@ import { activateCompletedEngagementLetter } from "@/features/engagements/activa
 import { getR2Client, getR2Configuration } from "@/lib/r2";
 import { ClientDocumentModel } from "@/models/client-document";
 import { WorkflowInstanceModel } from "@/models/workflow-instance";
-import { respondToDocumentFeedback } from "@/repositories/client-portal-repository";
+import { recordClientDeliverableReview, respondToDocumentFeedback } from "@/repositories/client-portal-repository";
+import { createCommunicationNotification } from "@/repositories/communication-repository";
 import {
   getClientEngagementLetter,
   recordUploadedSignedEngagementLetter,
@@ -33,17 +34,43 @@ function revalidateDocuments() {
   revalidatePath("/client/engagements");
 }
 
+function uploadReturnPath(formData: FormData, workflowId: string) {
+  const requested = String(formData.get("returnPath") ?? "");
+  return requested === `/client/engagements/${workflowId}`
+    ? requested
+    : "/client/documents/upload";
+}
+
+function uploadErrorPath(back: string, error: string) {
+  return back.startsWith("/client/engagements/")
+    ? `${back}?tab=documents&error=${error}`
+    : `${back}?error=${error}`;
+}
+
 export async function uploadClientDocumentAction(formData: FormData) {
   const principal = await requireUser();
   const workflowId = String(formData.get("workflowId") ?? "");
+  const replacesDocumentId = String(formData.get("replacesDocumentId") ?? "");
+  const back = uploadReturnPath(formData, workflowId);
   const document = formData.get("document");
   if (!Types.ObjectId.isValid(workflowId) || !(document instanceof File) || document.size === 0) {
-    redirect("/client/documents/upload?error=missing");
+    redirect(uploadErrorPath(back, "missing"));
   }
-  if (document.size > MAX_DOCUMENT_SIZE) redirect("/client/documents/upload?error=size");
-  if (!allowedDocumentTypes.has(document.type)) redirect("/client/documents/upload?error=type");
+  if (document.size > MAX_DOCUMENT_SIZE) redirect(uploadErrorPath(back, "size"));
+  if (!allowedDocumentTypes.has(document.type)) redirect(uploadErrorPath(back, "type"));
   const workflow = await getWorkflowForPrincipal(principal, workflowId);
-  if (!workflow || workflow.clientUserId !== principal.id) redirect("/client/documents/upload?error=engagement");
+  if (!workflow || workflow.clientUserId !== principal.id || workflow.status !== "active") {
+    redirect(uploadErrorPath(back, "engagement"));
+  }
+
+  const replaced = Types.ObjectId.isValid(replacesDocumentId)
+    ? await ClientDocumentModel.findOne({
+      _id: replacesDocumentId,
+      workflowId,
+      clientUserId: principal.id,
+    }).select("_id version").lean().exec()
+    : null;
+  const version = replaced ? (replaced.version ?? 1) + 1 : 1;
 
   const documentId = new Types.ObjectId();
   const filename = document.name.replace(/[^a-zA-Z0-9._-]/g, "-") || "client-document";
@@ -67,6 +94,8 @@ export async function uploadClientDocumentAction(formData: FormData) {
       size: document.size,
       direction: "sent",
       status: "pending_review",
+      version,
+      replacesDocumentId: replaced?._id ?? null,
       uploadedByUserId: principal.id,
     });
     await WorkflowInstanceModel.updateOne(
@@ -74,7 +103,7 @@ export async function uploadClientDocumentAction(formData: FormData) {
       {
         $push: {
           documents: {
-            documentId: documentId.toString(), name: filename, status: "pending_review", version: 1,
+            documentId: documentId.toString(), name: filename, status: "pending_review", version,
             visibility: "all", uploadedAt: new Date(),
           },
           activity: {
@@ -86,12 +115,39 @@ export async function uploadClientDocumentAction(formData: FormData) {
         $set: { lastActivityAt: new Date() },
       },
     ).exec();
+    if (replaced) {
+      await Promise.all([
+        ClientDocumentModel.updateOne({ _id: replaced._id }, { $set: { status: "superseded" } }).exec(),
+        WorkflowInstanceModel.updateOne(
+          { _id: workflowId, "documents.documentId": replaced._id.toString() },
+          { $set: { "documents.$.status": "superseded" } },
+        ).exec(),
+      ]);
+    }
+    const participantIds = [...new Set(workflow.team
+      .map((member) => member.userId)
+      .filter((userId): userId is string => Boolean(userId)))];
+    await Promise.allSettled(participantIds.map((recipientUserId) => createCommunicationNotification({
+      recipientUserId,
+      type: "document_uploaded",
+      title: "Client uploaded an engagement document",
+      description: `${filename} was added to ${workflow.reference}.`,
+      relatedModule: "engagements",
+      relatedRecordId: workflow.id,
+      actionUrl: `/staff/engagements/${workflow.id}?tab=documents`,
+      createdByUserId: principal.id,
+    })));
   } catch (error) {
     console.error("Unable to upload client document.", error);
-    redirect("/client/documents/upload?error=upload");
+    redirect(uploadErrorPath(back, "upload"));
   }
   revalidateDocuments();
-  redirect("/client/documents?uploaded=1");
+  revalidatePath(`/client/engagements/${workflowId}`);
+  revalidatePath(`/staff/engagements/${workflowId}`);
+  revalidatePath(`/admin/active-engagements/${workflowId}`);
+  redirect(back.startsWith("/client/engagements/")
+    ? `${back}?tab=documents&saved=document`
+    : "/client/documents?uploaded=1");
 }
 
 export async function uploadSignedEngagementLetterAction(formData: FormData) {
@@ -175,4 +231,28 @@ export async function respondToDocumentFeedbackAction(formData: FormData) {
   const updated = await respondToDocumentFeedback(principal, documentId, response);
   revalidateDocuments();
   redirect(`/client/documents/feedback?${updated ? "responded=1" : "error=document"}`);
+}
+
+export async function reviewClientDeliverableAction(formData: FormData) {
+  const principal = await requireUser();
+  const workflowId = String(formData.get("workflowId") ?? "");
+  const documentId = String(formData.get("documentId") ?? "");
+  const decisionValue = String(formData.get("decision") ?? "");
+  const feedback = String(formData.get("feedback") ?? "").trim().slice(0, 2000);
+  if (!Types.ObjectId.isValid(workflowId) || !Types.ObjectId.isValid(documentId) || !["approved", "changes_requested"].includes(decisionValue) || !feedback) {
+    redirect("/client/documents?error=client-review");
+  }
+  const updated = await recordClientDeliverableReview({
+    principal,
+    workflowId,
+    documentId,
+    decision: decisionValue as "approved" | "changes_requested",
+    feedback,
+  });
+  revalidateDocuments();
+  revalidatePath("/staff/engagements");
+  revalidatePath(`/staff/engagements/${workflowId}`);
+  revalidatePath("/admin/active-engagements");
+  revalidatePath(`/admin/workflows/${workflowId}`);
+  redirect(`/client/documents?${updated ? `reviewed=${decisionValue}` : "error=client-review"}`);
 }

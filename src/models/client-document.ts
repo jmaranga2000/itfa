@@ -19,9 +19,22 @@ const clientDocumentSchema = new Schema(
     direction: { type: String, enum: ["sent", "received"], required: true, index: true },
     status: {
       type: String,
-      enum: ["uploaded", "pending_review", "approved", "replacement_requested", "final"],
+      enum: ["uploaded", "pending_review", "approved", "replacement_requested", "superseded", "final", "archived"],
       default: "pending_review",
       index: true,
+    },
+    version: { type: Number, default: 1, min: 1 },
+    replacesDocumentId: { type: Schema.Types.ObjectId, default: null, index: true },
+    comments: {
+      type: [
+        {
+          body: { type: String, required: true },
+          authorUserId: { type: Schema.Types.ObjectId, required: true },
+          authorName: { type: String, required: true },
+          createdAt: { type: Date, default: Date.now },
+        },
+      ],
+      default: [],
     },
     feedback: { type: String, default: "" },
     clientResponse: { type: String, default: "" },

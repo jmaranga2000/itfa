@@ -107,6 +107,14 @@ export type WorkflowTaskRecord = {
   clientActionRequired: boolean;
   internalNotes: string;
   completionNotes: string;
+  createdByUserId: string | null;
+  reviewHistory: Array<{
+    decision: "approved" | "changes_requested";
+    comments: string;
+    reviewerUserId: string;
+    reviewerName: string;
+    reviewedAt: string;
+  }>;
   approvalRequired: boolean;
   blockerReason: string | null;
 };
@@ -141,6 +149,8 @@ export type WorkflowClientActionRecord = {
   priority: WorkflowPriority;
   assignedClientUserId: string | null;
   status: ClientActionStatus;
+  response: string;
+  respondedAt: string | null;
 };
 
 export type WorkflowDocumentRecord = {
@@ -164,6 +174,14 @@ export type WorkflowActivityRecord = {
   createdAt: string;
 };
 
+export type WorkflowInternalNoteRecord = {
+  id: string;
+  body: string;
+  createdByUserId: string;
+  createdByName: string;
+  createdAt: string;
+};
+
 export type WorkflowTeamMemberRecord = {
   userId: string | null;
   name: string;
@@ -179,6 +197,8 @@ export type WorkflowInstanceRecord = {
   clientName: string;
   clientUserId: string | null;
   organizationName: string;
+  sourceRequestId: string | null;
+  engagementLetterId: string | null;
   serviceName: string;
   templateName: string;
   templateVersion: number;
@@ -191,6 +211,11 @@ export type WorkflowInstanceRecord = {
   responsibleUserName: string;
   responsibleUserId: string | null;
   startDate: string | null;
+  activatedAt: string | null;
+  signedAt: string | null;
+  signedByUserId: string | null;
+  signedByName: string;
+  teamAssignedAt: string | null;
   dueDate: string | null;
   lastActivityAt: string | null;
   progress: WorkflowProgress;
@@ -206,8 +231,31 @@ export type WorkflowInstanceRecord = {
     paymentStatus: PaymentWorkflowStatus;
     balanceDue: number;
     currency: string;
+    invoices: Array<{
+      invoiceId: string;
+      invoiceNumber: string;
+      issueDate: string;
+      dueDate: string;
+      amount: number;
+      currency: string;
+      status: InvoiceWorkflowStatus;
+      notes: string;
+      createdByUserId: string | null;
+      createdByName: string;
+      sentAt: string | null;
+    }>;
   };
   completionChecklist: Array<{ label: string; completed: boolean }>;
+  completion: {
+    notes: string;
+    summary: string;
+    completedAt: string | null;
+    completedByUserId: string | null;
+    completedByName: string;
+    archivedAt: string | null;
+    archivedByUserId: string | null;
+    archivedByName: string;
+  };
   archive: {
     status: "not_ready" | "grace_period" | "read_only" | "archived" | "legal_hold";
     retentionUntil: string | null;
@@ -215,6 +263,7 @@ export type WorkflowInstanceRecord = {
     legalHoldReason: string;
   };
   activity: WorkflowActivityRecord[];
+  internalNotes: WorkflowInternalNoteRecord[];
 };
 
 export type WorkflowProgress = {
@@ -282,14 +331,33 @@ type RawWorkflowTemplate = {
   updatedAt?: Date | null;
 };
 
-type RawWorkflowInstance = Omit<WorkflowInstanceRecord, "id" | "progress"> & {
+type RawWorkflowInstance = Omit<
+  WorkflowInstanceRecord,
+  | "id"
+  | "progress"
+  | "sourceRequestId"
+  | "engagementLetterId"
+  | "activatedAt"
+  | "signedAt"
+  | "signedByUserId"
+  | "teamAssignedAt"
+  | "internalNotes"
+  | "financial"
+  | "completion"
+> & {
   _id: Types.ObjectId;
   organizationId?: Types.ObjectId | null;
   engagementId?: Types.ObjectId | null;
+  sourceRequestId?: Types.ObjectId | null;
+  engagementLetterId?: Types.ObjectId | null;
   templateId?: Types.ObjectId;
   clientUserId?: Types.ObjectId | null;
   responsibleUserId?: Types.ObjectId | null;
   startDate?: Date | null;
+  activatedAt?: Date | null;
+  signedAt?: Date | null;
+  signedByUserId?: Types.ObjectId | null;
+  teamAssignedAt?: Date | null;
   dueDate?: Date | null;
   lastActivityAt?: Date | null;
   stages?: Array<Omit<WorkflowStageRecord, "dueAt" | "enteredAt" | "completedAt"> & {
@@ -297,22 +365,67 @@ type RawWorkflowInstance = Omit<WorkflowInstanceRecord, "id" | "progress"> & {
     enteredAt?: Date | null;
     completedAt?: Date | null;
   }>;
-  tasks?: Array<Omit<WorkflowTaskRecord, "assignedUserId" | "startDate" | "dueDate"> & {
+  tasks?: Array<Omit<WorkflowTaskRecord, "assignedUserId" | "startDate" | "dueDate" | "createdByUserId" | "reviewHistory"> & {
     assignedUserId?: Types.ObjectId | null;
     startDate?: Date | null;
     dueDate?: Date | null;
+    createdByUserId?: Types.ObjectId | null;
+    reviewHistory?: Array<{
+      decision: "approved" | "changes_requested";
+      comments: string;
+      reviewerUserId: Types.ObjectId;
+      reviewerName: string;
+      reviewedAt?: Date | null;
+    }>;
   }>;
   milestones?: Array<Omit<WorkflowMilestoneRecord, "date"> & { date?: Date | null }>;
   approvals?: Array<Omit<WorkflowApprovalRecord, "approvalDate"> & { approvalDate?: Date | null }>;
   clientActions?: Array<
-    Omit<WorkflowClientActionRecord, "assignedClientUserId" | "dueDate"> & {
+    Omit<WorkflowClientActionRecord, "assignedClientUserId" | "dueDate" | "respondedAt"> & {
       assignedClientUserId?: Types.ObjectId | null;
       dueDate?: Date | null;
+      respondedAt?: Date | null;
     }
   >;
   documents?: Array<Omit<WorkflowDocumentRecord, "uploadedAt"> & { uploadedAt?: Date | null }>;
   team?: Array<Omit<WorkflowTeamMemberRecord, "userId"> & { userId?: Types.ObjectId | null }>;
   activity?: Array<Omit<WorkflowActivityRecord, "createdAt"> & { createdAt?: Date | null }>;
+  internalNotes?: Array<{
+    _id?: Types.ObjectId;
+    body: string;
+    createdByUserId: Types.ObjectId;
+    createdByName: string;
+    createdAt?: Date | null;
+  }>;
+  financial: {
+    invoiceStatus: InvoiceWorkflowStatus;
+    paymentStatus: PaymentWorkflowStatus;
+    balanceDue: number;
+    currency: string;
+    invoices?: Array<{
+      invoiceId: string;
+      invoiceNumber: string;
+      issueDate: Date;
+      dueDate: Date;
+      amount: number;
+      currency: string;
+      status: InvoiceWorkflowStatus;
+      notes?: string;
+      createdByUserId?: Types.ObjectId | null;
+      createdByName?: string;
+      sentAt?: Date | null;
+    }>;
+  };
+  completion?: {
+    notes?: string;
+    summary?: string;
+    completedAt?: Date | null;
+    completedByUserId?: Types.ObjectId | null;
+    completedByName?: string;
+    archivedAt?: Date | null;
+    archivedByUserId?: Types.ObjectId | null;
+    archivedByName?: string;
+  };
 };
 
 function serializeDate(value: Date | string | null | undefined) {
@@ -379,12 +492,13 @@ function workflowAccessFilter(principal: Principal, includeArchived = false): Re
 
 function calculateProgress(rawWorkflow: Pick<
   RawWorkflowInstance,
-  "stages" | "tasks" | "approvals" | "clientActions"
+  "stages" | "tasks" | "approvals" | "clientActions" | "documents" | "financial"
 >): WorkflowProgress {
   const stages = rawWorkflow.stages ?? [];
   const tasks = rawWorkflow.tasks ?? [];
   const approvals = rawWorkflow.approvals ?? [];
   const clientActions = rawWorkflow.clientActions ?? [];
+  const documents = rawWorkflow.documents ?? [];
   const requiredTasks = tasks.filter((task) => task.status !== "cancelled");
   const completedRequiredTasks = requiredTasks.filter((task) => task.status === "completed").length;
   const visibleStages = stages.filter((stage) => stage.clientVisible);
@@ -417,9 +531,20 @@ function calculateProgress(rawWorkflow: Pick<
     requiredTasks.length > 0 ? completedRequiredTasks / requiredTasks.length : stageWeight;
   const clientActionWeight =
     clientActions.length > 0 ? completedClientActions / clientActions.length : stageWeight;
+  const documentWeight = documents.length > 0
+    ? documents.filter((document) => ["approved", "final"].includes(document.status)).length / documents.length
+    : stageWeight;
+  const invoiceStatus = rawWorkflow.financial?.invoiceStatus ?? "draft";
+  const financeWeight = invoiceStatus === "paid"
+    ? 1
+    : invoiceStatus === "partially_paid"
+      ? 0.75
+      : ["issued", "approved"].includes(invoiceStatus)
+        ? 0.5
+        : stageWeight;
 
   return {
-    overall: Math.round((stageWeight * 0.5 + taskWeight * 0.35 + clientActionWeight * 0.15) * 100),
+    overall: Math.round((stageWeight * 0.3 + taskWeight * 0.35 + clientActionWeight * 0.1 + documentWeight * 0.15 + financeWeight * 0.1) * 100),
     clientVisible:
       visibleStages.length > 0
         ? Math.round((completedVisibleStages / visibleStages.length) * 100)
@@ -474,12 +599,22 @@ function serializeWorkflow(workflow: RawWorkflowInstance, clientView = false): W
       startDate: serializeDate(task.startDate),
       dueDate: serializeDate(task.dueDate),
       blockerReason: task.blockerReason ?? null,
+      createdByUserId: task.createdByUserId?.toString() ?? null,
+      reviewHistory: (task.reviewHistory ?? []).map((review) => ({
+        decision: review.decision,
+        comments: review.comments,
+        reviewerUserId: review.reviewerUserId.toString(),
+        reviewerName: review.reviewerName,
+        reviewedAt: serializeDate(review.reviewedAt) ?? "",
+      })),
     }));
   const progress = calculateProgress({
     stages: workflow.stages,
     tasks: workflow.tasks,
     approvals: workflow.approvals,
     clientActions: workflow.clientActions,
+    documents: workflow.documents,
+    financial: workflow.financial,
   });
 
   return {
@@ -488,6 +623,8 @@ function serializeWorkflow(workflow: RawWorkflowInstance, clientView = false): W
     clientName: workflow.clientName,
     clientUserId: workflow.clientUserId?.toString() ?? null,
     organizationName: workflow.organizationName,
+    sourceRequestId: workflow.sourceRequestId?.toString() ?? null,
+    engagementLetterId: workflow.engagementLetterId?.toString() ?? null,
     serviceName: workflow.serviceName,
     templateName: workflow.templateName,
     templateVersion: workflow.templateVersion,
@@ -502,6 +639,11 @@ function serializeWorkflow(workflow: RawWorkflowInstance, clientView = false): W
     responsibleUserName: workflow.responsibleUserName,
     responsibleUserId: workflow.responsibleUserId?.toString() ?? null,
     startDate: serializeDate(workflow.startDate),
+    activatedAt: serializeDate(workflow.activatedAt),
+    signedAt: serializeDate(workflow.signedAt),
+    signedByUserId: workflow.signedByUserId?.toString() ?? null,
+    signedByName: workflow.signedByName ?? "",
+    teamAssignedAt: serializeDate(workflow.teamAssignedAt),
     dueDate: serializeDate(workflow.dueDate),
     lastActivityAt: serializeDate(workflow.lastActivityAt),
     progress,
@@ -524,6 +666,8 @@ function serializeWorkflow(workflow: RawWorkflowInstance, clientView = false): W
       ...action,
       assignedClientUserId: action.assignedClientUserId?.toString() ?? null,
       dueDate: serializeDate(action.dueDate),
+      response: action.response ?? "",
+      respondedAt: serializeDate(action.respondedAt),
     })),
     documents: (workflow.documents ?? [])
       .filter((document) => !clientView || document.visibility === "client" || document.visibility === "all")
@@ -532,8 +676,36 @@ function serializeWorkflow(workflow: RawWorkflowInstance, clientView = false): W
         reviewerComments: clientView ? "" : document.reviewerComments,
         uploadedAt: serializeDate(document.uploadedAt) ?? new Date().toISOString(),
       })),
-    financial: workflow.financial,
+    financial: {
+      invoiceStatus: workflow.financial.invoiceStatus,
+      paymentStatus: workflow.financial.paymentStatus,
+      balanceDue: workflow.financial.balanceDue,
+      currency: workflow.financial.currency,
+      invoices: (workflow.financial.invoices ?? []).map((invoice) => ({
+        invoiceId: invoice.invoiceId,
+        invoiceNumber: invoice.invoiceNumber,
+        issueDate: serializeDate(invoice.issueDate) ?? "",
+        dueDate: serializeDate(invoice.dueDate) ?? "",
+        amount: invoice.amount,
+        currency: invoice.currency,
+        status: invoice.status,
+        notes: invoice.notes ?? "",
+        createdByUserId: invoice.createdByUserId?.toString() ?? null,
+        createdByName: invoice.createdByName ?? "",
+        sentAt: serializeDate(invoice.sentAt),
+      })),
+    },
     completionChecklist: clientView ? [] : workflow.completionChecklist,
+    completion: {
+      notes: clientView ? "" : workflow.completion?.notes ?? "",
+      summary: workflow.completion?.summary ?? "",
+      completedAt: serializeDate(workflow.completion?.completedAt),
+      completedByUserId: workflow.completion?.completedByUserId?.toString() ?? null,
+      completedByName: workflow.completion?.completedByName ?? "",
+      archivedAt: serializeDate(workflow.completion?.archivedAt),
+      archivedByUserId: workflow.completion?.archivedByUserId?.toString() ?? null,
+      archivedByName: workflow.completion?.archivedByName ?? "",
+    },
     archive: {
       ...workflow.archive,
       retentionUntil: serializeDate(workflow.archive.retentionUntil),
@@ -542,6 +714,15 @@ function serializeWorkflow(workflow: RawWorkflowInstance, clientView = false): W
     activity: (workflow.activity ?? [])
       .filter((activity) => !clientView || activity.clientVisible)
       .map((activity) => ({ ...activity, createdAt: serializeDate(activity.createdAt) ?? "" })),
+    internalNotes: clientView
+      ? []
+      : (workflow.internalNotes ?? []).map((note) => ({
+          id: note._id?.toString() ?? `${note.createdByUserId}-${note.createdAt?.toISOString() ?? "note"}`,
+          body: note.body,
+          createdByUserId: note.createdByUserId.toString(),
+          createdByName: note.createdByName,
+          createdAt: serializeDate(note.createdAt) ?? "",
+        })),
   };
 }
 
@@ -592,7 +773,11 @@ export async function listArchivedWorkflowsForPrincipal(principal: Principal) {
   return (workflows as unknown as RawWorkflowInstance[]).map((workflow) => serializeWorkflow(workflow, clientView));
 }
 
-export async function getWorkflowForPrincipal(principal: Principal, workflowId: string) {
+export async function getWorkflowForPrincipal(
+  principal: Principal,
+  workflowId: string,
+  includeArchived = false,
+) {
   await connectToDatabase();
 
   const id = objectId(workflowId);
@@ -603,7 +788,7 @@ export async function getWorkflowForPrincipal(principal: Principal, workflowId: 
 
   const workflow = await WorkflowInstanceModel.findOne({
     _id: id,
-    ...workflowAccessFilter(principal),
+    ...workflowAccessFilter(principal, includeArchived),
   })
     .lean()
     .exec();

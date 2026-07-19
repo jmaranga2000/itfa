@@ -81,6 +81,19 @@ const workflowTaskInstanceSchema = new Schema(
     clientActionRequired: { type: Boolean, default: false },
     internalNotes: { type: String, default: "" },
     completionNotes: { type: String, default: "" },
+    createdByUserId: { type: Schema.Types.ObjectId, default: null },
+    reviewHistory: {
+      type: [
+        {
+          decision: { type: String, enum: ["approved", "changes_requested"], required: true },
+          comments: { type: String, required: true },
+          reviewerUserId: { type: Schema.Types.ObjectId, required: true },
+          reviewerName: { type: String, required: true },
+          reviewedAt: { type: Date, default: Date.now },
+        },
+      ],
+      default: [],
+    },
     approvalRequired: { type: Boolean, default: false },
     completedByUserId: { type: Schema.Types.ObjectId, default: null },
     completedAt: { type: Date, default: null },
@@ -134,6 +147,8 @@ const workflowClientActionSchema = new Schema(
     priority: { type: String, enum: WORKFLOW_PRIORITIES, default: "medium" },
     assignedClientUserId: { type: Schema.Types.ObjectId, default: null },
     status: { type: String, enum: CLIENT_ACTION_STATUSES, default: "pending", index: true },
+    response: { type: String, default: "" },
+    respondedAt: { type: Date, default: null },
   },
   { _id: false },
 );
@@ -170,6 +185,16 @@ const workflowActivitySchema = new Schema(
   { _id: false },
 );
 
+const workflowInternalNoteSchema = new Schema(
+  {
+    body: { type: String, required: true, trim: true },
+    createdByUserId: { type: Schema.Types.ObjectId, required: true, index: true },
+    createdByName: { type: String, required: true, trim: true },
+    createdAt: { type: Date, default: Date.now },
+  },
+  { _id: true },
+);
+
 const workflowFinancialStateSchema = new Schema(
   {
     invoiceStatus: { type: String, enum: INVOICE_WORKFLOW_STATUSES, default: "draft" },
@@ -177,6 +202,38 @@ const workflowFinancialStateSchema = new Schema(
     balanceDue: { type: Number, default: 0 },
     currency: { type: String, default: "KES" },
     adjustmentReasonRequired: { type: Boolean, default: false },
+    invoices: {
+      type: [
+        {
+          invoiceId: { type: String, required: true },
+          invoiceNumber: { type: String, required: true },
+          issueDate: { type: Date, required: true },
+          dueDate: { type: Date, required: true },
+          amount: { type: Number, required: true, min: 0 },
+          currency: { type: String, required: true, default: "KES" },
+          status: { type: String, enum: INVOICE_WORKFLOW_STATUSES, default: "draft" },
+          notes: { type: String, default: "" },
+          createdByUserId: { type: Schema.Types.ObjectId, default: null },
+          createdByName: { type: String, default: "" },
+          sentAt: { type: Date, default: null },
+        },
+      ],
+      default: [],
+    },
+  },
+  { _id: false },
+);
+
+const workflowCompletionSchema = new Schema(
+  {
+    notes: { type: String, default: "" },
+    summary: { type: String, default: "" },
+    completedAt: { type: Date, default: null },
+    completedByUserId: { type: Schema.Types.ObjectId, default: null },
+    completedByName: { type: String, default: "" },
+    archivedAt: { type: Date, default: null },
+    archivedByUserId: { type: Schema.Types.ObjectId, default: null },
+    archivedByName: { type: String, default: "" },
   },
   { _id: false },
 );
@@ -204,6 +261,8 @@ const workflowInstanceSchema = new Schema(
     organizationName: { type: String, default: "" },
     organizationId: { type: Schema.Types.ObjectId, default: null, index: true },
     engagementId: { type: Schema.Types.ObjectId, default: null, index: true },
+    sourceRequestId: { type: Schema.Types.ObjectId, default: null, index: true },
+    engagementLetterId: { type: Schema.Types.ObjectId, default: null, index: true },
     serviceName: { type: String, required: true, index: true },
     templateId: { type: Schema.Types.ObjectId, required: true, index: true },
     templateName: { type: String, required: true },
@@ -217,6 +276,11 @@ const workflowInstanceSchema = new Schema(
     responsibleUserName: { type: String, default: "" },
     responsibleUserId: { type: Schema.Types.ObjectId, default: null, index: true },
     startDate: { type: Date, default: Date.now },
+    activatedAt: { type: Date, default: null, index: true },
+    signedAt: { type: Date, default: null },
+    signedByUserId: { type: Schema.Types.ObjectId, default: null },
+    signedByName: { type: String, default: "" },
+    teamAssignedAt: { type: Date, default: null, index: true },
     dueDate: { type: Date, default: null, index: true },
     lastActivityAt: { type: Date, default: Date.now, index: true },
     team: { type: [workflowTeamMemberSchema], default: [] },
@@ -236,8 +300,10 @@ const workflowInstanceSchema = new Schema(
       ],
       default: [],
     },
+    completion: { type: workflowCompletionSchema, default: () => ({}) },
     archive: { type: workflowArchiveStateSchema, default: () => ({}) },
     activity: { type: [workflowActivitySchema], default: [] },
+    internalNotes: { type: [workflowInternalNoteSchema], default: [] },
     archivedAt: { type: Date, default: null, index: true },
   },
   {

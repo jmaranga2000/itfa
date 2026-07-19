@@ -5,7 +5,6 @@ import { writeAuditLog } from "@/features/audit/audit-service";
 import { createCommunicationNotification } from "@/repositories/communication-repository";
 import { connectToDatabase } from "@/lib/db/mongoose";
 import { EngagementRequestModel } from "@/models/engagement-request";
-import { RequestStaffAssignmentModel } from "@/models/request-staff-assignment";
 import { UserModel } from "@/models/user";
 import { WorkflowInstanceModel } from "@/models/workflow-instance";
 import { WorkflowTemplateModel } from "@/models/workflow-template";
@@ -312,9 +311,24 @@ function addDays(date: Date, days: number) {
   return new Date(date.getTime() + days * 86_400_000);
 }
 
-export async function convertEngagementRequestToWorkflow(requestId: string, actor: Principal) {
+export type EngagementActivationContext = {
+  engagementLetterId: string;
+  letterGeneratedAt: string;
+  letterSentAt: string | null;
+  signedAt: string;
+  signerUserId: string | null;
+  signerName: string;
+};
+
+export async function convertEngagementRequestToWorkflow(
+  requestId: string,
+  actor: Principal,
+  activation: EngagementActivationContext,
+) {
   await connectToDatabase();
-  if (!Types.ObjectId.isValid(requestId)) return null;
+  if (!Types.ObjectId.isValid(requestId) || !Types.ObjectId.isValid(activation.engagementLetterId)) {
+    return null;
+  }
   const request = await EngagementRequestModel.findOne({
     _id: requestId,
     status: "approved",
@@ -337,51 +351,113 @@ export async function convertEngagementRequestToWorkflow(requestId: string, acto
   if (!template || template.stages.length === 0) throw new Error("Publish a workflow template before converting requests.");
 
   const now = new Date();
-  const assignment = await RequestStaffAssignmentModel.findOne({ requestId }).lean().exec();
-  const assignedStaff = assignment
-    ? await UserModel.findById(assignment.staffUserId).select("firstName lastName email roleKeys").lean().exec()
+  const signedAt = new Date(activation.signedAt);
+  const generatedAt = new Date(activation.letterGeneratedAt);
+  const sentAt = activation.letterSentAt ? new Date(activation.letterSentAt) : null;
+  const actorUserId = Types.ObjectId.isValid(actor.id) ? new Types.ObjectId(actor.id) : null;
+  const signerUserId = activation.signerUserId && Types.ObjectId.isValid(activation.signerUserId)
+    ? new Types.ObjectId(activation.signerUserId)
     : null;
-  const assignedName = assignedStaff
-    ? `${assignedStaff.firstName ?? ""} ${assignedStaff.lastName ?? ""}`.trim() || assignedStaff.email
-    : "";
   const activeStageIndex = template.stages.findIndex((stage) => stage.key === "active_work");
-  const startStageIndex = activeStageIndex >= 0
-    ? activeStageIndex
-    : Math.min(3, template.stages.length - 1);
-  const startStage = template.stages[startStageIndex];
+  const deliveryStages = template.stages
+    .slice(activeStageIndex >= 0 ? activeStageIndex : 0)
+    .filter((stage) => stage.key !== "team_assignment");
+  const firstDeliveryStage = deliveryStages[0];
+  if (!firstDeliveryStage) throw new Error("The workflow template has no delivery stages.");
+
+  const initialActivity = [
+    {
+      type: "workflow_created",
+      title: "Engagement Created",
+      actorName: request.clientName,
+      actorUserId: request.clientUserId,
+      description: `Created from request ${request.reference}.`,
+      relatedResource: request.reference,
+      clientVisible: true,
+      createdAt: generatedAt,
+    },
+    ...(sentAt ? [{
+      type: "engagement_letter_sent",
+      title: "Engagement Letter Sent",
+      actorName: actor.email,
+      actorUserId,
+      description: "The engagement letter was sent for electronic signature.",
+      relatedResource: activation.engagementLetterId,
+      clientVisible: true,
+      createdAt: sentAt,
+    }] : []),
+    {
+      type: "engagement_letter_signed",
+      title: "Engagement Letter Signed",
+      actorName: activation.signerName,
+      actorUserId: signerUserId,
+      description: `Electronically signed by ${activation.signerName}.`,
+      relatedResource: activation.engagementLetterId,
+      clientVisible: true,
+      createdAt: signedAt,
+    },
+    {
+      type: "engagement_activated",
+      title: "Engagement Activated",
+      actorName: "IFTA System",
+      actorUserId,
+      description: "The signed letter activated the engagement workspace.",
+      relatedResource: request.reference,
+      clientVisible: true,
+      createdAt: now,
+    },
+  ].sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
+
   const workflow = await WorkflowInstanceModel.create({
     reference: `ENG-${now.getFullYear()}-${randomBytes(3).toString("hex").toUpperCase()}`,
     clientName: request.clientName,
     clientUserId: request.clientUserId,
     organizationName: request.clientName,
+    sourceRequestId: request._id,
+    engagementLetterId: new Types.ObjectId(activation.engagementLetterId),
     serviceName: serviceNames.join(", "),
     templateId: template._id,
     templateName: template.name,
     templateVersion: template.version,
     templateSnapshot: template,
     status: "active",
-    currentStageKey: startStage.key,
+    currentStageKey: "team_assignment",
     riskLevel: "low",
-    nextAction: startStage.clientTitle,
-    responsibleUserId: assignedStaff?._id ?? null,
-    responsibleUserName: assignedName,
+    nextAction: "Assign the consultant, reviewer, and finance officer",
+    responsibleUserId: null,
+    responsibleUserName: "",
     startDate: now,
-    dueDate: addDays(now, template.stages.slice(startStageIndex).reduce((total, stage) => total + stage.expectedDurationDays, 0)),
+    activatedAt: now,
+    signedAt,
+    signedByUserId: signerUserId,
+    signedByName: activation.signerName,
+    teamAssignedAt: null,
+    dueDate: addDays(now, deliveryStages.reduce((total, stage) => total + stage.expectedDurationDays, 0)),
     lastActivityAt: now,
-    team: assignedStaff ? [{
-      userId: assignedStaff._id,
-      name: assignedName,
-      email: assignedStaff.email,
-      role: assignedStaff.roleKeys?.[0] ?? "consultant",
-      department: "Consulting",
-      workloadLevel: "balanced",
-    }] : [],
-    stages: template.stages.map((stage, index) => ({
+    team: [],
+    stages: [{
+      key: "team_assignment",
+      name: "Team Assignment",
+      internalDescription: "Assign the delivery team before client work begins.",
+      clientTitle: "Team Assignment",
+      order: 1,
+      expectedDurationDays: 1,
+      responsibleRole: "admin",
+      entryConditions: ["Engagement letter signed"],
+      completionConditions: ["Consultant assigned", "Reviewer assigned", "Finance officer assigned"],
+      requiredDocuments: [],
+      approvalRequired: false,
+      clientVisible: true,
+      status: "in_progress",
+      enteredAt: now,
+      completedAt: null,
+      dueAt: addDays(now, 1),
+    }, ...deliveryStages.map((stage, index) => ({
       key: stage.key,
       name: stage.name,
       internalDescription: stage.internalDescription,
       clientTitle: stage.clientTitle,
-      order: stage.order,
+      order: index + 2,
       expectedDurationDays: stage.expectedDurationDays,
       responsibleRole: stage.responsibleRole,
       entryConditions: stage.entryConditions,
@@ -389,66 +465,47 @@ export async function convertEngagementRequestToWorkflow(requestId: string, acto
       requiredDocuments: stage.requiredDocuments,
       approvalRequired: stage.approvalRequired,
       clientVisible: stage.clientVisible,
-      status: index < startStageIndex ? "completed" : index === startStageIndex ? "in_progress" : "not_started",
-      enteredAt: index <= startStageIndex ? now : null,
-      completedAt: index < startStageIndex ? now : null,
-      dueAt: index === startStageIndex ? addDays(now, stage.expectedDurationDays) : null,
-    })),
-    tasks: template.stages.flatMap((stage, stageIndex) => stage.tasks.map((task) => ({
+      status: "not_started",
+      enteredAt: null,
+      completedAt: null,
+      dueAt: null,
+    }))],
+    tasks: deliveryStages.flatMap((stage) => stage.tasks.map((task) => ({
       key: task.key,
       stageKey: stage.key,
       title: task.title,
       description: task.description,
-      assignedUserId: stageIndex === startStageIndex ? assignedStaff?._id ?? null : null,
-      assignedUserName: stageIndex === startStageIndex ? assignedName : "",
+      assignedUserId: null,
+      assignedUserName: "",
       assignedRole: task.assignedRole,
       priority: task.priority,
-      status: stageIndex < startStageIndex ? "completed" : stageIndex === startStageIndex ? "ready" : "not_started",
-      startDate: stageIndex <= startStageIndex ? now : null,
-      completedAt: stageIndex < startStageIndex ? now : null,
-      completedByUserId: stageIndex < startStageIndex && Types.ObjectId.isValid(actor.id) ? new Types.ObjectId(actor.id) : null,
-      dueDate: stageIndex === startStageIndex ? addDays(now, task.dueOffsetDays) : null,
+      status: "not_started",
+      startDate: null,
+      completedAt: null,
+      completedByUserId: null,
+      dueDate: null,
       dependencies: task.dependencies,
-      checklist: task.checklist.map((label) => ({ label, completed: stageIndex < startStageIndex })),
+      checklist: task.checklist.map((label) => ({ label, completed: false })),
       requiredDocuments: task.requiredDocuments,
       clientVisible: task.clientVisible,
       approvalRequired: task.approvalRequired,
     }))),
     milestones: template.milestones.map((title, index) => ({ key: `milestone-${index + 1}`, title, status: "pending", clientVisible: true })),
-    approvals: template.approvalPoints.map((approval) => {
-      const stageIndex = template.stages.findIndex((stage) => stage.key === approval.stageKey);
-      return stageIndex >= 0 && stageIndex < startStageIndex
-        ? {
-            ...approval,
-            status: "approved",
-            approverUserId: Types.ObjectId.isValid(actor.id) ? new Types.ObjectId(actor.id) : null,
-            approverName: actor.email,
-            approvalDate: now,
-            decision: "Approved before engagement activation",
-          }
-        : approval;
-    }),
+    approvals: template.approvalPoints.filter((approval) =>
+      deliveryStages.some((stage) => stage.key === approval.stageKey),
+    ),
     clientActions: [],
     financial: { invoiceStatus: "draft", paymentStatus: "pending", balanceDue: request.quotationAmount ?? 0, currency: request.quotationCurrency },
     completionChecklist: template.completionConditions.map((label) => ({ label, completed: false })),
     archive: { status: "not_ready" },
-    activity: [{
-      type: "workflow_created",
-      title: "Engagement workspace created",
-      actorName: actor.email,
-      actorUserId: new Types.ObjectId(actor.id),
-      description: `Created from ${request.reference}.`,
-      relatedResource: request.reference,
-      clientVisible: true,
-      createdAt: now,
-    }],
+    activity: initialActivity,
+    internalNotes: [],
   });
   request.status = "converted";
   request.workflowId = workflow._id;
   request.reviewedAt = now;
-  request.timeline.push({ at: now, title: "Engagement created", detail: `${workflow.reference} is now active.`, clientVisible: true });
+  request.timeline.push({ at: now, title: "Engagement activated", detail: `${workflow.reference} is active and awaiting team assignment.`, clientVisible: true });
   await request.save();
-  if (assignedStaff) await UserModel.updateOne({ _id: assignedStaff._id }, { $addToSet: { assignedEngagementIds: workflow._id } }).exec();
   await createCommunicationNotification({
     recipientUserId: request.clientUserId.toString(),
     type: "engagement_update",
@@ -459,18 +516,6 @@ export async function convertEngagementRequestToWorkflow(requestId: string, acto
     actionUrl: "/client/engagements",
     createdByUserId: actor.id,
   });
-  if (assignedStaff) {
-    await createCommunicationNotification({
-      recipientUserId: assignedStaff._id.toString(),
-      type: "engagement_update",
-      title: "Assigned engagement is now active",
-      description: `${workflow.reference} for ${request.clientName} is ready for delivery work.`,
-      relatedModule: "engagements",
-      relatedRecordId: workflow._id.toString(),
-      actionUrl: `/staff/engagements/${workflow._id}`,
-      createdByUserId: actor.id,
-    });
-  }
   await writeAuditLog({ actor, action: "request.converted", resourceType: "EngagementRequest", resourceId: requestId, newValues: { workflowId: workflow._id.toString() } });
   return workflow._id.toString();
 }

@@ -14,12 +14,15 @@ export type ClientProfileRecord = {
   avatarUpdatedAt: string | null;
 };
 
-export async function getClientProfile(userId: string): Promise<ClientProfileRecord | null> {
+export async function getClientProfile(input: { userId: string; email: string }): Promise<ClientProfileRecord | null> {
   await connectToDatabase();
-  if (!Types.ObjectId.isValid(userId)) return null;
+  const identities: Record<string, unknown>[] = [];
+  if (Types.ObjectId.isValid(input.userId)) identities.push({ _id: new Types.ObjectId(input.userId) });
+  if (input.email.trim()) identities.push({ email: input.email.trim().toLowerCase() });
+  if (identities.length === 0) return null;
 
   const user = await UserModel.findOne({
-    _id: new Types.ObjectId(userId),
+    $or: identities,
     roleKeys: { $in: CLIENT_ROLES },
     status: { $ne: "archived" },
   })

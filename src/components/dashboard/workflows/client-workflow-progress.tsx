@@ -63,7 +63,7 @@ export function ClientWorkflowProgress({
               <div>
                 <CardTitle>{workflow.serviceName}</CardTitle>
                 <CardDescription>
-                  {workflow.reference} · {workflow.clientName}
+                  {workflow.reference} | {workflow.clientName}
                 </CardDescription>
               </div>
               <div className="text-right">
@@ -133,14 +133,14 @@ export function ClientWorkflowProgress({
               </section>
 
               <div className="flex flex-wrap gap-2">
-                <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href="/client/documents">
+                <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={`/client/engagements/${workflow.id}?tab=documents`}>
                   Upload document
                 </Link>
-                <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href="/client/messages">
+                <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={`/client/engagements/${workflow.id}?tab=messages`}>
                   Message consultant
                 </Link>
-                <Link className={buttonClassName({ size: "sm" })} href="/client/invoices">
-                  View invoices
+                <Link className={buttonClassName({ size: "sm" })} href={`/client/engagements/${workflow.id}`}>
+                  Open engagement
                 </Link>
               </div>
             </CardContent>

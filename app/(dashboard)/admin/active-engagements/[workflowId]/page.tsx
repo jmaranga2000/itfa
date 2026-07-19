@@ -4,7 +4,8 @@ import {
   EngagementExecutionWorkspace,
   type EngagementWorkspaceTab,
 } from "@/components/dashboard/engagements/engagement-execution-workspace";
-import { requireStaffRoute } from "@/features/staff/server";
+import { requirePermission } from "@/features/auth/server";
+import { listEngagementTeamCandidates } from "@/repositories/engagement-management-repository";
 import { getEngagementExecutionData } from "@/repositories/engagement-execution-repository";
 
 function workspaceTab(value?: string): EngagementWorkspaceTab {
@@ -13,28 +14,29 @@ function workspaceTab(value?: string): EngagementWorkspaceTab {
     : "overview";
 }
 
-export default async function StaffEngagementDetailPage({
+export default async function AdminActiveEngagementPage({
   params,
   searchParams,
 }: {
   params: Promise<{ workflowId: string }>;
-  searchParams: Promise<{ error?: string; saved?: string; missing?: string; tab?: string }>;
+  searchParams: Promise<{ error?: string; saved?: string; missing?: string; tab?: string; team?: string; note?: string }>;
 }) {
-  const [{ principal }, { workflowId }, query] = await Promise.all([
-    requireStaffRoute("engagements"),
-    params,
-    searchParams,
+  const principal = await requirePermission("engagements.read_all");
+  const [{ workflowId }, query] = await Promise.all([params, searchParams]);
+  const [data, candidates] = await Promise.all([
+    getEngagementExecutionData(principal, workflowId),
+    listEngagementTeamCandidates(principal),
   ]);
-  const data = await getEngagementExecutionData(principal, workflowId);
   if (!data) notFound();
 
   return (
     <EngagementExecutionWorkspace
       activeTab={workspaceTab(query.tab)}
       data={data}
-      portal="staff"
+      portal="admin"
       principal={{ id: principal.id, roleKeys: principal.roleKeys }}
       query={query}
+      teamCandidates={candidates}
     />
   );
 }
