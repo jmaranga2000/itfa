@@ -9,9 +9,11 @@ import { connectToDatabase } from "@/lib/db/mongoose";
 import { ArchiveRecordModel } from "@/models/archive-record";
 import { AuditLogModel } from "@/models/audit-log";
 import { ClientPaymentModel } from "@/models/client-payment";
+import { ClientDocumentModel } from "@/models/client-document";
 import { CommunicationConversationModel } from "@/models/communication-conversation";
 import { UserModel } from "@/models/user";
 import { WorkflowInstanceModel } from "@/models/workflow-instance";
+import { WorkflowTemplateModel } from "@/models/workflow-template";
 import {
   createCommunicationNotification,
   getOrCreateEngagementConversation,
@@ -48,6 +50,20 @@ export type CompletionRequirement = {
   detail: string;
 };
 
+export type EngagementHealthStatus =
+  | "on_track"
+  | "waiting_for_client"
+  | "waiting_for_review"
+  | "waiting_for_payment"
+  | "overdue";
+
+export type EngagementHealth = {
+  status: EngagementHealthStatus;
+  label: string;
+  description: string;
+  tone: "green" | "gold" | "teal" | "red";
+};
+
 export type EngagementExecutionData = {
   workflow: WorkflowInstanceRecord;
   documents: EngagementDocumentRecord[];
@@ -56,6 +72,12 @@ export type EngagementExecutionData = {
   payments: EngagementPaymentRecord[];
   completionRequirements: CompletionRequirement[];
   daysRemaining: number | null;
+  health: EngagementHealth;
+};
+
+export type EngagementDashboardEnhancements = {
+  deliverablesAwaitingApproval: number;
+  deliverablesReleasedToday: number;
 };
 
 type RawPayment = {
@@ -91,6 +113,48 @@ function isReviewer(workflow: WorkflowInstanceRecord, principal: Principal) {
 
 function isFinance(workflow: WorkflowInstanceRecord, principal: Principal) {
   return isAdministrator(principal) || teamMember(workflow, principal, "finance_officer");
+}
+
+export function getEngagementHealth(workflow: WorkflowInstanceRecord): EngagementHealth {
+  const now = Date.now();
+  const hasOverdueTask = workflow.tasks.some((task) =>
+    !["completed", "cancelled"].includes(task.status)
+    && ((task.dueDate && new Date(task.dueDate).getTime() < now) || task.status === "overdue"),
+  );
+  const engagementOverdue = Boolean(workflow.dueDate && new Date(workflow.dueDate).getTime() < now);
+  if (workflow.status === "active" && (hasOverdueTask || engagementOverdue)) {
+    return { status: "overdue", label: "Overdue", description: "A due date has passed and needs attention.", tone: "red" };
+  }
+  if (workflow.status === "active" && workflow.clientActions.some((action) =>
+    !["approved", "completed"].includes(action.status),
+  )) {
+    return { status: "waiting_for_client", label: "Waiting for client", description: "Client information, approval, or a response is outstanding.", tone: "gold" };
+  }
+  if (workflow.status === "active" && (
+    workflow.tasks.some((task) => task.status === "waiting_for_approval")
+    || workflow.documents.some((document) => document.status === "pending_review")
+  )) {
+    return { status: "waiting_for_review", label: "Waiting for review", description: "Submitted work is waiting for an internal review decision.", tone: "gold" };
+  }
+  if (workflow.status === "active" && workflow.financial.balanceDue > 0 && workflow.financial.invoices.some((invoice) =>
+    ["issued", "partially_paid", "overdue"].includes(invoice.status),
+  )) {
+    return { status: "waiting_for_payment", label: "Waiting for payment", description: "An issued invoice still has an outstanding balance.", tone: "teal" };
+  }
+  return { status: "on_track", label: "On track", description: "Work is progressing without an outstanding blocker.", tone: "green" };
+}
+
+export async function getEngagementDashboardEnhancements(principal: Principal): Promise<EngagementDashboardEnhancements> {
+  if (!isAdministrator(principal)) return { deliverablesAwaitingApproval: 0, deliverablesReleasedToday: 0 };
+  await connectToDatabase();
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const activeWorkflowIds = await WorkflowInstanceModel.distinct("_id", { status: "active", archivedAt: null }).exec() as Types.ObjectId[];
+  const [deliverablesAwaitingApproval, deliverablesReleasedToday] = await Promise.all([
+    ClientDocumentModel.countDocuments({ workflowId: { $in: activeWorkflowIds }, documentKind: "final_deliverable", deliverableStatus: "pending_review" }).exec(),
+    ClientDocumentModel.countDocuments({ documentKind: "final_deliverable", deliverableStatus: "released", releasedAt: { $gte: startOfToday } }).exec(),
+  ]);
+  return { deliverablesAwaitingApproval, deliverablesReleasedToday };
 }
 
 async function notifyUsers(input: {
@@ -147,7 +211,8 @@ export function getCompletionRequirements(
     task.reviewHistory.some((review) => review.decision === "approved"),
   );
   const finalDeliverables = documents.filter((document) =>
-    document.documentKind === "final_deliverable" && ["approved", "final"].includes(document.status),
+    document.documentKind === "final_deliverable"
+    && (document.deliverableStatus === "released" || (!document.deliverableStatus && document.status === "final")),
   );
   const outstandingClientActions = workflow.clientActions.filter((action) =>
     !["approved", "completed"].includes(action.status),
@@ -202,6 +267,7 @@ export async function getEngagementExecutionData(principal: Principal, workflowI
     payments,
     completionRequirements: getCompletionRequirements(workflow, documents, payments),
     daysRemaining,
+    health: getEngagementHealth(workflow),
   } satisfies EngagementExecutionData;
 }
 
@@ -409,7 +475,35 @@ export async function completeEngagement(input: { principal: Principal; workflow
   const missing = requirements.filter((item) => !item.complete).map((item) => item.label);
   if (missing.length > 0) return { ok: false as const, missing };
   const now = new Date();
-  const summary = `${workflow.reference} for ${workflow.clientName} completed with ${workflow.tasks.length} tasks, ${data.documents.length} documents, ${workflow.financial.invoices.length} invoices, and ${data.payments.length} payment records.`;
+  const completedTasks = workflow.tasks.filter((task) => task.status === "completed").length;
+  const releasedDeliverables = data.documents.filter((document) =>
+    document.documentKind === "final_deliverable" && document.deliverableStatus === "released",
+  ).length;
+  const internalReviews = workflow.tasks.reduce(
+    (total, task) => total + task.reviewHistory.filter((review) => review.decision === "approved").length,
+    0,
+  ) + data.documents.filter((document) => Boolean(document.reviewedAt)).length;
+  const totalInvoiced = workflow.financial.invoices
+    .filter((invoice) => invoice.status !== "void")
+    .reduce((total, invoice) => total + invoice.amount, 0);
+  const totalPaid = data.payments
+    .filter((payment) => payment.status === "verified")
+    .reduce((total, payment) => total + payment.amount, 0);
+  const outstandingBalance = Math.max(0, totalInvoiced - totalPaid);
+  const completedByName = input.principal.displayName || input.principal.email;
+  const closureSummary = {
+    generatedAt: now,
+    generatedByName: completedByName,
+    totalTasksCompleted: completedTasks,
+    totalDocumentsUploaded: data.documents.length,
+    totalDeliverablesReleased: releasedDeliverables,
+    totalInternalReviews: internalReviews,
+    totalMessages: data.messages.length,
+    totalInvoiced,
+    totalPaid,
+    outstandingBalance,
+  };
+  const summary = `${workflow.reference} for ${workflow.clientName} completed with ${completedTasks} completed tasks, ${releasedDeliverables} released deliverables, and ${data.messages.length} messages.`;
   await WorkflowInstanceModel.updateOne(
     { _id: workflow.id, status: "active" },
     {
@@ -419,18 +513,199 @@ export async function completeEngagement(input: { principal: Principal; workflow
         nextAction: "Archive the completed engagement",
         lastActivityAt: now,
         completionChecklist: requirements.map((item) => ({ label: item.label, completed: item.complete })),
-        completion: { notes: input.notes, summary, completedAt: now, completedByUserId: input.principal.id, completedByName: input.principal.displayName || input.principal.email },
+        completion: {
+          notes: input.notes,
+          summary,
+          completedAt: now,
+          completedByUserId: input.principal.id,
+          completedByName,
+          closureSummary,
+        },
       },
-      $push: { activity: { type: "engagement_completed", title: "Engagement Completed", actorName: input.principal.displayName || input.principal.email, actorUserId: input.principal.id, description: input.notes, relatedResource: workflow.reference, clientVisible: true, createdAt: now } },
+      $push: { activity: { $each: [
+        { type: "engagement_completed", title: "Engagement Completed", actorName: completedByName, actorUserId: input.principal.id, description: input.notes, relatedResource: workflow.reference, clientVisible: true, createdAt: now },
+        { type: "engagement_completed", title: "Closure Summary Generated", actorName: "IFTA System", actorUserId: input.principal.id, description: "A permanent completion and financial summary was generated.", relatedResource: workflow.reference, clientVisible: true, createdAt: now },
+      ] } },
     },
   ).exec();
-  await notifyUsers({ recipientIds: [workflow.clientUserId, ...workflow.team.map((member) => member.userId)], actor: input.principal, type: "engagement_update", title: "Engagement completed", description: `${workflow.reference} has been completed.`, workflowId: workflow.id, tab: "completion" });
+  const recipients = [workflow.clientUserId, ...workflow.team.map((member) => member.userId)];
+  await Promise.all([
+    notifyUsers({ recipientIds: recipients, actor: input.principal, type: "engagement_update", title: "Engagement completed", description: `${workflow.reference} has been completed.`, workflowId: workflow.id, tab: "completion" }),
+    notifyUsers({ recipientIds: recipients, actor: input.principal, type: "engagement_update", title: "Closure summary generated", description: `The closure summary for ${workflow.reference} is ready.`, workflowId: workflow.id, tab: "completion" }),
+  ]);
   if (workflow.clientUserId) {
     const client = await UserModel.findById(workflow.clientUserId).select("email firstName lastName").lean().exec();
-    if (client?.email) await sendClientJourneyEmail({ recipientEmail: client.email, recipientName: `${client.firstName ?? ""} ${client.lastName ?? ""}`.trim() || client.email, title: "Your IFTA engagement is complete", summary, actionLabel: "View final deliverables", actionPath: `/client/engagements/${workflow.id}?tab=documents` }).catch(() => undefined);
+    if (client?.email) await sendClientJourneyEmail({ recipientEmail: client.email, recipientName: `${client.firstName ?? ""} ${client.lastName ?? ""}`.trim() || client.email, title: "Your IFTA engagement is complete", summary, actionLabel: "View final deliverables", actionPath: `/client/engagements/${workflow.id}?tab=deliverables` }).catch(() => undefined);
   }
-  await writeAuditLog({ actor: input.principal, action: "engagement.completed", resourceType: "WorkflowInstance", resourceId: workflow.id, newValues: { completedAt: now, summary } });
+  await writeAuditLog({ actor: input.principal, action: "engagement.completed", resourceType: "WorkflowInstance", resourceId: workflow.id, newValues: { completedAt: now, summary, closureSummary } });
   return { ok: true as const, missing: [] };
+}
+
+export async function createFollowUpEngagement(input: {
+  principal: Principal;
+  previousWorkflowId: string;
+  serviceName: string;
+}) {
+  if (!isAdministrator(input.principal) || !hasPermission(input.principal, "engagements.assign")) return null;
+  const previous = await getWorkflowForPrincipal(input.principal, input.previousWorkflowId, true);
+  if (!previous || !["completed", "archived"].includes(previous.status)) return null;
+  await connectToDatabase();
+  const source = await WorkflowInstanceModel.findById(input.previousWorkflowId)
+    .select("clientName clientUserId organizationName organizationId templateId reference")
+    .lean()
+    .exec();
+  if (!source?.templateId) return null;
+  const template = await WorkflowTemplateModel.findById(source.templateId).lean().exec();
+  if (!template || template.stages.length === 0) return null;
+
+  const now = new Date();
+  const activeStageIndex = template.stages.findIndex((stage) => stage.key === "active_work");
+  const deliveryStages = template.stages
+    .slice(activeStageIndex >= 0 ? activeStageIndex : 0)
+    .filter((stage) => stage.key !== "team_assignment");
+  if (deliveryStages.length === 0) return null;
+  const durationDays = Math.max(1, deliveryStages.reduce((total, stage) => total + stage.expectedDurationDays, 1));
+  const dueDate = new Date(now);
+  dueDate.setDate(dueDate.getDate() + durationDays);
+  const actorUserId = Types.ObjectId.isValid(input.principal.id) ? new Types.ObjectId(input.principal.id) : null;
+  const workflow = await WorkflowInstanceModel.create({
+    reference: `ENG-${now.getFullYear()}-${randomBytes(3).toString("hex").toUpperCase()}`,
+    clientName: source.clientName,
+    clientUserId: source.clientUserId,
+    organizationName: source.organizationName,
+    organizationId: source.organizationId,
+    sourceRequestId: null,
+    engagementLetterId: null,
+    previousEngagementId: source._id,
+    previousEngagementReference: source.reference,
+    serviceName: input.serviceName,
+    templateId: template._id,
+    templateName: template.name,
+    templateVersion: template.version,
+    templateSnapshot: template,
+    status: "active",
+    currentStageKey: "team_assignment",
+    riskLevel: "low",
+    riskReason: "",
+    nextAction: "Assign the consultant, reviewer, and finance officer",
+    responsibleUserId: null,
+    responsibleUserName: "",
+    startDate: now,
+    activatedAt: now,
+    signedAt: null,
+    signedByUserId: null,
+    signedByName: "",
+    teamAssignedAt: null,
+    dueDate,
+    lastActivityAt: now,
+    team: [],
+    stages: [{
+      key: "team_assignment",
+      name: "Team Assignment",
+      internalDescription: "Assign the delivery team before client work begins.",
+      clientTitle: "Team Assignment",
+      order: 1,
+      expectedDurationDays: 1,
+      responsibleRole: "admin",
+      entryConditions: ["Follow-up engagement created"],
+      completionConditions: ["Consultant assigned", "Reviewer assigned", "Finance officer assigned"],
+      requiredDocuments: [],
+      approvalRequired: false,
+      clientVisible: true,
+      status: "in_progress",
+      enteredAt: now,
+      completedAt: null,
+      dueAt: new Date(now.getTime() + 86_400_000),
+    }, ...deliveryStages.map((stage, index) => ({
+      key: stage.key,
+      name: stage.name,
+      internalDescription: stage.internalDescription,
+      clientTitle: stage.clientTitle,
+      order: index + 2,
+      expectedDurationDays: stage.expectedDurationDays,
+      responsibleRole: stage.responsibleRole,
+      entryConditions: stage.entryConditions,
+      completionConditions: stage.completionConditions,
+      requiredDocuments: stage.requiredDocuments,
+      approvalRequired: stage.approvalRequired,
+      clientVisible: stage.clientVisible,
+      status: "not_started",
+      enteredAt: null,
+      completedAt: null,
+      dueAt: null,
+    }))],
+    tasks: deliveryStages.flatMap((stage) => stage.tasks.map((task) => ({
+      key: task.key,
+      stageKey: stage.key,
+      title: task.title,
+      description: task.description,
+      assignedUserId: null,
+      assignedUserName: "",
+      assignedRole: task.assignedRole,
+      priority: task.priority,
+      status: "not_started",
+      startDate: null,
+      completedAt: null,
+      completedByUserId: null,
+      dueDate: null,
+      dependencies: task.dependencies,
+      checklist: task.checklist.map((label) => ({ label, completed: false })),
+      requiredDocuments: task.requiredDocuments,
+      clientVisible: task.clientVisible,
+      approvalRequired: task.approvalRequired,
+      reviewHistory: [],
+    }))),
+    milestones: template.milestones.map((title, index) => ({
+      key: `milestone-${index + 1}`,
+      title,
+      status: "pending",
+      clientVisible: true,
+    })),
+    approvals: template.approvalPoints
+      .filter((approval) => deliveryStages.some((stage) => stage.key === approval.stageKey))
+      .map((approval) => ({
+        key: approval.key,
+        title: approval.title,
+        stageKey: approval.stageKey,
+        approverRole: approval.approverRole,
+        status: "not_submitted",
+      })),
+    clientActions: [],
+    documents: [],
+    financial: { invoiceStatus: "draft", paymentStatus: "pending", balanceDue: 0, currency: previous.financial.currency, invoices: [] },
+    completionChecklist: template.completionConditions.map((label) => ({ label, completed: false })),
+    completion: {},
+    archive: { status: "not_ready" },
+    activity: [{
+      type: "workflow_created",
+      title: "Follow-up Engagement Created",
+      actorName: input.principal.displayName || input.principal.email,
+      actorUserId,
+      description: `Created as a new engagement linked to ${source.reference}.`,
+      relatedResource: source.reference,
+      clientVisible: true,
+      createdAt: now,
+    }],
+    internalNotes: [],
+  });
+
+  await notifyUsers({
+    recipientIds: [source.clientUserId?.toString()],
+    actor: input.principal,
+    type: "engagement_update",
+    title: "Follow-up engagement created",
+    description: `${workflow.reference} was created for ${input.serviceName} and linked to ${source.reference}.`,
+    workflowId: workflow._id.toString(),
+    tab: "overview",
+  });
+  await writeAuditLog({
+    actor: input.principal,
+    action: "engagement.follow_up_created",
+    resourceType: "WorkflowInstance",
+    resourceId: workflow._id.toString(),
+    newValues: { previousEngagementId: source._id.toString(), previousEngagementReference: source.reference },
+  });
+  return workflow._id.toString();
 }
 
 export async function archiveCompletedEngagement(input: { principal: Principal; workflowId: string }) {

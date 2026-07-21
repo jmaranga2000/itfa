@@ -121,5 +121,5 @@ export async function uploadEngagementDocumentAction(formData: FormData) {
     redirect(`${back}?tab=documents&error=document-upload`);
   }
   refresh(workflowId);
-  redirect(`${back}?tab=documents&saved=document`);
+  redirect(`${back}?tab=${kind.data === "final_deliverable" ? "deliverables" : "documents"}&saved=document`);
 }

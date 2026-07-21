@@ -27,6 +27,7 @@ export type PlatformSettingsRecord = {
     signatoryTitle: string;
     letterValidityDays: number;
     signatureReminderDays: number;
+    requireDeliverableApproval: boolean;
   };
   portal: {
     timezone: string;
@@ -63,6 +64,7 @@ const defaults: Omit<PlatformSettingsRecord, "updatedAt"> = {
     signatoryTitle: "Authorized Signatory",
     letterValidityDays: 14,
     signatureReminderDays: 3,
+    requireDeliverableApproval: false,
   },
   portal: {
     timezone: "Africa/Nairobi",

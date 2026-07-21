@@ -155,6 +155,7 @@ export function AdminSettings({ settings, saved, error }: {
               <Toggle defaultChecked={settings.engagement.autoGenerateLetters} description="Create a customized draft when an administrator approves and sets up a request." label="Generate letters automatically" name="autoGenerateLetters" />
               <Toggle defaultChecked={settings.engagement.requireInternalSignature} description="Require an authorized IFTA signer as well as the client before activation." label="Require IFTA signature" name="requireInternalSignature" />
               <Toggle defaultChecked={settings.engagement.allowTypedSignatures} description="Allow signers to type their legal name and confirm their signing intention." label="Allow typed electronic signatures" name="allowTypedSignatures" />
+              <Toggle defaultChecked={settings.engagement.requireDeliverableApproval} description="Require reviewer approval before an official deliverable can be released to the client." label="Require deliverable approval" name="requireDeliverableApproval" />
               <p className="rounded-md border border-border bg-muted/20 p-3 text-xs leading-5 text-muted-foreground">
                 Every signature records the signer, time, content fingerprint, browser details and an audit event. Signed letters cannot be edited.
               </p>

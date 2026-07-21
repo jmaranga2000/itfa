@@ -24,6 +24,19 @@ const clientDocumentSchema = new Schema(
       index: true,
     },
     version: { type: Number, default: 1, min: 1 },
+    deliverableStatus: {
+      type: String,
+      enum: ["draft", "pending_review", "approved", "released"],
+      default: "draft",
+      index: true,
+    },
+    preparedByName: { type: String, default: "" },
+    reviewedByUserId: { type: Schema.Types.ObjectId, default: null },
+    reviewedByName: { type: String, default: "" },
+    reviewedAt: { type: Date, default: null },
+    releasedByUserId: { type: Schema.Types.ObjectId, default: null },
+    releasedByName: { type: String, default: "" },
+    releasedAt: { type: Date, default: null, index: true },
     replacesDocumentId: { type: Schema.Types.ObjectId, default: null, index: true },
     comments: {
       type: [

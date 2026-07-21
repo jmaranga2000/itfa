@@ -12,11 +12,16 @@ import {
   createClientCollaborationRequest,
   createEngagementInvoice,
   createEngagementTask,
+  createFollowUpEngagement,
   respondToClientCollaborationRequest,
   reviewEngagementTask,
   sendEngagementInvoice,
 } from "@/repositories/engagement-execution-repository";
-import { addEngagementDocumentComment } from "@/repositories/engagement-workspace-repository";
+import {
+  addEngagementDocumentComment,
+  releaseEngagementDeliverable,
+  reviewEngagementDeliverable,
+} from "@/repositories/engagement-workspace-repository";
 
 const idSchema = z.string().refine(Types.ObjectId.isValid);
 const prioritySchema = z.enum(["low", "medium", "high", "critical"]);
@@ -145,6 +150,38 @@ export async function addEngagementDocumentCommentAction(formData: FormData) {
   redirect(`${back}&saved=comment`);
 }
 
+export async function reviewEngagementDeliverableAction(formData: FormData) {
+  const principal = await requireUser();
+  const workflowId = String(formData.get("workflowId") ?? "");
+  const back = workspacePath(formData, workflowId, "deliverables");
+  const parsed = z.object({
+    documentId: idSchema,
+    decision: z.enum(["approved", "changes_requested"]),
+    comments: z.string().trim().min(3).max(2000),
+  }).safeParse({
+    documentId: formData.get("documentId"),
+    decision: formData.get("decision"),
+    comments: formData.get("comments"),
+  });
+  if (!parsed.success) redirect(`${back}&error=deliverable-review`);
+  const reviewed = await reviewEngagementDeliverable({ principal, workflowId, ...parsed.data });
+  if (!reviewed) redirect(`${back}&error=deliverable-review-access`);
+  refresh(workflowId);
+  redirect(`${back}&saved=deliverable-review`);
+}
+
+export async function releaseEngagementDeliverableAction(formData: FormData) {
+  const principal = await requireUser();
+  const workflowId = String(formData.get("workflowId") ?? "");
+  const back = workspacePath(formData, workflowId, "deliverables");
+  const documentId = String(formData.get("documentId") ?? "");
+  if (!idSchema.safeParse(documentId).success) redirect(`${back}&error=deliverable-release`);
+  const released = await releaseEngagementDeliverable({ principal, workflowId, documentId });
+  if (!released) redirect(`${back}&error=deliverable-release-access`);
+  refresh(workflowId);
+  redirect(`${back}&saved=deliverable-release`);
+}
+
 export async function createEngagementInvoiceAction(formData: FormData) {
   const principal = await requireUser();
   const workflowId = String(formData.get("workflowId") ?? "");
@@ -187,4 +224,23 @@ export async function archiveCompletedEngagementAction(formData: FormData) {
   refresh(workflowId);
   revalidatePath("/admin/archive");
   redirect(`/admin/archive/${archiveId}?created=1`);
+}
+
+export async function createFollowUpEngagementAction(formData: FormData) {
+  const principal = await requireUser();
+  const workflowId = String(formData.get("workflowId") ?? "");
+  const back = workspacePath(formData, workflowId, "completion");
+  const parsed = z.object({ serviceName: z.string().trim().min(3).max(180) }).safeParse({
+    serviceName: formData.get("serviceName"),
+  });
+  if (!parsed.success) redirect(`${back}&error=follow-up`);
+  const followUpId = await createFollowUpEngagement({
+    principal,
+    previousWorkflowId: workflowId,
+    serviceName: parsed.data.serviceName,
+  });
+  if (!followUpId) redirect(`${back}&error=follow-up-access`);
+  refresh(workflowId);
+  revalidatePath("/admin/active-engagements");
+  redirect(`/admin/active-engagements/${followUpId}?created=follow-up`);
 }

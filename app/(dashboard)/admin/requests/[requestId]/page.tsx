@@ -160,7 +160,7 @@ export default async function AdminRequestDetailPage({
                 </Link>
               ) : null}
               {request.workflowId ? (
-                <Link className={buttonClassName()} href={`/admin/workflows/${request.workflowId}`}>
+                <Link className={buttonClassName()} href={`/admin/active-engagements/${request.workflowId}?tab=overview`}>
                   <BriefcaseBusiness aria-hidden="true" className="h-4 w-4" />
                   Open engagement
                 </Link>
@@ -195,7 +195,7 @@ export default async function AdminRequestDetailPage({
                 </Link>
               ) : null}
               {!databaseRequest && !request.workflowId && !engagementLetter ? (
-                <Link className={buttonClassName()} href={request.workflowId ? `/admin/workflows/${request.workflowId}` : action.href}>
+                <Link className={buttonClassName()} href={request.workflowId ? `/admin/active-engagements/${request.workflowId}?tab=overview` : action.href}>
                   <ActionIcon aria-hidden="true" className="h-4 w-4" />
                   {request.workflowId ? "Open engagement" : action.label}
                 </Link>
@@ -437,7 +437,7 @@ export default async function AdminRequestDetailPage({
               </div>
 
               {request.workflowId ? (
-                <Link className={buttonClassName({ className: "w-full" })} href={`/admin/workflows/${request.workflowId}`}>
+                <Link className={buttonClassName({ className: "w-full" })} href={`/admin/active-engagements/${request.workflowId}?tab=overview`}>
                   <BriefcaseBusiness aria-hidden="true" className="h-4 w-4" />
                   Open active engagement
                 </Link>

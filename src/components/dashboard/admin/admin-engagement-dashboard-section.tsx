@@ -12,6 +12,10 @@ import { Badge } from "@/components/ui/badge";
 import { buttonClassName } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  getEngagementHealth,
+  type EngagementDashboardEnhancements,
+} from "@/repositories/engagement-execution-repository";
 import type { WorkflowInstanceRecord } from "@/repositories/workflow-repository";
 
 function member(workflow: WorkflowInstanceRecord, role: string) {
@@ -28,21 +32,18 @@ function statusTone(value: string) {
   return "teal" as const;
 }
 
-export function AdminEngagementDashboardSection({ workflows }: { workflows: WorkflowInstanceRecord[] }) {
+export function AdminEngagementDashboardSection({
+  enhancements,
+  workflows,
+}: {
+  enhancements: EngagementDashboardEnhancements;
+  workflows: WorkflowInstanceRecord[];
+}) {
   const active = workflows.filter((workflow) => workflow.status === "active");
-  const workInProgress = active.filter((workflow) =>
-    workflow.tasks.some((task) => task.status === "in_progress"),
-  );
-  const awaitingReview = active.filter((workflow) =>
-    workflow.tasks.some((task) => task.status === "waiting_for_approval"),
-  );
-  const awaitingClient = active.filter((workflow) =>
-    workflow.clientActions.some((action) => !["approved", "completed"].includes(action.status)),
-  );
-  const outstandingInvoices = active.filter((workflow) =>
-    workflow.financial.invoices.some((invoice) => !["paid", "cancelled"].includes(invoice.status)),
-  );
-  const completed = workflows.filter((workflow) => workflow.status === "completed");
+  const health = active.map((workflow) => ({ workflow, health: getEngagementHealth(workflow) }));
+  const awaitingReview = health.filter((item) => item.health.status === "waiting_for_review").length;
+  const awaitingClient = health.filter((item) => item.health.status === "waiting_for_client").length;
+  const overdue = health.filter((item) => item.health.status === "overdue").length;
   const recent = [...workflows]
     .filter((workflow) => ["active", "completed"].includes(workflow.status))
     .sort((left, right) =>
@@ -51,12 +52,12 @@ export function AdminEngagementDashboardSection({ workflows }: { workflows: Work
     )
     .slice(0, 8);
   const metrics = [
-    { label: "Active engagements", value: active.length, icon: BriefcaseBusiness },
-    { label: "Work in progress", value: workInProgress.length, icon: Clock3 },
-    { label: "Awaiting review", value: awaitingReview.length, icon: ScanSearch },
-    { label: "Awaiting client action", value: awaitingClient.length, icon: MessageSquareWarning },
-    { label: "Outstanding invoices", value: outstandingInvoices.length, icon: CircleDollarSign },
-    { label: "Completed engagements", value: completed.length, icon: CheckCircle2 },
+    { label: "Active engagements", value: active.length, icon: BriefcaseBusiness, href: "/admin/active-engagements" },
+    { label: "Deliverables awaiting approval", value: enhancements.deliverablesAwaitingApproval, icon: ScanSearch, href: "/admin/active-engagements?health=waiting_for_review" },
+    { label: "Deliverables released today", value: enhancements.deliverablesReleasedToday, icon: CheckCircle2, href: "/admin/documents?kind=final_deliverable&status=released" },
+    { label: "Waiting for client", value: awaitingClient, icon: MessageSquareWarning, href: "/admin/active-engagements?health=waiting_for_client" },
+    { label: "Waiting for review", value: awaitingReview, icon: Clock3, href: "/admin/active-engagements?health=waiting_for_review" },
+    { label: "Overdue engagements", value: overdue, icon: CircleDollarSign, href: "/admin/active-engagements?health=overdue" },
   ];
 
   return (
@@ -73,10 +74,10 @@ export function AdminEngagementDashboardSection({ workflows }: { workflows: Work
           {metrics.map((item, index) => {
             const Icon = item.icon;
             return (
-              <div className={`flex items-center gap-3 px-4 py-3 ${index > 0 ? "border-t border-border sm:border-l xl:border-t-0" : ""}`} key={item.label}>
+              <Link className={`flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/30 ${index > 0 ? "border-t border-border sm:border-l xl:border-t-0" : ""}`} href={item.href} key={item.label}>
                 <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-brand-soft text-primary"><Icon aria-hidden="true" className="h-4 w-4" /></span>
                 <div className="min-w-0"><p className="text-xl font-bold text-foreground">{item.value}</p><p className="text-xs font-medium text-muted-foreground">{item.label}</p></div>
-              </div>
+              </Link>
             );
           })}
         </div>
@@ -86,7 +87,7 @@ export function AdminEngagementDashboardSection({ workflows }: { workflows: Work
             <article className="rounded-md border border-border p-4" key={workflow.id}>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0"><p className="font-mono text-xs font-semibold text-primary">{workflow.reference}</p><p className="mt-1 truncate font-semibold text-foreground">{workflow.clientName}</p><p className="mt-1 text-sm text-muted-foreground">{workflow.serviceName}</p></div>
-                <Badge tone={statusTone(workflow.status)}>{statusLabel(workflow.status)}</Badge>
+                <Badge tone={getEngagementHealth(workflow).tone}>{getEngagementHealth(workflow).label}</Badge>
               </div>
               <dl className="mt-3 grid grid-cols-2 gap-3 text-xs"><div><dt className="text-muted-foreground">Current stage</dt><dd className="mt-1 font-semibold text-foreground">{workflow.currentStageName}</dd></div><div><dt className="text-muted-foreground">Progress</dt><dd className="mt-1 font-semibold text-foreground">{workflow.progress.overall}%</dd></div></dl>
               <Link className={buttonClassName({ className: "mt-3 w-full", size: "sm" })} href={`/admin/active-engagements/${workflow.id}`}>Open workspace<ArrowUpRight aria-hidden="true" className="h-4 w-4" /></Link>
@@ -96,10 +97,10 @@ export function AdminEngagementDashboardSection({ workflows }: { workflows: Work
 
         <div className="hidden overflow-x-auto md:block">
           <Table>
-            <TableHeader><TableRow><TableHead>Reference</TableHead><TableHead>Client</TableHead><TableHead>Service</TableHead><TableHead>Consultant</TableHead><TableHead>Reviewer</TableHead><TableHead>Finance officer</TableHead><TableHead>Current stage</TableHead><TableHead>Progress</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>Reference</TableHead><TableHead>Client</TableHead><TableHead>Service</TableHead><TableHead>Consultant</TableHead><TableHead>Reviewer</TableHead><TableHead>Finance officer</TableHead><TableHead>Current stage</TableHead><TableHead>Progress</TableHead><TableHead>Health</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader>
             <TableBody>
-              {recent.map((workflow) => <TableRow key={workflow.id}><TableCell className="font-mono text-xs font-semibold text-primary">{workflow.reference}</TableCell><TableCell className="font-semibold text-foreground">{workflow.clientName}</TableCell><TableCell><span className="block max-w-44 truncate">{workflow.serviceName}</span></TableCell><TableCell>{member(workflow, "consultant")}</TableCell><TableCell>{member(workflow, "reviewer")}</TableCell><TableCell>{member(workflow, "finance_officer")}</TableCell><TableCell>{workflow.currentStageName}</TableCell><TableCell>{workflow.progress.overall}%</TableCell><TableCell><Badge tone={statusTone(workflow.status)}>{statusLabel(workflow.status)}</Badge></TableCell><TableCell className="text-right"><Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={`/admin/active-engagements/${workflow.id}`}>Open workspace<ArrowUpRight aria-hidden="true" className="h-4 w-4" /></Link></TableCell></TableRow>)}
-              {recent.length === 0 ? <TableRow><TableCell className="py-8 text-center text-sm text-muted-foreground" colSpan={10}>No active or completed engagements yet.</TableCell></TableRow> : null}
+              {recent.map((workflow) => <TableRow key={workflow.id}><TableCell className="font-mono text-xs font-semibold text-primary">{workflow.reference}</TableCell><TableCell className="font-semibold text-foreground">{workflow.clientName}</TableCell><TableCell><span className="block max-w-44 truncate">{workflow.serviceName}</span></TableCell><TableCell>{member(workflow, "consultant")}</TableCell><TableCell>{member(workflow, "reviewer")}</TableCell><TableCell>{member(workflow, "finance_officer")}</TableCell><TableCell>{workflow.currentStageName}</TableCell><TableCell>{workflow.progress.overall}%</TableCell><TableCell><Badge tone={getEngagementHealth(workflow).tone}>{getEngagementHealth(workflow).label}</Badge></TableCell><TableCell><Badge tone={statusTone(workflow.status)}>{statusLabel(workflow.status)}</Badge></TableCell><TableCell className="text-right"><Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={`/admin/active-engagements/${workflow.id}`}>Open workspace<ArrowUpRight aria-hidden="true" className="h-4 w-4" /></Link></TableCell></TableRow>)}
+              {recent.length === 0 ? <TableRow><TableCell className="py-8 text-center text-sm text-muted-foreground" colSpan={11}>No active or completed engagements yet.</TableCell></TableRow> : null}
             </TableBody>
           </Table>
         </div>

@@ -11,6 +11,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  getEngagementHealth,
+  type EngagementHealthStatus,
+} from "@/repositories/engagement-execution-repository";
 import type { WorkflowInstanceRecord } from "@/repositories/workflow-repository";
 
 function dateLabel(value: string | null) {
@@ -39,15 +43,20 @@ function startOfCurrentWeek() {
 
 export function AdminActiveEngagements({
   activatedWorkflowId,
+  healthStatus,
   workflows,
 }: {
   activatedWorkflowId?: string;
+  healthStatus?: EngagementHealthStatus;
   workflows: WorkflowInstanceRecord[];
 }) {
-  const activeEngagements = workflows.filter((workflow) => workflow.status === "active");
-  const awaitingTeam = activeEngagements.filter((workflow) => !hasCompleteTeam(workflow));
+  const allActiveEngagements = workflows.filter((workflow) => workflow.status === "active");
+  const activeEngagements = healthStatus
+    ? allActiveEngagements.filter((workflow) => getEngagementHealth(workflow).status === healthStatus)
+    : allActiveEngagements;
+  const awaitingTeam = allActiveEngagements.filter((workflow) => !hasCompleteTeam(workflow));
   const weekStart = startOfCurrentWeek();
-  const assignedThisWeek = activeEngagements.filter((workflow) =>
+  const assignedThisWeek = allActiveEngagements.filter((workflow) =>
     workflow.teamAssignedAt ? new Date(workflow.teamAssignedAt).getTime() >= weekStart : false,
   );
 
@@ -61,7 +70,7 @@ export function AdminActiveEngagements({
       description="Open active client work, complete team assignment and follow delivery progress."
       icon={BriefcaseBusiness}
       summary={[
-        { label: "Active engagements", value: activeEngagements.length, helper: "Client work underway", icon: BriefcaseBusiness },
+        { label: "Active engagements", value: allActiveEngagements.length, helper: "Client work underway", icon: BriefcaseBusiness },
         { label: "Awaiting team", value: awaitingTeam.length, helper: "Needs staff assignment", icon: UsersRound },
         { label: "Assigned this week", value: assignedThisWeek.length, helper: "Teams confirmed since Monday", icon: CalendarCheck2 },
       ]}
@@ -73,6 +82,17 @@ export function AdminActiveEngagements({
         </div>
       ) : null}
 
+      <nav aria-label="Filter engagements by health" className="flex gap-2 overflow-x-auto border-b border-border p-4">
+        {[
+          ["", "All"],
+          ["on_track", "On track"],
+          ["waiting_for_client", "Waiting client"],
+          ["waiting_for_review", "Waiting review"],
+          ["waiting_for_payment", "Waiting payment"],
+          ["overdue", "Overdue"],
+        ].map(([value, label]) => <Link className={`${buttonClassName({ variant: (healthStatus ?? "") === value ? "primary" : "secondary", size: "sm" })} whitespace-nowrap`} href={value ? `/admin/active-engagements?health=${value}` : "/admin/active-engagements"} key={value || "all"}>{label}</Link>)}
+      </nav>
+
       <div className="grid gap-3 p-4 md:hidden">
         {activeEngagements.map((workflow) => (
           <article className="rounded-md border border-border bg-card p-4" key={workflow.id}>
@@ -82,9 +102,7 @@ export function AdminActiveEngagements({
                 <h2 className="mt-1 text-base font-semibold text-foreground">{workflow.clientName}</h2>
                 <p className="mt-1 text-sm text-muted-foreground">{workflow.serviceName}</p>
               </div>
-              <Badge tone={hasCompleteTeam(workflow) ? "green" : "gold"}>
-                {hasCompleteTeam(workflow) ? "Active" : "Assign team"}
-              </Badge>
+              <div className="grid justify-items-end gap-1"><Badge tone={getEngagementHealth(workflow).tone}>{getEngagementHealth(workflow).label}</Badge>{!hasCompleteTeam(workflow) ? <Badge tone="gold">Assign team</Badge> : null}</div>
             </div>
             <dl className="mt-4 grid gap-3 border-y border-border py-3 text-sm">
               <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Consultant</dt><dd className="text-right font-medium">{memberName(workflow, "consultant")}</dd></div>
@@ -111,6 +129,7 @@ export function AdminActiveEngagements({
               <TableHead>Reviewer</TableHead>
               <TableHead>Finance officer</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Health</TableHead>
               <TableHead>Date activated</TableHead>
               <TableHead className="text-right">Action</TableHead>
             </TableRow>
@@ -129,6 +148,7 @@ export function AdminActiveEngagements({
                     {hasCompleteTeam(workflow) ? "Active" : "Awaiting team"}
                   </Badge>
                 </TableCell>
+                <TableCell><Badge tone={getEngagementHealth(workflow).tone}>{getEngagementHealth(workflow).label}</Badge></TableCell>
                 <TableCell>{dateLabel(workflow.activatedAt ?? workflow.startDate)}</TableCell>
                 <TableCell className="text-right">
                   <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={`/admin/active-engagements/${workflow.id}`}>
@@ -140,8 +160,8 @@ export function AdminActiveEngagements({
             ))}
             {activeEngagements.length === 0 ? (
               <TableRow>
-                <TableCell className="py-10 text-center text-sm text-muted-foreground" colSpan={9}>
-                  Active engagements will appear here automatically after a client signs the engagement letter.
+                <TableCell className="py-10 text-center text-sm text-muted-foreground" colSpan={10}>
+                  {healthStatus ? "No active engagements match this health filter." : "Active engagements will appear here automatically after a client signs the engagement letter."}
                 </TableCell>
               </TableRow>
             ) : null}

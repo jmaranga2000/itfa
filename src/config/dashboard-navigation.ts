@@ -119,7 +119,7 @@ export const adminNavItems: DashboardNavItem[] = [
     defaultOpen: false,
     children: [
       { label: "Tasks", href: "/admin/tasks", icon: "listTodo", symbol: "T" },
-      { label: "Workflows", href: "/admin/workflows", icon: "workflow", symbol: "W" },
+      { label: "Workflow monitor", href: "/admin/workflows", icon: "workflow", symbol: "W" },
       { label: "Documents", href: "/admin/documents", icon: "documents", symbol: "F" },
       { label: "Engagement letters", href: "/admin/engagement-letters", icon: "fileText", symbol: "EL" },
     ],

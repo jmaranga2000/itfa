@@ -191,6 +191,19 @@ export type WorkflowTeamMemberRecord = {
   workloadLevel: "available" | "balanced" | "high" | "overloaded";
 };
 
+export type WorkflowClosureSummary = {
+  generatedAt: string | null;
+  generatedByName: string;
+  totalTasksCompleted: number;
+  totalDocumentsUploaded: number;
+  totalDeliverablesReleased: number;
+  totalInternalReviews: number;
+  totalMessages: number;
+  totalInvoiced: number;
+  totalPaid: number;
+  outstandingBalance: number;
+};
+
 export type WorkflowInstanceRecord = {
   id: string;
   reference: string;
@@ -199,6 +212,8 @@ export type WorkflowInstanceRecord = {
   organizationName: string;
   sourceRequestId: string | null;
   engagementLetterId: string | null;
+  previousEngagementId?: string | null;
+  previousEngagementReference?: string;
   serviceName: string;
   templateName: string;
   templateVersion: number;
@@ -255,6 +270,7 @@ export type WorkflowInstanceRecord = {
     archivedAt: string | null;
     archivedByUserId: string | null;
     archivedByName: string;
+    closureSummary?: WorkflowClosureSummary | null;
   };
   archive: {
     status: "not_ready" | "grace_period" | "read_only" | "archived" | "legal_hold";
@@ -337,6 +353,8 @@ type RawWorkflowInstance = Omit<
   | "progress"
   | "sourceRequestId"
   | "engagementLetterId"
+  | "previousEngagementId"
+  | "previousEngagementReference"
   | "activatedAt"
   | "signedAt"
   | "signedByUserId"
@@ -350,6 +368,8 @@ type RawWorkflowInstance = Omit<
   engagementId?: Types.ObjectId | null;
   sourceRequestId?: Types.ObjectId | null;
   engagementLetterId?: Types.ObjectId | null;
+  previousEngagementId?: Types.ObjectId | null;
+  previousEngagementReference?: string;
   templateId?: Types.ObjectId;
   clientUserId?: Types.ObjectId | null;
   responsibleUserId?: Types.ObjectId | null;
@@ -425,6 +445,18 @@ type RawWorkflowInstance = Omit<
     archivedAt?: Date | null;
     archivedByUserId?: Types.ObjectId | null;
     archivedByName?: string;
+    closureSummary?: {
+      generatedAt?: Date | null;
+      generatedByName?: string;
+      totalTasksCompleted?: number;
+      totalDocumentsUploaded?: number;
+      totalDeliverablesReleased?: number;
+      totalInternalReviews?: number;
+      totalMessages?: number;
+      totalInvoiced?: number;
+      totalPaid?: number;
+      outstandingBalance?: number;
+    } | null;
   };
 };
 
@@ -625,6 +657,8 @@ function serializeWorkflow(workflow: RawWorkflowInstance, clientView = false): W
     organizationName: workflow.organizationName,
     sourceRequestId: workflow.sourceRequestId?.toString() ?? null,
     engagementLetterId: workflow.engagementLetterId?.toString() ?? null,
+    previousEngagementId: workflow.previousEngagementId?.toString() ?? null,
+    previousEngagementReference: workflow.previousEngagementReference ?? "",
     serviceName: workflow.serviceName,
     templateName: workflow.templateName,
     templateVersion: workflow.templateVersion,
@@ -705,6 +739,20 @@ function serializeWorkflow(workflow: RawWorkflowInstance, clientView = false): W
       archivedAt: serializeDate(workflow.completion?.archivedAt),
       archivedByUserId: workflow.completion?.archivedByUserId?.toString() ?? null,
       archivedByName: workflow.completion?.archivedByName ?? "",
+      closureSummary: workflow.completion?.closureSummary?.generatedAt
+        ? {
+            generatedAt: serializeDate(workflow.completion.closureSummary.generatedAt),
+            generatedByName: workflow.completion.closureSummary.generatedByName ?? "",
+            totalTasksCompleted: workflow.completion.closureSummary.totalTasksCompleted ?? 0,
+            totalDocumentsUploaded: workflow.completion.closureSummary.totalDocumentsUploaded ?? 0,
+            totalDeliverablesReleased: workflow.completion.closureSummary.totalDeliverablesReleased ?? 0,
+            totalInternalReviews: workflow.completion.closureSummary.totalInternalReviews ?? 0,
+            totalMessages: workflow.completion.closureSummary.totalMessages ?? 0,
+            totalInvoiced: workflow.completion.closureSummary.totalInvoiced ?? 0,
+            totalPaid: workflow.completion.closureSummary.totalPaid ?? 0,
+            outstandingBalance: workflow.completion.closureSummary.outstandingBalance ?? 0,
+          }
+        : null,
     },
     archive: {
       ...workflow.archive,
@@ -817,7 +865,7 @@ export async function getWorkflowDashboardData(principal: Principal): Promise<Wo
       daysOverdue: daysOverdue(task.dueDate),
       priority: task.priority,
       escalationStatus: task.priority === "critical" ? "Escalated" : "Pending escalation",
-      href: `/admin/workflows/${workflow.id}`,
+      href: `/admin/active-engagements/${workflow.id}?tab=tasks`,
     }))
     .slice(0, 8);
   const actionRequired = workflows
@@ -832,7 +880,7 @@ export async function getWorkflowDashboardData(principal: Principal): Promise<Wo
           responsibleUser: workflow.responsibleUserName,
           dueDate: action.dueDate,
           priority: action.priority,
-          href: `/admin/workflows/${workflow.id}`,
+          href: `/admin/active-engagements/${workflow.id}?tab=overview`,
         })),
       ...workflow.approvals
         .filter((approval) => approval.status === "awaiting_approval")
@@ -844,7 +892,7 @@ export async function getWorkflowDashboardData(principal: Principal): Promise<Wo
           responsibleUser: approval.approverName || workflow.responsibleUserName,
           dueDate: workflow.dueDate,
           priority: "high" as const,
-          href: `/admin/workflows/${workflow.id}`,
+          href: `/admin/active-engagements/${workflow.id}?tab=tasks`,
         })),
     ])
     .slice(0, 8);
@@ -962,6 +1010,7 @@ export async function listWorkflowTasksForPrincipal(principal: Principal) {
   const roleAssignments = new Set<string>(principal.roleKeys);
   if (principal.roleKeys.includes("consultant")) roleAssignments.add("lead_consultant");
   const canSeeEveryTask = isAdmin(principal);
+  const engagementBasePath = canSeeEveryTask ? "/admin/active-engagements" : "/staff/engagements";
 
   return workflows.flatMap((workflow) =>
     workflow.tasks
@@ -975,7 +1024,7 @@ export async function listWorkflowTasksForPrincipal(principal: Principal) {
       engagement: workflow.reference,
       client: workflow.clientName,
       service: workflow.serviceName,
-      href: `/admin/workflows/${workflow.id}`,
+      href: `${engagementBasePath}/${workflow.id}?tab=tasks`,
       })),
   );
 }

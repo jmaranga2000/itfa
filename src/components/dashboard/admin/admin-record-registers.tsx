@@ -60,7 +60,7 @@ export function AdminDocumentsRegister({ data }: { data: { records: AdminDocumen
                 <TableCell>{record.engagementReference}</TableCell>
                 <TableCell><Badge tone={statusTone(record.status)}>{record.status.replaceAll("_", " ")}</Badge></TableCell>
                 <TableCell>{dateLabel(record.uploadedAt)}</TableCell>
-                <TableCell><div className="flex justify-end gap-2">{record.downloadHref ? <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={record.downloadHref}><Download aria-hidden="true" className="h-4 w-4" />Download</Link> : null}{record.workflowId ? <Link className={buttonClassName({ variant: "ghost", size: "icon" })} href={`/admin/workflows/${record.workflowId}`} title="Open engagement"><ExternalLink aria-hidden="true" className="h-4 w-4" /></Link> : null}</div></TableCell>
+                <TableCell><div className="flex justify-end gap-2">{record.downloadHref ? <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={record.downloadHref}><Download aria-hidden="true" className="h-4 w-4" />Download</Link> : null}{record.workflowId ? <Link className={buttonClassName({ variant: "ghost", size: "icon" })} href={`/admin/active-engagements/${record.workflowId}?tab=overview`} title="Open engagement"><ExternalLink aria-hidden="true" className="h-4 w-4" /></Link> : null}</div></TableCell>
               </TableRow>
             )) : <EmptyRows colSpan={6} label="No documents have been uploaded yet." />}
           </TableBody>
@@ -96,7 +96,7 @@ export function AdminInvoicesRegister({ data }: { data: { records: AdminInvoiceR
               <TableCell><Badge tone={statusTone(record.paymentStatus)}>{record.paymentStatus.replaceAll("_", " ")}</Badge></TableCell>
               <TableCell className="font-semibold text-foreground">{money(record.balanceDue, record.currency)}</TableCell>
               <TableCell>{dateLabel(record.dueDate)}</TableCell>
-              <TableCell className="text-right"><Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={`/admin/workflows/${record.workflowId}`}><ExternalLink aria-hidden="true" className="h-4 w-4" />Open</Link></TableCell>
+              <TableCell className="text-right"><Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={`/admin/active-engagements/${record.workflowId}?tab=overview`}><ExternalLink aria-hidden="true" className="h-4 w-4" />Open</Link></TableCell>
             </TableRow>
           )) : <EmptyRows colSpan={8} label="No invoice records are available yet." />}</TableBody>
         </Table>
@@ -131,7 +131,7 @@ export function AdminPaymentsRegister({ data }: { data: { records: AdminPaymentR
               <TableCell className="capitalize">{record.method.replaceAll("_", " ")}</TableCell>
               <TableCell><Badge tone={statusTone(record.status)}>{record.status}</Badge></TableCell>
               <TableCell>{dateLabel(record.submittedAt)}</TableCell>
-              <TableCell className="text-right"><Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={`/admin/workflows/${record.workflowId}`}><ExternalLink aria-hidden="true" className="h-4 w-4" />Open</Link></TableCell>
+              <TableCell className="text-right"><Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={`/admin/active-engagements/${record.workflowId}?tab=overview`}><ExternalLink aria-hidden="true" className="h-4 w-4" />Open</Link></TableCell>
             </TableRow>
           )) : <EmptyRows colSpan={8} label="No client payments have been submitted yet." />}</TableBody>
         </Table>

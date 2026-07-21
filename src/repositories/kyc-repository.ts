@@ -460,7 +460,7 @@ async function listKycSubmissions(): Promise<KycSubmission[]> {
       primaryContact: client.email,
       clientHref: `/admin/clients/${client._id.toString()}`,
       engagementReference: workflow?.reference ?? "Engagement pending",
-      engagementHref: workflow ? `/admin/workflows/${workflow._id.toString()}` : "/admin/active-engagements",
+      engagementHref: workflow ? `/admin/active-engagements/${workflow._id.toString()}?tab=overview` : "/admin/active-engagements",
       service: workflow?.serviceName ?? "Consulting services",
       template: record.questionnaireVersion ?? "individual-v1",
       status,

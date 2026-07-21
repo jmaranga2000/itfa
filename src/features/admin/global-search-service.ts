@@ -176,7 +176,7 @@ export async function searchAdminPortal(rawQuery: string): Promise<AdminSearchRe
     category: "Engagement",
     title: workflow.reference,
     subtitle: `${workflow.clientName} · ${workflow.serviceName}`,
-    href: `/admin/workflows/${workflow._id.toString()}`,
+    href: `/admin/active-engagements/${workflow._id.toString()}?tab=overview`,
   }));
   const kycResults: AdminSearchResult[] = kycSubmissions.flatMap((submission) => {
     const client = userDirectory.get(submission.userId.toString());

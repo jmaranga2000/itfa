@@ -85,7 +85,7 @@ function WorkflowCard({ workflow, selected = false }: { workflow: WorkflowInstan
         "block rounded-md border bg-card p-4 transition-colors hover:border-accent",
         selected ? "border-accent" : "border-border",
       )}
-      href={`/admin/workflows/${workflow.id}`}
+      href={`/admin/active-engagements/${workflow.id}?tab=overview`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -126,10 +126,10 @@ export function WorkflowDashboard({ data }: { data: WorkflowDashboardData }) {
         <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-start">
           <div>
             <h1 className="mt-3 text-2xl font-bold tracking-normal text-foreground">
-              Workflows
+              Workflow monitor
             </h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-              See where each client engagement is, what needs attention and who is responsible.
+              Monitor the stage, risk, owner and next action across every engagement. Open an engagement to do the actual work.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -240,7 +240,7 @@ export function WorkflowDashboard({ data }: { data: WorkflowDashboardData }) {
                   {data.workflows.map((workflow) => (
                     <TableRow key={workflow.id}>
                       <TableCell>
-                        <Link className="font-semibold text-accent hover:underline" href={`/admin/workflows/${workflow.id}`}>
+                        <Link className="font-semibold text-accent hover:underline" href={`/admin/active-engagements/${workflow.id}?tab=overview`}>
                           {workflow.clientName}
                         </Link>
                         <p className="text-xs text-muted-foreground">{workflow.reference}</p>
@@ -262,7 +262,7 @@ export function WorkflowDashboard({ data }: { data: WorkflowDashboardData }) {
                         <Badge tone={riskTone(workflow.riskLevel)}>{workflow.riskLevel}</Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={`/admin/workflows/${workflow.id}`}>
+                        <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={`/admin/active-engagements/${workflow.id}?tab=overview`}>
                           Open
                         </Link>
                       </TableCell>

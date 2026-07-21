@@ -1,4 +1,3 @@
-import { notifyEngagementUpdated } from "@/features/communication/event-notifications";
 import {
   canOverrideWorkflowTransition,
   getWorkflowForPrincipal,
@@ -9,6 +8,8 @@ import { writeAuditLog } from "@/features/audit/audit-service";
 import { connectToDatabase } from "@/lib/db/mongoose";
 import { AuthorizationError } from "@/lib/errors";
 import { WorkflowInstanceModel } from "@/models/workflow-instance";
+import { UserModel } from "@/models/user";
+import { createCommunicationNotification } from "@/repositories/communication-repository";
 import type { WorkflowTransitionResult } from "@/features/workflows/types";
 
 export type WorkflowTransitionInput = {
@@ -155,6 +156,10 @@ export function validateWorkflowTransition({
 export async function transitionWorkflowStage(input: WorkflowTransitionInput) {
   await connectToDatabase();
 
+  if (!input.actor.roleKeys.some((role) => role === "admin" || role === "super_admin" || role === "engagement_manager")) {
+    throw new AuthorizationError("Only an administrator or engagement manager can advance the engagement process.");
+  }
+
   const workflow = await getWorkflowForPrincipal(input.actor, input.workflowId);
 
   if (!workflow) {
@@ -227,14 +232,27 @@ export async function transitionWorkflowStage(input: WorkflowTransitionInput) {
     ...workflow.team.map((member) => member.userId),
   ].filter((value): value is string => Boolean(value) && value !== input.actor.id);
 
-  await notifyEngagementUpdated({
-    recipientUserIds,
-    actor: input.actor,
-    title: `${workflow.reference} moved to ${nextStage?.name ?? input.nextStageKey}`,
-    description: workflow.nextAction,
-    relatedRecordId: workflow.id,
-    actionUrl: `/admin/workflows/${workflow.id}`,
-  });
+  const recipients = recipientUserIds.length
+    ? await UserModel.find({ _id: { $in: recipientUserIds } }).select("roleKeys").lean().exec()
+    : [];
+  await Promise.all(recipients.map((recipient) => {
+    const roles = recipient.roleKeys ?? [];
+    const actionUrl = roles.some((role) => role === "client" || role === "client_representative")
+      ? `/client/engagements/${workflow.id}?tab=overview`
+      : roles.some((role) => role === "admin" || role === "super_admin")
+        ? `/admin/active-engagements/${workflow.id}?tab=overview`
+        : `/staff/engagements/${workflow.id}?tab=overview`;
+    return createCommunicationNotification({
+      recipientUserId: recipient._id.toString(),
+      type: "engagement_update",
+      title: `${workflow.reference} moved to ${nextStage?.name ?? input.nextStageKey}`,
+      description: nextStage?.completionConditions[0] ?? "Review the next required engagement action.",
+      relatedModule: "engagements",
+      relatedRecordId: workflow.id,
+      actionUrl,
+      createdByUserId: input.actor.id,
+    });
+  }));
 
   return validation;
 }

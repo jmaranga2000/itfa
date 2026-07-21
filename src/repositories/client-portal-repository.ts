@@ -82,7 +82,11 @@ export async function getClientDocuments(principal: Principal): Promise<ClientDo
     ClientDocumentModel.find({
       clientUserId: new Types.ObjectId(principal.id),
       $or: [
-        { documentKind: { $in: ["general", "signed_engagement_letter", "final_deliverable"] } },
+        { documentKind: { $in: ["general", "signed_engagement_letter"] } },
+        { documentKind: "final_deliverable", $or: [
+          { deliverableStatus: "released" },
+          { deliverableStatus: { $exists: false }, status: "final" },
+        ] },
         { documentKind: "draft_deliverable", status: { $in: ["approved", "final"] } },
       ],
     }).sort({ uploadedAt: -1 }).lean().exec(),
@@ -134,7 +138,15 @@ export async function getClientDocuments(principal: Principal): Promise<ClientDo
 export async function getClientDocumentFile(principal: Principal, documentId: string) {
   await connectToDatabase();
   if (!Types.ObjectId.isValid(principal.id) || !Types.ObjectId.isValid(documentId)) return null;
-  return ClientDocumentModel.findOne({ _id: documentId, clientUserId: principal.id }).lean().exec();
+  const document = await ClientDocumentModel.findOne({ _id: documentId, clientUserId: principal.id }).lean().exec();
+  if (!document) return null;
+  const legacyReleased = document.documentKind === "final_deliverable"
+    && !document.deliverableStatus
+    && document.status === "final";
+  if (document.documentKind === "final_deliverable"
+    && document.deliverableStatus !== "released"
+    && !legacyReleased) return null;
+  return document;
 }
 
 export async function respondToDocumentFeedback(principal: Principal, documentId: string, response: string) {

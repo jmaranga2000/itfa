@@ -18,7 +18,7 @@ export default async function ClientEngagementDetailPage({
   searchParams,
 }: {
   params: Promise<{ workflowId: string }>;
-  searchParams: Promise<{ error?: string; saved?: string; missing?: string; tab?: string }>;
+  searchParams: Promise<{ error?: string; saved?: string; missing?: string; tab?: string; replace?: string }>;
 }) {
   const [principal, { workflowId }, query] = await Promise.all([
     requireUser(),

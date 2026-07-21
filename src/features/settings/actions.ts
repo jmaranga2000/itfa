@@ -27,6 +27,7 @@ const engagementSchema = z.object({
   autoGenerateLetters: z.boolean(),
   requireInternalSignature: z.boolean(),
   allowTypedSignatures: z.boolean(),
+  requireDeliverableApproval: z.boolean(),
   defaultCurrency: z.string().trim().length(3).transform((value) => value.toUpperCase()),
   paymentTerms: z.string().trim().min(10).max(1000),
   governingLaw: z.string().trim().min(3).max(200),
@@ -62,6 +63,7 @@ export async function updatePlatformSettingsAction(formData: FormData) {
       autoGenerateLetters: checked(formData, "autoGenerateLetters"),
       requireInternalSignature: checked(formData, "requireInternalSignature"),
       allowTypedSignatures: checked(formData, "allowTypedSignatures"),
+      requireDeliverableApproval: checked(formData, "requireDeliverableApproval"),
     });
   } else if (section === "portal") {
     parsed = portalSchema.safeParse({

@@ -19,7 +19,7 @@ export default async function AdminActiveEngagementPage({
   searchParams,
 }: {
   params: Promise<{ workflowId: string }>;
-  searchParams: Promise<{ error?: string; saved?: string; missing?: string; tab?: string; team?: string; note?: string }>;
+  searchParams: Promise<{ error?: string; saved?: string; missing?: string; tab?: string; team?: string; note?: string; replace?: string; transitionError?: string; transitioned?: string }>;
 }) {
   const principal = await requirePermission("engagements.read_all");
   const [{ workflowId }, query] = await Promise.all([params, searchParams]);

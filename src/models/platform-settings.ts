@@ -29,6 +29,7 @@ const engagementDefaultsSchema = new Schema(
     signatoryTitle: { type: String, default: "Authorized Signatory", trim: true },
     letterValidityDays: { type: Number, default: 14, min: 1, max: 90 },
     signatureReminderDays: { type: Number, default: 3, min: 1, max: 30 },
+    requireDeliverableApproval: { type: Boolean, default: false },
   },
   { _id: false },
 );
