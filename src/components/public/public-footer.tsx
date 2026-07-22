@@ -7,7 +7,7 @@ const footerGroups = [
     title: "Expertise",
     links: [
       { label: "Tax advisory", href: "/services#tax-advisory" },
-      { label: "Legal and regulatory", href: "/services#legal-regulatory" },
+      { label: "Financial reporting", href: "/services#financial-reporting" },
       { label: "Finance consulting", href: "/services#finance-process" },
       { label: "Pricing", href: "/pricing" },
     ],
@@ -63,7 +63,7 @@ export function PublicFooter() {
               </div>
             </div>
             <p className="mt-5 text-sm leading-6 text-white/70">
-              Structured tax, legal, regulatory and finance engagements supported by secure client workflows.
+              Structured tax and financial consulting engagements supported by secure client workflows.
             </p>
             <p className="mt-5 flex items-center gap-2 text-sm font-semibold text-brand-mist">
               <MapPin aria-hidden="true" className="h-4 w-4" />

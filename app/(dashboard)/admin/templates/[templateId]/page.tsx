@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { TemplateDetail } from "@/components/dashboard/templates/template-detail";
-import { requireUser } from "@/features/auth/server";
+import { requirePermission } from "@/features/auth/server";
 import { getTemplateDetail } from "@/repositories/template-repository";
 
 export default async function AdminTemplateDetailPage({
@@ -8,7 +8,7 @@ export default async function AdminTemplateDetailPage({
 }: {
   params: Promise<{ templateId: string }>;
 }) {
-  const [{ templateId }, principal] = await Promise.all([params, requireUser()]);
+  const [{ templateId }, principal] = await Promise.all([params, requirePermission("templates.read")]);
   const data = await getTemplateDetail(principal, templateId);
 
   if (!data) {

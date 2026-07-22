@@ -11,9 +11,7 @@ export async function requireStaffWorkspace() {
   const role = getPrimaryStaffRole(principal.roleKeys);
 
   if (!role) {
-    redirect(principal.roleKeys.some((key) => key === "admin" || key === "super_admin")
-      ? "/admin/dashboard"
-      : "/client");
+    redirect("/access-blocked");
   }
 
   return { principal, role };
@@ -23,7 +21,7 @@ export async function requireStaffRoute(route: StaffRouteKey) {
   const context = await requireStaffWorkspace();
 
   if (!canAccessStaffRoute(context.principal.roleKeys, route)) {
-    redirect("/staff?access=restricted");
+    redirect("/access-blocked");
   }
 
   return context;

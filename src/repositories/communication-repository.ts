@@ -452,12 +452,21 @@ export async function getOrCreateEngagementConversation(
     reference: string;
     clientName: string;
     clientUserId: string | null;
+    responsibleUserId?: string | null;
     status: string;
     team: Array<{ userId: string | null }>;
+    tasks?: Array<{ assignedUserId: string | null }>;
   },
 ) {
   await connectToDatabase();
   if (!Types.ObjectId.isValid(workflow.id)) return null;
+  const viewOnlyEngagementManager = principal.roleKeys.includes("engagement_manager")
+    && !principal.roleKeys.some((role) => role === "admin" || role === "super_admin")
+    && workflow.clientUserId !== principal.id
+    && workflow.responsibleUserId !== principal.id
+    && !workflow.team.some((member) => member.userId === principal.id)
+    && !workflow.tasks?.some((task) => task.assignedUserId === principal.id);
+  if (viewOnlyEngagementManager) return null;
   const existing = await CommunicationConversationModel.findOne({
     engagementId: new Types.ObjectId(workflow.id),
     ...(workflow.status === "archived" ? {} : { archivedAt: null }),

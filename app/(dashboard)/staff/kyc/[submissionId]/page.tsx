@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { KycReviewWorkspace } from "@/components/dashboard/kyc/kyc-review-workspace";
 import { requireStaffRoute } from "@/features/staff/server";
 import { getKycSubmissionDetail } from "@/features/kyc/service";
@@ -17,7 +17,7 @@ export default async function StaffKycSubmissionPage({
     searchParams,
   ]);
   const allowed = await canStaffAccessKycSubmission(submissionId, principal.id);
-  if (!allowed) notFound();
+  if (!allowed) redirect("/access-blocked");
   const submission = await getKycSubmissionDetail(submissionId);
   if (!submission) notFound();
 

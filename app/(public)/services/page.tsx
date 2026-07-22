@@ -20,7 +20,7 @@ export default async function ServicesPage() {
         aside={
           <div>
             <p className="font-semibold text-brand-mist">Three connected disciplines</p>
-            <p className="mt-2">Engagements can remain focused or combine expertise where the issue crosses tax, legal and finance boundaries.</p>
+            <p className="mt-2">Engagements can remain focused or combine expertise where tax, reporting, compliance and finance questions overlap.</p>
           </div>
         }
         description="Choose the professional question you need resolved. We define the evidence, review depth, deliverables and workflow around that decision."

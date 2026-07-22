@@ -31,7 +31,7 @@ export function ContactForm() {
           <Select id="service" name="service" required>
             <option value="">Select a service</option>
             <option>Tax advisory and compliance</option>
-            <option>Legal and regulatory support</option>
+            <option>Financial reporting and analysis</option>
             <option>Finance process consulting</option>
             <option>Managed engagement workspace</option>
           </Select>

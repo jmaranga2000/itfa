@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { getClientNavItems } from "@/config/dashboard-navigation";
-import { requireAnyPermission } from "@/features/auth/server";
+import { requireAnyRole } from "@/features/auth/server";
 import { getClientCart } from "@/repositories/client-commerce-repository";
 import { getClientKycAccess } from "@/repositories/request-onboarding-repository";
 
@@ -13,7 +13,7 @@ export default async function ClientDashboardLayout({
   children: React.ReactNode;
 }>) {
   const [principal, cookieStore] = await Promise.all([
-    requireAnyPermission(["engagements.create", "documents.upload", "messages.send"]),
+    requireAnyRole(["client", "client_representative"]),
     cookies(),
   ]);
   const cart = await getClientCart({

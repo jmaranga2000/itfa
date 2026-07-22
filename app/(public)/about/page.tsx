@@ -24,7 +24,7 @@ export default function AboutPage() {
     <main>
       <PublicPageIntro
         aside={<p>IFTA combines professional judgement with a digital operating model designed for accountable client service.</p>}
-        description="IFTA Consulting (K) Ltd supports organizations navigating tax, legal, regulatory and finance matters with disciplined analysis and secure collaboration."
+        description="IFTA Consulting (K) Ltd supports organizations navigating tax, reporting, compliance and finance matters with disciplined analysis and secure collaboration."
         eyebrow="About IFTA Consulting"
         title="Professional judgement, organized around the client decision."
       />
@@ -49,7 +49,7 @@ export default function AboutPage() {
           <FileCheck2 aria-hidden="true" className="h-7 w-7 text-primary" />
           <dl className="mt-6 divide-y divide-border">
             {[
-              ["Primary disciplines", "Tax, legal and finance"],
+              ["Primary disciplines", "Tax and financial consulting"],
               ["Operating base", "Nairobi, Kenya"],
               ["Delivery model", "Scoped and managed engagements"],
               ["Client access", "Secure role-based portal"],

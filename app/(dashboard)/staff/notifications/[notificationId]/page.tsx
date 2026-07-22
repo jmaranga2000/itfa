@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 import { RecipientNotificationDetail } from "@/components/dashboard/communication/recipient-notification-detail";
 import { requireStaffRoute } from "@/features/staff/server";
 import { getNotificationForPrincipal } from "@/repositories/communication-repository";
@@ -14,7 +14,7 @@ export default async function StaffNotificationDetailPage({
   ]);
   const notification = await getNotificationForPrincipal(principal, notificationId);
 
-  if (!notification) notFound();
+  if (!notification) redirect("/access-blocked");
 
   return (
     <RecipientNotificationDetail

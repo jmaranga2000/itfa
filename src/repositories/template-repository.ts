@@ -1,7 +1,6 @@
 import { Types } from "mongoose";
 import {
   hasAnyPermission,
-  hasPermission,
   type Principal,
 } from "@/features/authorization/access-control";
 import type { Permission } from "@/features/authorization/permissions";
@@ -154,6 +153,15 @@ export type TemplateCategoryCard = {
   href: string;
 };
 
+export type TemplateCapabilities = {
+  create: boolean;
+  edit: boolean;
+  submitReview: boolean;
+  publish: boolean;
+  archive: boolean;
+  restore: boolean;
+};
+
 export type TemplateManagementData = {
   summary: Array<{ label: string; value: string; helper: string }>;
   categoryCards: TemplateCategoryCard[];
@@ -168,6 +176,7 @@ export type TemplateManagementData = {
   };
   activeCategory: TemplateCategory | null;
   search: string;
+  capabilities: TemplateCapabilities;
 };
 
 export type TemplateDetailData = {
@@ -177,6 +186,7 @@ export type TemplateDetailData = {
   audit: TemplateAuditRecord[];
   comparison: TemplateVersionComparison;
   variableCatalogue: TemplateVariableRecord[];
+  capabilities: TemplateCapabilities;
 };
 
 export type TemplateListFilters = {
@@ -278,12 +288,6 @@ const TEMPLATE_EDIT_PERMISSIONS = [
   "permissions.manage",
 ] as const satisfies ReadonlyArray<Permission>;
 
-const TEMPLATE_REVIEW_PERMISSIONS = [
-  "templates.review",
-  "templates.manage",
-  "permissions.manage",
-] as const satisfies ReadonlyArray<Permission>;
-
 const TEMPLATE_PUBLISH_PERMISSIONS = [
   "templates.publish",
   "templates.manage",
@@ -314,6 +318,17 @@ function canViewCategory(principal: Principal, category: TemplateCategory) {
     hasAnyPermission(principal, TEMPLATE_READ_PERMISSIONS) ||
     hasAnyPermission(principal, categoryPermissions)
   );
+}
+
+function templateCapabilities(principal: Principal): TemplateCapabilities {
+  return {
+    create: hasAnyPermission(principal, TEMPLATE_CREATE_PERMISSIONS),
+    edit: hasAnyPermission(principal, TEMPLATE_EDIT_PERMISSIONS),
+    submitReview: hasAnyPermission(principal, ["templates.submit_review", "templates.manage", "permissions.manage"]),
+    publish: hasAnyPermission(principal, TEMPLATE_PUBLISH_PERMISSIONS),
+    archive: hasAnyPermission(principal, TEMPLATE_ARCHIVE_PERMISSIONS),
+    restore: hasAnyPermission(principal, TEMPLATE_RESTORE_PERMISSIONS),
+  };
 }
 
 function serializeDate(value: Date | string | null | undefined) {
@@ -709,6 +724,7 @@ export async function getTemplateManagementData(
     },
     activeCategory: filters.category ?? null,
     search: filters.search ?? "",
+    capabilities: templateCapabilities(principal),
   };
 }
 
@@ -765,6 +781,7 @@ export async function getTemplateDetail(
       required: TEMPLATE_CATEGORY_META[template.category].requiredVariables.includes(variable.key),
       sampleValue: variable.sampleValue,
     })),
+    capabilities: templateCapabilities(principal),
   };
 }
 

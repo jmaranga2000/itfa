@@ -1,6 +1,5 @@
 import { Types } from "mongoose";
 import {
-  hasAnyPermission,
   hasPermission,
   type Principal,
 } from "@/features/authorization/access-control";
@@ -477,17 +476,12 @@ function objectId(value: string | null | undefined) {
 }
 
 function isAdmin(principal: Principal) {
-  return hasAnyPermission(principal, [
-    "permissions.manage",
-    "settings.manage",
-    "staff.manage",
-    "engagements.read_all",
-  ]);
+  return principal.roleKeys.some((role) => role === "admin" || role === "super_admin");
 }
 
 function workflowAccessFilter(principal: Principal, includeArchived = false): Record<string, unknown> {
   const activeFilter = includeArchived ? {} : { archivedAt: null };
-  if (isAdmin(principal)) {
+  if (isAdmin(principal) || principal.roleKeys.includes("engagement_manager")) {
     return activeFilter;
   }
 

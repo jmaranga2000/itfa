@@ -1,6 +1,6 @@
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { getAdminNavItems } from "@/config/dashboard-navigation";
-import { requireAnyPermission } from "@/features/auth/server";
+import { requireAnyRole } from "@/features/auth/server";
 import { countNewEngagementRequests } from "@/repositories/engagement-request-repository";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +10,7 @@ export default async function AdminDashboardLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const principal = await requireAnyPermission(["reports.read", "permissions.manage", "settings.manage"]);
+  const principal = await requireAnyRole(["admin", "super_admin"]);
   const newRequestCount = await countNewEngagementRequests();
 
   return (

@@ -166,6 +166,16 @@ export async function transitionWorkflowStage(input: WorkflowTransitionInput) {
     throw new AuthorizationError("This workflow is outside your access scope.");
   }
 
+  const administrator = input.actor.roleKeys.some((role) => role === "admin" || role === "super_admin");
+  const assignedManager = input.actor.roleKeys.includes("engagement_manager") && (
+    workflow.responsibleUserId === input.actor.id
+    || workflow.team.some((member) => member.userId === input.actor.id)
+    || workflow.tasks.some((task) => task.assignedUserId === input.actor.id)
+  );
+  if (!administrator && !assignedManager) {
+    throw new AuthorizationError("You can view this engagement, but only its assigned manager can advance the process.");
+  }
+
   const validation = validateWorkflowTransition({
     workflow,
     nextStageKey: input.nextStageKey,

@@ -20,14 +20,14 @@ export const services = [
     outcome: "A documented position, practical action plan and controlled response timeline.",
   },
   {
-    id: "legal-regulatory",
-    title: "Legal and regulatory support",
-    href: "/services#legal-regulatory",
+    id: "financial-reporting",
+    title: "Financial reporting and analysis",
+    href: "/services#financial-reporting",
     summary:
-      "Regulatory research, tribunal appeal preparation, statutory documentation and case-workflow tracking.",
-    inclusions: ["Regulatory research", "Appeal preparation", "Evidence checklist"],
-    bestFor: "Teams responding to regulatory questions, disputes or formal review processes.",
-    outcome: "A structured evidence record, clear legal workplan and review-ready documentation.",
+      "Management accounts, financial analysis, reporting reviews and decision-ready performance insights.",
+    inclusions: ["Reporting review", "Financial analysis", "Management insights"],
+    bestFor: "Organizations strengthening financial visibility, reporting quality and management decisions.",
+    outcome: "Clear financial findings, reliable reporting and practical recommendations for management.",
   },
   {
     id: "finance-process",
@@ -61,7 +61,7 @@ export const pricingOptions = [
   {
     name: "Retainer workspace",
     price: "Monthly terms",
-    description: "Best for recurring tax, legal or finance advisory with shared documents and reporting.",
+    description: "Best for recurring tax and finance advisory with shared documents and reporting.",
     cadence: "Monthly or quarterly",
     features: ["Recurring advisory capacity", "Priority workflow", "Periodic management reporting"],
     featured: false,
@@ -82,7 +82,7 @@ export const workflowSteps = [
 export const researchFeatures = [
   {
     title: "Engagement-scoped research",
-    description: "Tax, legal and finance research stays connected to the relevant client matter and assigned team.",
+    description: "Tax, compliance and finance research stays connected to the relevant client engagement and assigned team.",
   },
   {
     title: "Source-aware working notes",

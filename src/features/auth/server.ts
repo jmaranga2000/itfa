@@ -1,8 +1,7 @@
 import { redirect } from "next/navigation";
 import {
-  assertAnyPermission,
-  assertPermission,
-  assertRole,
+  hasAnyPermission,
+  hasPermission,
   type Principal,
 } from "@/features/authorization/access-control";
 import type { Permission } from "@/features/authorization/permissions";
@@ -25,18 +24,24 @@ export async function requireUser(): Promise<Principal> {
 
 export async function requirePermission(permission: Permission) {
   const principal = await requireUser();
-  assertPermission(principal, permission);
+  if (!hasPermission(principal, permission)) redirect("/access-blocked");
   return principal;
 }
 
 export async function requireAnyPermission(permissions: readonly Permission[]) {
   const principal = await requireUser();
-  assertAnyPermission(principal, permissions);
+  if (!hasAnyPermission(principal, permissions)) redirect("/access-blocked");
   return principal;
 }
 
 export async function requireRole(role: AppRole) {
   const principal = await requireUser();
-  assertRole(principal, role);
+  if (!principal.roleKeys.includes(role)) redirect("/access-blocked");
+  return principal;
+}
+
+export async function requireAnyRole(roles: readonly AppRole[]) {
+  const principal = await requireUser();
+  if (!roles.some((role) => principal.roleKeys.includes(role))) redirect("/access-blocked");
   return principal;
 }

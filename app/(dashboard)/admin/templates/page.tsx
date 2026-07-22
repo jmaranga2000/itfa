@@ -1,5 +1,5 @@
 import { TemplateManagementDashboard } from "@/components/dashboard/templates/template-management-dashboard";
-import { requireUser } from "@/features/auth/server";
+import { requirePermission } from "@/features/auth/server";
 import {
   TEMPLATE_CATEGORIES,
   TEMPLATE_STATUSES,
@@ -37,7 +37,7 @@ export default async function AdminTemplatesPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const [params, principal] = await Promise.all([searchParams, requireUser()]);
+  const [params, principal] = await Promise.all([searchParams, requirePermission("templates.read")]);
   const filters = parseFilters(params);
   const data = await getTemplateManagementData(principal, filters);
 

@@ -137,21 +137,21 @@ export const adminNavItems: DashboardNavItem[] = [
     children: [
       { label: "Services", href: "/admin/services", icon: "briefcase", symbol: "SV" },
       { label: "Pricing", href: "/admin/pricing", icon: "money", symbol: "PR" },
-      { label: "All templates", href: "/admin/templates", icon: "fileText", symbol: "T" },
+      { label: "Document templates", href: "/admin/templates", icon: "fileText", symbol: "T" },
       {
-        label: "Workflow templates",
+        label: "Work process templates",
         href: "/admin/workflow-templates",
         icon: "workflow",
         symbol: "WT",
       },
       {
-        label: "Letter templates",
+        label: "Engagement letters",
         href: "/admin/letter-templates",
         icon: "fileText",
         symbol: "LT",
       },
       {
-        label: "Invoice templates",
+        label: "Invoice layouts",
         href: "/admin/invoice-templates",
         icon: "invoice",
         symbol: "IT",

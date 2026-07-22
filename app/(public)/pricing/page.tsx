@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 const feeFactors = [
   { icon: FileSearch, label: "Review depth", copy: "The volume and complexity of evidence that must be assessed." },
   { icon: Clock3, label: "Timeline", copy: "The urgency, external deadlines and review availability required." },
-  { icon: Gauge, label: "Risk", copy: "The regulatory, financial or legal consequence of the decision." },
+  { icon: Gauge, label: "Risk", copy: "The tax, compliance or financial consequence of the decision." },
   { icon: Layers3, label: "Delivery model", copy: "A focused opinion, managed engagement or recurring advisory workspace." },
 ] as const;
 

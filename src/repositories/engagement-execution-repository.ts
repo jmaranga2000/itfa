@@ -180,9 +180,17 @@ function teamMember(workflow: WorkflowInstanceRecord, principal: Principal, role
   return workflow.team.some((member) => member.userId === principal.id && member.role === role);
 }
 
+function assignedEngagementManager(workflow: WorkflowInstanceRecord, principal: Principal) {
+  return principal.roleKeys.includes("engagement_manager") && (
+    workflow.responsibleUserId === principal.id
+    || workflow.team.some((member) => member.userId === principal.id)
+    || workflow.tasks.some((task) => task.assignedUserId === principal.id)
+  );
+}
+
 function isConsultant(workflow: WorkflowInstanceRecord, principal: Principal) {
   return isAdministrator(principal)
-    || principal.roleKeys.includes("engagement_manager")
+    || assignedEngagementManager(workflow, principal)
     || teamMember(workflow, principal, "consultant");
 }
 

@@ -3,17 +3,17 @@ import Link from "next/link";
 import {
   ArrowRight,
   BarChart3,
+  Calculator,
   Check,
   FileCheck2,
   LockKeyhole,
-  Scale,
   ScrollText,
   ShieldCheck,
 } from "lucide-react";
 import { buttonClassName } from "@/components/ui/button";
 import { services, workflowSteps } from "@/content/public-site";
 
-const serviceIcons = [ScrollText, Scale, BarChart3] as const;
+const serviceIcons = [ScrollText, Calculator, BarChart3] as const;
 
 const confidencePoints = [
   {
@@ -38,7 +38,7 @@ export default function PublicHomePage() {
     <main>
       <section className="relative isolate min-h-[580px] overflow-hidden bg-brand-deep text-white sm:min-h-[620px]">
         <Image
-          alt="IFTA Consulting advisers reviewing financial and regulatory documents in a Nairobi office"
+          alt="IFTA Consulting advisers reviewing financial documents in a Nairobi office"
           className="object-cover object-[62%_center]"
           fill
           priority
@@ -55,10 +55,10 @@ export default function PublicHomePage() {
               IFTA Consulting (K) Ltd
             </p>
             <h1 className="mt-5 text-4xl font-bold leading-[1.08] sm:text-5xl lg:text-6xl">
-              Tax, legal and finance advisory for decisions that cannot wait.
+              Tax and financial advisory for confident business decisions.
             </h1>
             <p className="mt-6 max-w-xl text-base leading-7 text-white/80 sm:text-lg">
-              We turn complex compliance questions, regulatory matters and finance challenges into clear professional engagements with accountable next steps.
+              We turn tax, reporting, compliance and finance challenges into clear professional engagements with accountable next steps.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link className={buttonClassName({ variant: "accent", size: "lg" })} href="/contact">

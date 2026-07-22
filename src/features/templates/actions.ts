@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { requireUser } from "@/features/auth/server";
+import { requireAnyPermission } from "@/features/auth/server";
 import {
   TEMPLATE_CATEGORIES,
   type TemplateCategory,
@@ -32,7 +32,7 @@ function pathForTemplate(templateId: string) {
 }
 
 export async function createTemplateDraftAction(formData: FormData) {
-  const actor = await requireUser();
+  const actor = await requireAnyPermission(["templates.create", "templates.manage", "permissions.manage"]);
   const category = parseCategory(formData.get("category"));
   const name = String(formData.get("name") ?? "");
   const description = String(formData.get("description") ?? "");
@@ -52,7 +52,7 @@ export async function createTemplateDraftAction(formData: FormData) {
 }
 
 export async function duplicateTemplateAction(formData: FormData) {
-  const actor = await requireUser();
+  const actor = await requireAnyPermission(["templates.create", "templates.manage", "permissions.manage"]);
   const templateId = String(formData.get("templateId") ?? "");
   const duplicateId = await duplicateTemplate({ actor, templateId });
 
@@ -61,7 +61,7 @@ export async function duplicateTemplateAction(formData: FormData) {
 }
 
 export async function createNewTemplateVersionAction(formData: FormData) {
-  const actor = await requireUser();
+  const actor = await requireAnyPermission(["templates.edit_draft", "templates.manage", "permissions.manage"]);
   const templateId = String(formData.get("templateId") ?? "");
 
   await createNewTemplateVersion({ actor, templateId });
@@ -70,7 +70,7 @@ export async function createNewTemplateVersionAction(formData: FormData) {
 }
 
 export async function submitTemplateForReviewAction(formData: FormData) {
-  const actor = await requireUser();
+  const actor = await requireAnyPermission(["templates.submit_review", "templates.manage", "permissions.manage"]);
   const templateId = String(formData.get("templateId") ?? "");
 
   await submitTemplateForReview({ actor, templateId });
@@ -79,7 +79,7 @@ export async function submitTemplateForReviewAction(formData: FormData) {
 }
 
 export async function publishTemplateVersionAction(formData: FormData) {
-  const actor = await requireUser();
+  const actor = await requireAnyPermission(["templates.publish", "templates.manage", "permissions.manage"]);
   const templateId = String(formData.get("templateId") ?? "");
 
   await publishTemplateVersion({ actor, templateId });
@@ -88,7 +88,7 @@ export async function publishTemplateVersionAction(formData: FormData) {
 }
 
 export async function archiveTemplateAction(formData: FormData) {
-  const actor = await requireUser();
+  const actor = await requireAnyPermission(["templates.archive", "templates.manage", "permissions.manage"]);
   const templateId = String(formData.get("templateId") ?? "");
   const reason = String(formData.get("reason") ?? "");
 
@@ -98,7 +98,7 @@ export async function archiveTemplateAction(formData: FormData) {
 }
 
 export async function restoreTemplateAction(formData: FormData) {
-  const actor = await requireUser();
+  const actor = await requireAnyPermission(["templates.restore", "templates.manage", "permissions.manage"]);
   const templateId = String(formData.get("templateId") ?? "");
 
   await restoreTemplate({ actor, templateId });

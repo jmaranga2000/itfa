@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 import { StaffClientDetail } from "@/components/dashboard/staff/staff-client-detail";
 import { requireStaffRoute } from "@/features/staff/server";
 import { getStaffClientRecord } from "@/repositories/staff-work-repository";
@@ -13,7 +13,7 @@ export default async function StaffClientDetailPage({
     params,
   ]);
   const data = await getStaffClientRecord(principal, decodeURIComponent(clientKey));
-  if (!data) notFound();
+  if (!data) redirect("/access-blocked");
 
   return <StaffClientDetail data={data} />;
 }

@@ -5,5 +5,5 @@ import { getStaffWorkData } from "@/repositories/staff-work-repository";
 export default async function StaffEngagementsPage() {
   const { principal } = await requireStaffRoute("engagements");
   const data = await getStaffWorkData(principal);
-  return <StaffEngagements requests={data.requests} workflows={data.workflows} />;
+  return <StaffEngagements principalId={principal.id} requests={data.requests} roleKeys={principal.roleKeys} workflows={data.workflows} />;
 }

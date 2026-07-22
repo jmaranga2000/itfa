@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 import { ArrowLeft, MessageSquareText, UserRound } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { buttonClassName } from "@/components/ui/button";
@@ -16,7 +16,7 @@ export default async function StaffRequestDetailPage({ params }: { params: Promi
   const [{ principal }, { requestId }] = await Promise.all([requireStaffWorkspace(), params]);
   const data = await getStaffWorkData(principal);
   const assigned = data.requests.find((request) => request.id === requestId);
-  if (!assigned) notFound();
+  if (!assigned) redirect("/access-blocked");
   const [databaseRequest] = await Promise.all([
     getEngagementRequestForAdmin(requestId),
     markRelatedNotificationsRead(principal, requestId),

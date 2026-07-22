@@ -84,7 +84,14 @@ function isAdmin(principal: Principal) {
 async function writableWorkflow(principal: Principal, workflowId: string) {
   if (principal.readOnly || isClient(principal)) return null;
   const workflow = await getWorkflowForPrincipal(principal, workflowId);
-  return workflow?.status === "active" ? workflow : null;
+  if (!workflow || workflow.status !== "active") return null;
+  if (principal.roleKeys.includes("engagement_manager") && !isAdmin(principal)) {
+    const assigned = workflow.responsibleUserId === principal.id
+      || workflow.team.some((member) => member.userId === principal.id)
+      || workflow.tasks.some((task) => task.assignedUserId === principal.id);
+    if (!assigned) return null;
+  }
+  return workflow;
 }
 
 async function notifyClientOfReleasedDocument(input: {
@@ -194,7 +201,12 @@ export async function updateEngagementTask(input: {
   if (!workflow) return false;
   const task = workflow.tasks.find((item) => item.key === input.taskKey);
   if (!task) return false;
-  const canManageAny = isAdmin(input.principal) || input.principal.roleKeys.includes("engagement_manager");
+  const assignedManager = input.principal.roleKeys.includes("engagement_manager") && (
+    workflow.responsibleUserId === input.principal.id
+    || workflow.team.some((member) => member.userId === input.principal.id)
+    || workflow.tasks.some((workflowTask) => workflowTask.assignedUserId === input.principal.id)
+  );
+  const canManageAny = isAdmin(input.principal) || assignedManager;
   if (task.assignedUserId && task.assignedUserId !== input.principal.id && !canManageAny) return false;
   if (input.status === "waiting_for_approval" && task.status !== "in_progress") return false;
   if (input.status === "completed" && task.approvalRequired) return false;
@@ -447,8 +459,13 @@ export async function releaseEngagementDeliverable(input: {
 }) {
   const workflow = await writableWorkflow(input.principal, input.workflowId);
   if (!workflow?.clientUserId || !Types.ObjectId.isValid(input.documentId) || !Types.ObjectId.isValid(input.principal.id)) return false;
+  const assignedManager = input.principal.roleKeys.includes("engagement_manager") && (
+    workflow.responsibleUserId === input.principal.id
+    || workflow.team.some((member) => member.userId === input.principal.id)
+    || workflow.tasks.some((task) => task.assignedUserId === input.principal.id)
+  );
   const allowed = isAdmin(input.principal)
-    || input.principal.roleKeys.includes("engagement_manager")
+    || assignedManager
     || workflow.team.some((member) => member.role === "consultant" && member.userId === input.principal.id);
   if (!allowed) return false;
   const stored = await ClientDocumentModel.findOne({

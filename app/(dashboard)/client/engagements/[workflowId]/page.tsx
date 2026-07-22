@@ -3,7 +3,7 @@ import {
   EngagementExecutionWorkspace,
   type EngagementWorkspaceTab,
 } from "@/components/dashboard/engagements/engagement-execution-workspace";
-import { EngagementUnavailable } from "@/components/dashboard/engagements/engagement-unavailable";
+import { redirect } from "next/navigation";
 import { requireUser } from "@/features/auth/server";
 import { getEngagementExecutionData } from "@/repositories/engagement-execution-repository";
 
@@ -27,7 +27,7 @@ export default async function ClientEngagementDetailPage({
   ]);
   const data = await getEngagementExecutionData(principal, workflowId);
   if (!data || data.workflow.clientUserId !== principal.id) {
-    return <EngagementUnavailable backHref="/client/engagements" />;
+    redirect("/access-blocked");
   }
 
   return (

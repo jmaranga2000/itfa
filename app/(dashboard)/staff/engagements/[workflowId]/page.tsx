@@ -3,7 +3,7 @@ import {
   EngagementExecutionWorkspace,
   type EngagementWorkspaceTab,
 } from "@/components/dashboard/engagements/engagement-execution-workspace";
-import { EngagementUnavailable } from "@/components/dashboard/engagements/engagement-unavailable";
+import { redirect } from "next/navigation";
 import { requireStaffRoute } from "@/features/staff/server";
 import { getEngagementExecutionData } from "@/repositories/engagement-execution-repository";
 
@@ -26,7 +26,7 @@ export default async function StaffEngagementDetailPage({
     searchParams,
   ]);
   const data = await getEngagementExecutionData(principal, workflowId);
-  if (!data) return <EngagementUnavailable backHref="/staff/engagements" />;
+  if (!data) redirect("/access-blocked");
 
   return (
     <EngagementExecutionWorkspace

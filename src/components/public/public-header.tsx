@@ -34,7 +34,7 @@ export function PublicHeader() {
     <header className="sticky top-0 z-50 border-b border-border bg-card/95 backdrop-blur-md">
       <div className="hidden bg-brand-deep text-white sm:block">
         <div className="mx-auto flex h-9 max-w-7xl items-center justify-between px-5 text-xs font-medium">
-          <p>Tax, legal, finance and regulatory advisory</p>
+          <p>Tax and financial consulting</p>
           <div className="flex items-center gap-5 text-white/75">
             <span>Nairobi, Kenya</span>
             <Link className="hover:text-white" href="/contact">
