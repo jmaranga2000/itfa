@@ -469,6 +469,7 @@ export async function getOrCreateEngagementConversation(
   const participantIds = [...new Set([
     workflow.clientUserId,
     ...workflow.team.map((member) => member.userId),
+    principal.id,
   ].filter((value): value is string => typeof value === "string" && Types.ObjectId.isValid(value)))];
   const users = await UserModel.find({ _id: { $in: participantIds }, status: { $ne: "archived" } })
     .select("email firstName lastName roleKeys")

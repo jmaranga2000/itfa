@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
+import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { Types } from "mongoose";
 import type { Principal } from "@/features/authorization/access-control";
 import { hasPermission } from "@/features/authorization/access-control";
@@ -6,6 +7,8 @@ import { writeAuditLog } from "@/features/audit/audit-service";
 import { sendClientJourneyEmail } from "@/features/engagements/client-journey-email";
 import type { WorkflowPriority } from "@/features/workflows/types";
 import { connectToDatabase } from "@/lib/db/mongoose";
+import { getR2Client, getR2Configuration } from "@/lib/r2";
+import { createZipBuffer, type ZipEntry } from "@/lib/zip";
 import { ArchiveRecordModel } from "@/models/archive-record";
 import { AuditLogModel } from "@/models/audit-log";
 import { ClientPaymentModel } from "@/models/client-payment";
@@ -48,6 +51,9 @@ export type CompletionRequirement = {
   label: string;
   complete: boolean;
   detail: string;
+  actionLabel: string;
+  actionTab: "overview" | "tasks" | "documents" | "deliverables" | "finance" | "completion";
+  actionHash?: string;
 };
 
 export type EngagementHealthStatus =
@@ -92,6 +98,79 @@ type RawPayment = {
   verifiedAt?: Date | null;
   reviewNote?: string;
 };
+
+type ArchiveSourceDocument = {
+  _id: Types.ObjectId;
+  name: string;
+  storageKey: string;
+  contentType: string;
+  size: number;
+  version?: number;
+  documentKind?: string;
+  uploadedAt: Date;
+};
+
+function archiveJson(value: unknown) {
+  return Buffer.from(JSON.stringify(value, null, 2), "utf8");
+}
+
+function archiveFileName(value: string) {
+  return value.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "document";
+}
+
+async function createEngagementArchivePackage(input: {
+  archiveReference: string;
+  workflow: WorkflowInstanceRecord;
+  data: EngagementExecutionData;
+  auditRecords: unknown[];
+}) {
+  const configuration = getR2Configuration();
+  const client = getR2Client();
+  const storedDocuments = await ClientDocumentModel.find({ workflowId: input.workflow.id })
+    .select("name storageKey contentType size version documentKind uploadedAt")
+    .sort({ uploadedAt: 1 })
+    .lean()
+    .exec() as unknown as ArchiveSourceDocument[];
+  const entries: ZipEntry[] = [
+    { name: "engagement/engagement.json", data: archiveJson(input.workflow) },
+    { name: "engagement/tasks.json", data: archiveJson(input.workflow.tasks) },
+    { name: "engagement/messages.json", data: archiveJson(input.data.messages) },
+    { name: "engagement/finance.json", data: archiveJson({ invoices: input.workflow.financial.invoices, payments: input.data.payments }) },
+    { name: "engagement/timeline.json", data: archiveJson(input.workflow.activity) },
+    { name: "engagement/approvals.json", data: archiveJson(input.workflow.approvals) },
+    { name: "engagement/completion.json", data: archiveJson(input.workflow.completion) },
+    { name: "engagement/audit-log.json", data: archiveJson(input.auditRecords) },
+  ];
+  const documentManifest: Array<Record<string, unknown>> = [];
+
+  for (const [index, document] of storedDocuments.entries()) {
+    const archivedName = `documents/${String(index + 1).padStart(3, "0")}-${archiveFileName(document.name)}`;
+    try {
+      const object = await client.send(new GetObjectCommand({ Bucket: configuration.bucketName, Key: document.storageKey }));
+      if (!object.Body) throw new Error("Stored document has no body");
+      entries.push({ name: archivedName, data: Buffer.from(await object.Body.transformToByteArray()), modifiedAt: document.uploadedAt });
+      documentManifest.push({ id: document._id.toString(), name: document.name, archivedName, contentType: document.contentType, size: document.size, version: document.version ?? 1, documentKind: document.documentKind ?? "general", included: true });
+    } catch {
+      documentManifest.push({ id: document._id.toString(), name: document.name, storageKey: document.storageKey, contentType: document.contentType, size: document.size, version: document.version ?? 1, documentKind: document.documentKind ?? "general", included: false, note: "The stored file could not be retrieved while the archive package was created." });
+    }
+  }
+
+  entries.push({
+    name: "documents/manifest.json",
+    data: archiveJson({ generatedAt: new Date().toISOString(), engagementReference: input.workflow.reference, documents: documentManifest }),
+  });
+  const zip = createZipBuffer(entries);
+  const fileName = `${archiveFileName(input.workflow.reference)}-archive.zip`;
+  const storageKey = `engagement-archives/${input.workflow.id}/${input.archiveReference}.zip`;
+  await client.send(new PutObjectCommand({
+    Bucket: configuration.bucketName,
+    Key: storageKey,
+    Body: zip,
+    ContentType: "application/zip",
+    ContentDisposition: `attachment; filename="${fileName}"`,
+  }));
+  return { storageKey, fileName, size: zip.length, createdAt: new Date(), documentCount: storedDocuments.length };
+}
 
 function isAdministrator(principal: Principal) {
   return principal.roleKeys.some((role) => role === "admin" || role === "super_admin");
@@ -224,13 +303,13 @@ export function getCompletionRequirements(
   const pendingPayments = payments.filter((payment) => payment.status === "pending");
 
   return [
-    { key: "tasks", label: "All mandatory tasks completed", complete: tasksComplete, detail: tasksComplete ? `${mandatoryTasks.length} tasks complete` : `${mandatoryTasks.filter((task) => task.status !== "completed").length} tasks remain` },
-    { key: "reviews", label: "All required reviews approved", complete: reviewsApproved, detail: reviewsApproved ? "Review gates are clear" : `${reviewTasks.filter((task) => !task.reviewHistory.some((review) => review.decision === "approved")).length} reviews remain` },
-    { key: "deliverables", label: "Final deliverable uploaded", complete: finalDeliverables.length > 0, detail: finalDeliverables.length > 0 ? `${finalDeliverables.length} final deliverable(s)` : "Upload at least one final deliverable" },
-    { key: "client_actions", label: "Client requests resolved", complete: outstandingClientActions.length === 0, detail: outstandingClientActions.length === 0 ? "No client response is outstanding" : `${outstandingClientActions.length} client action(s) remain` },
-    { key: "invoices", label: "Required invoices issued", complete: !invoiceRequired || issuedInvoices.length > 0, detail: !invoiceRequired ? "No invoice is required" : issuedInvoices.length > 0 ? `${issuedInvoices.length} invoice(s) issued` : "An invoice still needs to be issued" },
-    { key: "payments", label: "Submitted payments reviewed", complete: pendingPayments.length === 0, detail: pendingPayments.length === 0 ? "No payment is waiting for review" : `${pendingPayments.length} payment(s) await review` },
-    { key: "notes", label: "Completion notes added", complete: completionNotes.trim().length >= 10, detail: completionNotes.trim().length >= 10 ? "Completion notes are ready" : "Add at least 10 characters of completion notes" },
+    { key: "tasks", label: "All mandatory tasks completed", complete: tasksComplete, detail: tasksComplete ? `${mandatoryTasks.length} tasks complete` : `${mandatoryTasks.filter((task) => task.status !== "completed").length} tasks remain`, actionLabel: "Open tasks", actionTab: "tasks" },
+    { key: "reviews", label: "All required reviews approved", complete: reviewsApproved, detail: reviewsApproved ? "Review gates are clear" : `${reviewTasks.filter((task) => !task.reviewHistory.some((review) => review.decision === "approved")).length} reviews remain`, actionLabel: "Review tasks", actionTab: "tasks" },
+    { key: "deliverables", label: "Final deliverable uploaded", complete: finalDeliverables.length > 0, detail: finalDeliverables.length > 0 ? `${finalDeliverables.length} final deliverable(s)` : "Upload at least one final deliverable", actionLabel: "Upload deliverable", actionTab: "documents", actionHash: "document-upload" },
+    { key: "client_actions", label: "Client requests resolved", complete: outstandingClientActions.length === 0, detail: outstandingClientActions.length === 0 ? "No client response is outstanding" : `${outstandingClientActions.length} client action(s) remain`, actionLabel: "Open client actions", actionTab: "overview" },
+    { key: "invoices", label: "Required invoices issued", complete: !invoiceRequired || issuedInvoices.length > 0, detail: !invoiceRequired ? "No invoice is required" : issuedInvoices.length > 0 ? `${issuedInvoices.length} invoice(s) issued` : "An invoice still needs to be issued", actionLabel: "Open finance", actionTab: "finance" },
+    { key: "payments", label: "Submitted payments reviewed", complete: pendingPayments.length === 0, detail: pendingPayments.length === 0 ? "No payment is waiting for review" : `${pendingPayments.length} payment(s) await review`, actionLabel: "Review payments", actionTab: "finance" },
+    { key: "notes", label: "Completion notes added", complete: completionNotes.trim().length >= 10, detail: completionNotes.trim().length >= 10 ? "Completion notes are ready" : "Add at least 10 characters of completion notes", actionLabel: "Add completion notes", actionTab: "completion", actionHash: "completion-notes" },
   ];
 }
 
@@ -720,10 +799,22 @@ export async function archiveCompletedEngagement(input: { principal: Principal; 
   ]);
   if (existing) return existing._id.toString();
   const now = new Date();
+  const archiveReference = `ARC-ENG-${randomBytes(4).toString("hex").toUpperCase()}`;
+  let archivePackage: Awaited<ReturnType<typeof createEngagementArchivePackage>>;
+  try {
+    archivePackage = await createEngagementArchivePackage({
+      archiveReference,
+      workflow,
+      data,
+      auditRecords,
+    });
+  } catch {
+    return null;
+  }
   const retentionExpiry = new Date(now);
   retentionExpiry.setFullYear(retentionExpiry.getFullYear() + 7);
   const archive = await ArchiveRecordModel.create({
-    archiveReference: `ARC-ENG-${randomBytes(4).toString("hex").toUpperCase()}`,
+    archiveReference,
     recordId: workflow.id,
     recordType: "engagement",
     recordReference: workflow.reference,
@@ -746,6 +837,10 @@ export async function archiveCompletedEngagement(input: { principal: Principal; 
     clientVisible: true,
     previousLocation: `/admin/active-engagements/${workflow.id}`,
     archiveNotes: workflow.completion.notes,
+    archivePackageStorageKey: archivePackage.storageKey,
+    archivePackageFileName: archivePackage.fileName,
+    archivePackageSize: archivePackage.size,
+    archivePackageCreatedAt: archivePackage.createdAt,
     snapshot: {
       workflowHistory: workflow.stages,
       tasks: workflow.tasks,
@@ -759,7 +854,7 @@ export async function archiveCompletedEngagement(input: { principal: Principal; 
     },
   });
   await Promise.all([
-    WorkflowInstanceModel.updateOne({ _id: workflow.id }, { $set: { status: "archived", archivedAt: now, "archive.status": "archived", "archive.archivedAt": now, "completion.archivedAt": now, "completion.archivedByUserId": input.principal.id, "completion.archivedByName": input.principal.displayName || input.principal.email }, $push: { activity: { type: "workflow_archived", title: "Engagement Archived", actorName: input.principal.displayName || input.principal.email, actorUserId: input.principal.id, description: "The completed engagement is now read-only.", relatedResource: archive._id.toString(), clientVisible: true, createdAt: now } } }).exec(),
+    WorkflowInstanceModel.updateOne({ _id: workflow.id }, { $set: { status: "archived", archivedAt: now, "archive.status": "archived", "archive.archivedAt": now, "completion.archivedAt": now, "completion.archivedByUserId": input.principal.id, "completion.archivedByName": input.principal.displayName || input.principal.email }, $push: { activity: { type: "workflow_archived", title: "Engagement Archived", actorName: input.principal.displayName || input.principal.email, actorUserId: input.principal.id, description: `The completed engagement is now read-only and its ZIP package contains ${archivePackage.documentCount} document record(s).`, relatedResource: archive._id.toString(), clientVisible: true, createdAt: now } } }).exec(),
     CommunicationConversationModel.updateMany({ engagementId: workflow.id }, { $set: { archivedAt: now, status: "closed", closedAt: now } }).exec(),
   ]);
   await notifyUsers({ recipientIds: [workflow.clientUserId, ...workflow.team.map((member) => member.userId)], actor: input.principal, type: "engagement_update", title: "Engagement archived", description: `${workflow.reference} is now available as a read-only record.`, workflowId: workflow.id, tab: "completion", archiveId: archive._id.toString() });

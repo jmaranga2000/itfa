@@ -40,6 +40,7 @@ function workspacePath(formData: FormData, workflowId: string, tab: string) {
 function refresh(workflowId: string) {
   revalidatePath("/admin/dashboard");
   revalidatePath("/admin/active-engagements");
+  revalidatePath("/admin/completed-engagements");
   revalidatePath(`/admin/active-engagements/${workflowId}`);
   revalidatePath(`/staff/engagements/${workflowId}`);
   revalidatePath(`/client/engagements/${workflowId}`);
@@ -223,6 +224,7 @@ export async function archiveCompletedEngagementAction(formData: FormData) {
   if (!archiveId) redirect(`${workspacePath(formData, workflowId, "completion")}&error=archive`);
   refresh(workflowId);
   revalidatePath("/admin/archive");
+  revalidatePath("/admin/completed-engagements");
   redirect(`/admin/archive/${archiveId}?created=1`);
 }
 

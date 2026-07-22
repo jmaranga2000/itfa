@@ -42,6 +42,12 @@ function formatDate(value: string | null) {
   }).format(new Date(value));
 }
 
+function formatSize(value: number) {
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${Math.round(value / 1024)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 function hiddenArchiveId(recordId: string) {
   return <input name="archiveRecordId" type="hidden" value={recordId} />;
 }
@@ -145,6 +151,12 @@ export function ArchiveDetail({ data }: { data: ArchiveDetailData }) {
               <Download aria-hidden="true" className="h-4 w-4" />
               Export Summary
             </a>
+            {record.archivePackageFileName ? (
+              <Link className={buttonClassName()} href={`/api/admin/archive/${record.id}/package`}>
+                <Download aria-hidden="true" className="h-4 w-4" />
+                Download ZIP ({formatSize(record.archivePackageSize)})
+              </Link>
+            ) : null}
             <form action={requestArchiveRestoreAction}>
               {hiddenArchiveId(record.id)}
               <input

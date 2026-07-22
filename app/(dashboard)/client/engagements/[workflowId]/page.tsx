@@ -1,9 +1,9 @@
-import { notFound } from "next/navigation";
 import {
   ENGAGEMENT_WORKSPACE_TABS,
   EngagementExecutionWorkspace,
   type EngagementWorkspaceTab,
 } from "@/components/dashboard/engagements/engagement-execution-workspace";
+import { EngagementUnavailable } from "@/components/dashboard/engagements/engagement-unavailable";
 import { requireUser } from "@/features/auth/server";
 import { getEngagementExecutionData } from "@/repositories/engagement-execution-repository";
 
@@ -26,7 +26,9 @@ export default async function ClientEngagementDetailPage({
     searchParams,
   ]);
   const data = await getEngagementExecutionData(principal, workflowId);
-  if (!data || data.workflow.clientUserId !== principal.id) notFound();
+  if (!data || data.workflow.clientUserId !== principal.id) {
+    return <EngagementUnavailable backHref="/client/engagements" />;
+  }
 
   return (
     <EngagementExecutionWorkspace

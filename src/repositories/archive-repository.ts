@@ -70,6 +70,9 @@ export type ArchiveRecordSummary = {
   deletionStatus: DeletionStatus;
   readOnly: boolean;
   clientVisible: boolean;
+  archivePackageFileName: string;
+  archivePackageSize: number;
+  archivePackageCreatedAt: string | null;
   href: string;
 };
 
@@ -216,6 +219,10 @@ type RawArchiveRecord = {
   clientVisible?: boolean;
   previousLocation?: string;
   archiveNotes?: string;
+  archivePackageStorageKey?: string;
+  archivePackageFileName?: string;
+  archivePackageSize?: number;
+  archivePackageCreatedAt?: Date | null;
   snapshot?: Record<string, unknown>;
   restoredAt?: Date | null;
   restoreReason?: string;
@@ -375,7 +382,28 @@ function serializeRecord(record: RawArchiveRecord): ArchiveRecordSummary {
     deletionStatus: record.deletionStatus ?? "not_eligible",
     readOnly: record.readOnly ?? isArchiveReadOnly(record.archiveStatus),
     clientVisible: Boolean(record.clientVisible),
+    archivePackageFileName: record.archivePackageFileName ?? "",
+    archivePackageSize: record.archivePackageSize ?? 0,
+    archivePackageCreatedAt: serializeDate(record.archivePackageCreatedAt),
     href: `/admin/archive/${record._id.toString()}`,
+  };
+}
+
+export async function getArchivePackageFile(principal: Principal, archiveRecordId: string) {
+  const administrator = principal.roleKeys.some((role) => role === "admin" || role === "super_admin");
+  if (!administrator || !hasPermission(principal, "archive.export") || !Types.ObjectId.isValid(archiveRecordId)) {
+    return null;
+  }
+  await connectToDatabase();
+  const record = await ArchiveRecordModel.findById(archiveRecordId)
+    .select("archivePackageStorageKey archivePackageFileName archivePackageSize")
+    .lean()
+    .exec() as { archivePackageStorageKey?: string; archivePackageFileName?: string; archivePackageSize?: number } | null;
+  if (!record?.archivePackageStorageKey) return null;
+  return {
+    storageKey: record.archivePackageStorageKey,
+    fileName: record.archivePackageFileName || "engagement-archive.zip",
+    size: record.archivePackageSize ?? 0,
   };
 }
 

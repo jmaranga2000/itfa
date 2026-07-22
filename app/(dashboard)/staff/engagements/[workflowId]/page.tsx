@@ -1,9 +1,9 @@
-import { notFound } from "next/navigation";
 import {
   ENGAGEMENT_WORKSPACE_TABS,
   EngagementExecutionWorkspace,
   type EngagementWorkspaceTab,
 } from "@/components/dashboard/engagements/engagement-execution-workspace";
+import { EngagementUnavailable } from "@/components/dashboard/engagements/engagement-unavailable";
 import { requireStaffRoute } from "@/features/staff/server";
 import { getEngagementExecutionData } from "@/repositories/engagement-execution-repository";
 
@@ -26,7 +26,7 @@ export default async function StaffEngagementDetailPage({
     searchParams,
   ]);
   const data = await getEngagementExecutionData(principal, workflowId);
-  if (!data) notFound();
+  if (!data) return <EngagementUnavailable backHref="/staff/engagements" />;
 
   return (
     <EngagementExecutionWorkspace

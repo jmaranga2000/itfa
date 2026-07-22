@@ -1,9 +1,9 @@
-import { notFound } from "next/navigation";
 import {
   ENGAGEMENT_WORKSPACE_TABS,
   EngagementExecutionWorkspace,
   type EngagementWorkspaceTab,
 } from "@/components/dashboard/engagements/engagement-execution-workspace";
+import { EngagementUnavailable } from "@/components/dashboard/engagements/engagement-unavailable";
 import { requirePermission } from "@/features/auth/server";
 import { listEngagementTeamCandidates } from "@/repositories/engagement-management-repository";
 import { getEngagementExecutionData } from "@/repositories/engagement-execution-repository";
@@ -27,7 +27,7 @@ export default async function AdminActiveEngagementPage({
     getEngagementExecutionData(principal, workflowId),
     listEngagementTeamCandidates(principal),
   ]);
-  if (!data) notFound();
+  if (!data) return <EngagementUnavailable backHref="/admin/active-engagements" />;
 
   return (
     <EngagementExecutionWorkspace

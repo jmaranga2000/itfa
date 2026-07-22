@@ -109,6 +109,12 @@ export const adminNavItems: DashboardNavItem[] = [
         icon: "briefcase",
         symbol: "AE",
       },
+      {
+        label: "Completed work",
+        href: "/admin/completed-engagements",
+        icon: "fileCheck",
+        symbol: "CE",
+      },
       { label: "Client checks (KYC)", href: "/admin/kyc", icon: "fileCheck", symbol: "K" },
       { label: "Messages", href: "/admin/messages", icon: "message", symbol: "M" },
     ],

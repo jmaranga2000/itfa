@@ -114,7 +114,7 @@ export function StaffFinance({
                     <p className="mt-3 text-sm font-semibold text-foreground">{workflow.financial.currency} {workflow.financial.balanceDue.toLocaleString("en-KE")} due</p>
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row">
-                    <Link className={buttonClassName({ variant: "secondary", size: "sm", className: "justify-center" })} href={`/staff/engagements/${workflow.id}`}>Open engagement<ArrowRight aria-hidden="true" className="h-4 w-4" /></Link>
+                    <Link className={buttonClassName({ variant: "secondary", size: "sm", className: "justify-center" })} href={`/staff/engagements/${workflow.id}?tab=finance`}>Open finance<ArrowRight aria-hidden="true" className="h-4 w-4" /></Link>
                     {canIssue ? (
                       <form action={approveAndIssueInvoiceAction}>
                         <input name="workflowId" type="hidden" value={workflow.id} />
@@ -150,7 +150,7 @@ export function StaffFinance({
                     <SubmitButton name="decision" pendingText="Saving..." size="sm" value="verified">Verify payment</SubmitButton>
                   </div>
                 </form>
-              ) : <Link className={buttonClassName({ variant: "secondary", size: "sm", className: "w-fit" })} href={`/staff/engagements/${payment.workflowId}`}>Open engagement<ArrowRight aria-hidden="true" className="h-4 w-4" /></Link>}
+              ) : <Link className={buttonClassName({ variant: "secondary", size: "sm", className: "w-fit" })} href={`/staff/engagements/${payment.workflowId}?tab=finance`}>Open finance<ArrowRight aria-hidden="true" className="h-4 w-4" /></Link>}
             </div>
           ))}
         </div>
