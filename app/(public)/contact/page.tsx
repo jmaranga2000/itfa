@@ -32,13 +32,15 @@ export default async function ContactPage({
           </div>
 
           {params?.sent ? (
-            <div className="ifta-badge-success mt-5 flex items-center gap-2 rounded-md border px-3 py-3 text-sm font-semibold">
+            <div role="status" className="ifta-badge-success mt-5 flex items-center gap-2 rounded-md border px-3 py-3 text-sm font-semibold">
               <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
-              Your message has been recorded.
+              Your message has been recorded. We will be in touch soon.
             </div>
           ) : null}
           {params?.error ? (
-            <div className="ifta-badge-danger mt-5 rounded-md border px-3 py-3 text-sm font-semibold">{params.error}</div>
+            <div role="alert" className="ifta-badge-danger mt-5 rounded-md border px-3 py-3 text-sm font-semibold text-danger">
+              {params.error}
+            </div>
           ) : null}
 
           <div className="mt-6">

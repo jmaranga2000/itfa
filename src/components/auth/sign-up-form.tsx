@@ -11,9 +11,10 @@ import { SubmitButton } from "@/components/ui/submit-button";
 export function SignUpForm() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const checklist = useMemo(() => getPasswordChecklist(password), [password]);
   const passwordsMatch = password.length > 0 && password === confirmPassword;
-  const canSubmit = isPasswordPolicySatisfied(password) && passwordsMatch;
+  const canSubmit = isPasswordPolicySatisfied(password) && passwordsMatch && acceptedTerms;
 
   return (
     <form action={signUpAction} className="grid gap-4">
@@ -78,6 +79,24 @@ export function SignUpForm() {
             {passwordsMatch ? "Passwords match." : "Passwords do not match."}
           </p>
         ) : null}
+      </div>
+      <div className="flex items-start gap-3 rounded-md border border-border bg-muted/50 p-4">
+        <input
+          checked={acceptedTerms}
+          className="mt-1 h-4 w-4 rounded border-border text-primary focus:ring-primary"
+          id="acceptedTerms"
+          name="acceptedTerms"
+          onChange={(event) => setAcceptedTerms(event.target.checked)}
+          type="checkbox"
+        />
+        <div className="text-sm leading-6 text-foreground">
+          <label htmlFor="acceptedTerms" className="font-medium">
+            I have read and understood the terms of service.
+          </label>
+          <p className="text-xs text-muted-foreground">
+            You must accept before the create account button becomes available.
+          </p>
+        </div>
       </div>
       <SubmitButton disabled={!canSubmit} pendingText="Creating account...">
         Create account

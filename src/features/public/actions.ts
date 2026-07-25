@@ -3,6 +3,10 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { writeAuditLog } from "@/features/audit/audit-service";
+import {
+  sendPublicContactEmailToAdmin,
+  sendPublicContactReceiptEmailToUser,
+} from "@/features/public/contact-email";
 
 const contactSchema = z.object({
   name: z.string().trim().min(2).max(120),
@@ -25,11 +29,20 @@ export async function submitContactAction(formData: FormData) {
     redirect("/contact?error=Please%20complete%20the%20required%20fields.");
   }
 
+  const [adminDelivery, userDelivery] = await Promise.all([
+    sendPublicContactEmailToAdmin(parsed.data),
+    sendPublicContactReceiptEmailToUser(parsed.data),
+  ]);
+
   await writeAuditLog({
     action: "public.contact_submitted",
     resourceType: "ContactLead",
     newValues: parsed.data,
-    metadata: { source: "public_contact_form" },
+    metadata: {
+      source: "public_contact_form",
+      adminEmailDelivery: adminDelivery,
+      userReceiptEmailDelivery: userDelivery,
+    },
   });
 
   redirect("/contact?sent=1");
