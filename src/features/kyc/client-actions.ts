@@ -28,7 +28,7 @@ async function requireClientKycUser() {
   }
 
   if (!principal.roleKeys.includes("client") && !principal.roleKeys.includes("client_representative")) {
-    redirect("/client");
+    redirect("/access-blocked");
   }
 
   if (!(await getClientKycAccess(principal.id))) {
@@ -108,7 +108,12 @@ export async function submitClientKycForReviewAction() {
   }
 
   if (result.reason === "submitted") {
-    await notifyKycSubmitted(principal.id, principal);
+    try {
+      await notifyKycSubmitted(principal.id, principal);
+    } catch (error) {
+      // The KYC record is already safely submitted; a notification failure must not undo it.
+      console.error("Unable to send KYC review notifications.", error);
+    }
   }
 
   redirect(`/client/kyc?submitted=1${result.documentsMissing ? "&documents=missing" : ""}`);

@@ -198,7 +198,7 @@ export async function notifyKycSubmitted(clientUserId: string, actor: Principal)
     status: "active",
   }).select("_id").lean().exec();
   administrators.forEach((administrator) => recipients.add(administrator._id.toString()));
-  await Promise.all([...recipients].map((recipientUserId) => createCommunicationNotification({
+  await Promise.allSettled([...recipients].map((recipientUserId) => createCommunicationNotification({
     recipientUserId,
     type: "task_assigned",
     title: "KYC submitted for review",
