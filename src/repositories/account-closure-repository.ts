@@ -117,6 +117,8 @@ export async function updateAccountClosureRequestStatus(
     reviewedAt: new Date(),
   };
 
+  
+
   if (status === "completed") {
     update.completedAt = new Date();
   }

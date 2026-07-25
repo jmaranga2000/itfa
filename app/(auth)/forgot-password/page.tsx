@@ -27,7 +27,11 @@ export default async function ForgotPasswordPage({
         ) : null}
         {params.error ? (
           <div className="rounded-md border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-800">
-            {params.error === "expired-link" ? "That reset link has expired. Request a new one below." : "Enter a valid email address."}
+            {params.error === "expired-link"
+              ? "That reset link has expired. Request a new one below."
+              : params.error === "rate-limited"
+                ? "Too many reset requests were made. Please wait before trying again."
+                : "Enter a valid email address."}
           </div>
         ) : null}
         <form action={requestPasswordResetAction} className="grid gap-4">

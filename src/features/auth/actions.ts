@@ -10,6 +10,11 @@ import { hashPassword, verifyPassword } from "@/features/auth/password";
 import { requestPasswordReset, resetPasswordWithToken } from "@/features/auth/password-reset";
 import { createAndSendVerificationEmail } from "@/features/auth/email-verification";
 import {
+  clearSignInRateLimit,
+  enforceAuthRateLimit,
+  getRateLimitMessage,
+} from "@/features/auth/rate-limit";
+import {
   getPasswordPolicyMessage,
   isPasswordPolicySatisfied,
 } from "@/features/auth/password-policy";
@@ -107,6 +112,16 @@ export async function signInAction(formData: FormData) {
     authErrorRedirect("/sign-in", "Enter a valid email address and password.");
   }
 
+  const signInRateLimit = await enforceAuthRateLimit(
+    "sign-in",
+    await headers(),
+    parsed.data.email,
+  );
+
+  if (!signInRateLimit.allowed) {
+    authErrorRedirect("/sign-in", getRateLimitMessage(signInRateLimit.retryAfterSeconds));
+  }
+
   const user = await findUserByEmailForAuth(parsed.data.email);
   const validPassword =
     user?.passwordHash && (await verifyPassword(parsed.data.password, user.passwordHash));
@@ -114,6 +129,8 @@ export async function signInAction(formData: FormData) {
   if (!user || !validPassword) {
     authErrorRedirect("/sign-in", "The email or password is incorrect.");
   }
+
+  await clearSignInRateLimit(user.email);
 
   if (user.status && user.status !== "active") {
     authErrorRedirect("/sign-in", "This account is not currently active.");
@@ -162,6 +179,16 @@ export async function signUpAction(formData: FormData) {
   }
 
   const registrationEmail = parsed.data.email.toLowerCase();
+
+  const signUpRateLimit = await enforceAuthRateLimit(
+    "sign-up",
+    await headers(),
+    registrationEmail,
+  );
+
+  if (!signUpRateLimit.allowed) {
+    authErrorRedirect("/sign-up", getRateLimitMessage(signUpRateLimit.retryAfterSeconds));
+  }
 
   if (!isPasswordPolicySatisfied(parsed.data.password)) {
     authErrorRedirect("/sign-up", `Password must include ${getPasswordPolicyMessage()}.`);
@@ -214,6 +241,16 @@ export async function resendVerificationEmailAction(formData: FormData) {
     redirect("/verify-email/sent?error=invalid-email");
   }
 
+  const resendRateLimit = await enforceAuthRateLimit(
+    "verification-resend",
+    await headers(),
+    parsed.data.email,
+  );
+
+  if (!resendRateLimit.allowed) {
+    redirect(`/verify-email/sent?error=rate-limited&email=${encodeURIComponent(parsed.data.email)}`);
+  }
+
   const user = await findUserByEmailForAuth(parsed.data.email);
 
   if (!user) {
@@ -245,6 +282,16 @@ export async function requestPasswordResetAction(formData: FormData) {
 
   if (!parsed.success) {
     redirect("/forgot-password?error=invalid-email");
+  }
+
+  const passwordResetRateLimit = await enforceAuthRateLimit(
+    "password-reset",
+    await headers(),
+    parsed.data.email,
+  );
+
+  if (!passwordResetRateLimit.allowed) {
+    redirect("/forgot-password?error=rate-limited");
   }
 
   await requestPasswordReset(parsed.data.email);

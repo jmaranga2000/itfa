@@ -3,6 +3,11 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import type { AppRole } from "@/features/authorization/roles";
 import { verifyPassword } from "@/features/auth/password";
+import {
+  clearSignInRateLimit,
+  enforceAuthRateLimit,
+  getRateLimitMessage,
+} from "@/features/auth/rate-limit";
 
 const signInSchema = z.object({
   email: z.string().trim().email(),
@@ -89,6 +94,12 @@ export async function POST(request: Request) {
     return authErrorRedirect(request, "Enter a valid email address and password.");
   }
 
+  const rateLimit = await enforceAuthRateLimit("sign-in", request.headers, parsed.data.email);
+
+  if (!rateLimit.allowed) {
+    return authErrorRedirect(request, getRateLimitMessage(rateLimit.retryAfterSeconds));
+  }
+
   const userRepository = await import("@/repositories/user-repository");
   const user = await userRepository.findUserByEmailForAuth(parsed.data.email);
   const validPassword =
@@ -96,6 +107,12 @@ export async function POST(request: Request) {
 
   if (!user || !validPassword) {
     return authErrorRedirect(request, "The email or password is incorrect.");
+  }
+
+  await clearSignInRateLimit(user.email);
+
+  if (user.status && user.status !== "active") {
+    return authErrorRedirect(request, "This account is not currently active.");
   }
 
   if (!user.emailVerifiedAt) {

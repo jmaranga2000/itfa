@@ -43,7 +43,9 @@ export default async function VerifyEmailSentPage({
 
         {params?.error ? (
           <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-800">
-            The verification link is missing, expired, or already used. Request a fresh link below.
+            {params.error === "rate-limited"
+              ? "Too many verification emails were requested. Please wait before trying again."
+              : "The verification link is missing, expired, or already used. Request a fresh link below."}
           </div>
         ) : null}
 

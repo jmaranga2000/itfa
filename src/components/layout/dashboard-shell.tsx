@@ -380,8 +380,8 @@ export function DashboardShell({
 
   return (
     <div className="dashboard-shell bg-background text-foreground" style={shellStyle}>
-      <aside className="dashboard-sidebar hidden h-screen border-r transition-[width] duration-200 lg:block">
-        <div className="flex h-screen min-w-0 flex-col">
+      <aside className="dashboard-sidebar hidden border-r transition-[width] duration-200 lg:sticky lg:top-0 lg:block lg:h-dvh">
+        <div className="flex h-dvh min-w-0 flex-col">
           <div className="border-b border-white/10 p-4">
             {collapsed ? (
               <button
