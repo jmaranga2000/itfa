@@ -368,7 +368,7 @@ export async function createEngagementTask(input: {
   dueDate: Date;
 }) {
   const workflow = await getWorkflowForPrincipal(input.principal, input.workflowId);
-  if (!workflow || workflow.status !== "active" || !isConsultant(workflow, input.principal)) return false;
+  if (!workflow || workflow.status !== "active" || !isAdministrator(input.principal)) return false;
   const assignee = workflow.team.find((member) => member.userId === input.assignedUserId);
   if (!assignee || !Types.ObjectId.isValid(input.principal.id)) return false;
   const key = `task-${randomUUID()}`;

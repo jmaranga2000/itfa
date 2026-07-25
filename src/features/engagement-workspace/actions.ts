@@ -15,6 +15,7 @@ import {
   updateEngagementTask,
 } from "@/repositories/engagement-workspace-repository";
 
+import { getWorkflowForPrincipal } from "@/repositories/workflow-repository";
 const MAX_FILE_SIZE = 20 * 1024 * 1024;
 const allowedTypes = new Set([
   "application/pdf",
@@ -60,6 +61,17 @@ export async function updateEngagementTaskAction(formData: FormData) {
   const updated = await updateEngagementTask({ principal, workflowId, taskKey, status: parsed.data });
   if (!updated) redirect(`${back}?tab=tasks&error=task-access`);
   refresh(workflowId);
+  if (parsed.data === "in_progress") {
+    if (taskKey === "initial_review") {
+      const workflow = await getWorkflowForPrincipal(principal, workflowId, true);
+      if (workflow?.clientUserId) {
+        const clientPath = back.startsWith("/staff/") ? "/staff/clients" : "/admin/clients";
+        redirect(`${clientPath}/${encodeURIComponent(workflow.clientUserId)}?engagement=${workflowId}&task=${taskKey}`);
+      }
+    }
+    if (taskKey === "draft_deliverable") redirect(`${back}?tab=documents&kind=draft_deliverable#document-upload`);
+    if (taskKey === "final_deliverable") redirect(`${back}?tab=documents&kind=final_deliverable#document-upload`);
+  }
   redirect(`${back}?tab=tasks&saved=task`);
 }
 

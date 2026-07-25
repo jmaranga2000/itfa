@@ -4,6 +4,7 @@ import { connectToDatabase } from "@/lib/db/mongoose";
 import { ClientDocumentModel } from "@/models/client-document";
 import { ClientPaymentModel } from "@/models/client-payment";
 import { WorkflowInstanceModel } from "@/models/workflow-instance";
+import { UserModel } from "@/models/user";
 import { createCommunicationNotification } from "@/repositories/communication-repository";
 import {
   listArchivedWorkflowsForPrincipal,
@@ -140,6 +141,8 @@ export async function getClientDocumentFile(principal: Principal, documentId: st
   if (!Types.ObjectId.isValid(principal.id) || !Types.ObjectId.isValid(documentId)) return null;
   const document = await ClientDocumentModel.findOne({ _id: documentId, clientUserId: principal.id }).lean().exec();
   if (!document) return null;
+  if (document.documentKind === "technical_evidence") return null;
+  if (document.documentKind === "draft_deliverable" && !["approved", "final"].includes(document.status)) return null;
   const legacyReleased = document.documentKind === "final_deliverable"
     && !document.deliverableStatus
     && document.status === "final";
@@ -188,22 +191,83 @@ export async function recordClientDeliverableReview(input: {
   if (!clientAction || !workflowDocument) return false;
 
   const now = new Date();
-  clientAction.status = input.decision === "approved" ? "completed" : "changes_requested";
-  workflowDocument.status = input.decision === "approved" ? "approved" : "replacement_requested";
+  const approved = input.decision === "approved";
+  clientAction.status = approved ? "completed" : "changes_requested";
+  clientAction.response = input.feedback;
+  clientAction.respondedAt = now;
+  workflowDocument.status = approved ? "approved" : "replacement_requested";
+  workflowDocument.visibility = approved ? "all" : "staff";
   workflowDocument.clientFeedback = input.feedback;
-  document.status = input.decision === "approved" ? "approved" : "replacement_requested";
+  document.status = approved ? "approved" : "replacement_requested";
   document.clientResponse = input.feedback;
-  workflow.nextAction = input.decision === "approved"
-    ? "Client review complete. Advance the engagement to invoicing."
-    : "Prepare and release a revised draft for client review.";
+
+  const draftTask = workflow.tasks.find((task) => task.key === "draft_deliverable");
+  if (draftTask && !approved) {
+    draftTask.status = "in_progress";
+    draftTask.completedAt = null;
+    draftTask.completedByUserId = null;
+    draftTask.completionNotes = input.feedback;
+  }
+  const activeStage = workflow.stages.find((stage) => stage.key === "active_work");
+  const clientStage = workflow.stages.find((stage) => stage.key === "client_review");
+  if (activeStage) {
+    activeStage.status = "in_progress";
+    activeStage.completedAt = null;
+  }
+  if (clientStage) {
+    clientStage.status = approved ? "completed" : "waiting_for_staff";
+    clientStage.completedAt = approved ? now : null;
+  }
+
+  if (approved) {
+    const consultant = workflow.team.find((member) => member.role === "consultant" && member.userId);
+    if (!workflow.tasks.some((task) => task.key === "final_deliverable")) {
+      workflow.tasks.push({
+        key: "final_deliverable",
+        stageKey: "active_work",
+        title: "Prepare final deliverable",
+        description: "Prepare the final client-ready deliverable from the approved draft and submit it for controlled release.",
+        assignedUserId: consultant?.userId ?? workflow.responsibleUserId,
+        assignedUserName: consultant?.name ?? workflow.responsibleUserName,
+        assignedRole: "consultant",
+        priority: "high",
+        status: "ready",
+        startDate: null,
+        completedAt: null,
+        completedByUserId: null,
+        dueDate: new Date(now.getTime() + 3 * 86_400_000),
+        dependencies: ["draft_deliverable"],
+        checklist: [
+          { label: "Apply approved client feedback", completed: false },
+          { label: "Complete final quality check", completed: false },
+          { label: "Submit final deliverable for release", completed: false },
+        ],
+        requiredDocuments: ["Final deliverable"],
+        clientVisible: false,
+        clientActionRequired: false,
+        internalNotes: "",
+        completionNotes: "",
+        createdByUserId: null,
+        reviewHistory: [],
+        approvalRequired: true,
+        blockerReason: null,
+      });
+    }
+    workflow.currentStageKey = "active_work";
+    workflow.nextAction = "Prepare the final deliverable for controlled release to the client.";
+  } else {
+    workflow.currentStageKey = "active_work";
+    workflow.nextAction = "Revise the draft using the client's feedback and submit a replacement.";
+  }
+
   const feedbackMilestone = workflow.milestones.find((milestone) => milestone.key === "client_feedback_received");
   if (feedbackMilestone) {
-    feedbackMilestone.status = "completed";
+    feedbackMilestone.status = approved ? "completed" : "blocked";
     feedbackMilestone.date = now;
   }
   workflow.activity.push({
     type: "message_received",
-    title: input.decision === "approved" ? "Client approved the draft deliverable" : "Client requested deliverable changes",
+    title: approved ? "Client approved the draft deliverable" : "Client requested deliverable changes",
     actorName: input.principal.displayName ?? input.principal.email,
     actorUserId: new Types.ObjectId(input.principal.id),
     description: input.feedback,
@@ -214,23 +278,29 @@ export async function recordClientDeliverableReview(input: {
   workflow.lastActivityAt = now;
   await Promise.all([workflow.save(), document.save()]);
 
-  const recipient = workflow.responsibleUserId
-    ?? workflow.team.find((member) => ["lead_consultant", "engagement_manager"].includes(member.role))?.userId;
-  if (recipient) {
-    await createCommunicationNotification({
-      recipientUserId: recipient.toString(),
-      type: "engagement_update",
-      title: input.decision === "approved" ? "Client approved the draft" : "Client requested changes",
-      description: `${workflow.clientName} responded to ${document.name}: ${input.feedback}`,
-      relatedModule: "engagements",
-      relatedRecordId: workflow._id.toString(),
-      actionUrl: `/staff/engagements/${workflow._id.toString()}`,
-      createdByUserId: input.principal.id,
-    });
-  }
+  const administrators = await UserModel.find({
+    status: "active",
+    archivedAt: null,
+    roleKeys: { $in: ["admin", "super_admin"] },
+  }).select("_id").lean().exec();
+  const administratorIds = administrators.map((administrator) => administrator._id.toString());
+  const staffIds = [workflow.responsibleUserId?.toString(), ...workflow.team.map((member) => member.userId?.toString())]
+    .filter((userId): userId is string => Boolean(userId));
+  const recipients = [...new Set([...administratorIds, ...staffIds])];
+  await Promise.allSettled(recipients.map((recipientUserId) => createCommunicationNotification({
+    recipientUserId,
+    type: approved ? "engagement_update" : "action_required",
+    title: approved ? "Client approved the draft" : "Client requested changes",
+    description: `${workflow.clientName} responded to ${document.name}: ${input.feedback}`,
+    relatedModule: "engagements",
+    relatedRecordId: workflow._id.toString(),
+    actionUrl: administratorIds.includes(recipientUserId)
+      ? `/admin/active-engagements/${workflow._id.toString()}?tab=${approved ? "tasks" : "documents"}`
+      : `/staff/engagements/${workflow._id.toString()}?tab=${approved ? "tasks" : "documents"}`,
+    createdByUserId: input.principal.id,
+  })));
   return true;
 }
-
 export async function getClientInvoices(principal: Principal): Promise<ClientInvoiceRecord[]> {
   const workflows = await listWorkflowsForPrincipal(principal);
   return workflows.map((workflow) => ({

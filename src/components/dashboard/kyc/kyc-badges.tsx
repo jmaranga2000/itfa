@@ -126,10 +126,10 @@ export function KycProgressBar({
           : "bg-primary";
 
   return (
-    <div className="grid gap-1">
-      <div className="flex items-center justify-between gap-3 text-xs">
-        <span className="font-semibold text-muted-foreground">{label}</span>
-        <span className="font-mono font-semibold text-foreground">
+    <div className="grid min-w-0 gap-1">
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2 text-xs">
+        <span className="min-w-0 break-words font-semibold leading-5 text-muted-foreground">{label}</span>
+        <span className="whitespace-nowrap font-mono font-semibold leading-5 text-foreground">
           {value}/{total} ({percent}%)
         </span>
       </div>

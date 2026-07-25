@@ -239,8 +239,12 @@ export async function reviewClientDeliverableAction(formData: FormData) {
   const documentId = String(formData.get("documentId") ?? "");
   const decisionValue = String(formData.get("decision") ?? "");
   const feedback = String(formData.get("feedback") ?? "").trim().slice(0, 2000);
+  const requestedReturnPath = String(formData.get("returnPath") ?? "");
+  const engagementPath = `/client/engagements/${workflowId}`;
+  const back = requestedReturnPath === engagementPath ? engagementPath : "/client/documents";
+  const errorPath = back === engagementPath ? `${back}?tab=documents&error=client-review` : `${back}?error=client-review`;
   if (!Types.ObjectId.isValid(workflowId) || !Types.ObjectId.isValid(documentId) || !["approved", "changes_requested"].includes(decisionValue) || !feedback) {
-    redirect("/client/documents?error=client-review");
+    redirect(errorPath);
   }
   const updated = await recordClientDeliverableReview({
     principal,
@@ -253,6 +257,10 @@ export async function reviewClientDeliverableAction(formData: FormData) {
   revalidatePath("/staff/engagements");
   revalidatePath(`/staff/engagements/${workflowId}`);
   revalidatePath("/admin/active-engagements");
+  revalidatePath(`/admin/active-engagements/${workflowId}`);
   revalidatePath(`/admin/workflows/${workflowId}`);
-  redirect(`/client/documents?${updated ? `reviewed=${decisionValue}` : "error=client-review"}`);
+  revalidatePath(engagementPath);
+  redirect(updated
+    ? back === engagementPath ? `${back}?tab=documents&reviewed=${decisionValue}` : `${back}?reviewed=${decisionValue}`
+    : errorPath);
 }

@@ -226,6 +226,17 @@ export async function canStaffAccessKycSubmission(submissionId: string, staffUse
   const submission = await ClientKycSubmissionModel.findById(submissionObjectId).select("userId assignedReviewerUserId").lean().exec();
   if (!submission) return false;
   if (submission.assignedReviewerUserId?.toString() === staffUserId) return true;
+  const assignedEngagement = await WorkflowInstanceModel.exists({
+    clientUserId: submission.userId,
+    status: { $in: ["active", "on_hold", "completed"] },
+    archivedAt: null,
+    $or: [
+      { responsibleUserId: new Types.ObjectId(staffUserId) },
+      { "team.userId": new Types.ObjectId(staffUserId) },
+      { "tasks.assignedUserId": new Types.ObjectId(staffUserId) },
+    ],
+  });
+  if (assignedEngagement) return true;
   const requestIds = await EngagementRequestModel.find({
     clientUserId: submission.userId,
     kycUnlockedAt: { $ne: null },

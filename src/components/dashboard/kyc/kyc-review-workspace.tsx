@@ -97,7 +97,7 @@ export function KycReviewWorkspace({
   const returnPath = `${basePath}/${submission.id}`;
 
   return (
-    <div className="grid gap-5">
+    <div className="grid min-w-0 gap-5">
       {approved ? (
         <div className="flex items-start gap-3 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-900">
           <CheckCircle2 aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0" />
@@ -126,81 +126,89 @@ export function KycReviewWorkspace({
           KYC could not be approved. Confirm that the questionnaire is submitted and the request is assigned.
         </div>
       ) : null}
-      <section className="sticky top-16 z-20 rounded-md border border-border bg-card p-5 shadow-sm">
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge tone="teal">{submission.reference}</Badge>
-              <KycStatusBadge status={submission.status} />
-              <KycRiskBadge risk={submission.riskLevel} />
-              {submission.seniorReviewRequired ? <Badge tone="purple">Senior Review</Badge> : null}
-              {submission.overdue ? <Badge tone="red">Overdue</Badge> : null}
-            </div>
-            <h1 className="mt-3 text-2xl font-bold tracking-normal text-foreground">
-              {submission.clientName}
-            </h1>
-            <p className="mt-2 max-w-4xl text-sm leading-6 text-muted-foreground">
-              {getKycClientTypeLabel(submission.clientType)} | {submission.engagementReference} |
-              {submission.service}
-            </p>
-            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <section className="min-w-0 overflow-hidden rounded-md border border-border bg-card shadow-sm">
+        <div className="min-w-0 p-5">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone="teal">{submission.reference}</Badge>
+            <KycStatusBadge status={submission.status} />
+            <KycRiskBadge risk={submission.riskLevel} />
+            {submission.seniorReviewRequired ? <Badge tone="purple">Senior Review</Badge> : null}
+            {submission.overdue ? <Badge tone="red">Overdue</Badge> : null}
+          </div>
+          <h1 className="mt-3 break-words text-2xl font-bold tracking-normal text-foreground">
+            {submission.clientName}
+          </h1>
+          <div className="mt-2 flex min-w-0 flex-wrap gap-x-3 gap-y-1 text-sm leading-6 text-muted-foreground">
+            <span>{getKycClientTypeLabel(submission.clientType)}</span>
+            <span className="break-all sm:break-normal">{submission.engagementReference}</span>
+            <span className="min-w-0 break-words">{submission.service}</span>
+          </div>
+
+          <div className="mt-5 grid min-w-0 gap-3 sm:grid-cols-2 2xl:grid-cols-4">
+            <div className="min-w-0 rounded-md border border-border px-3 py-3">
               <KycProgressBar
                 label="Submission Progress"
                 total={submission.completion.total}
                 value={submission.completion.submitted}
               />
+            </div>
+            <div className="min-w-0 rounded-md border border-border px-3 py-3">
               <KycProgressBar
                 label="Review Progress"
                 tone={submission.status === "approved" ? "green" : "gold"}
                 total={submission.completion.total}
                 value={submission.completion.approved}
               />
-              <div className="rounded-md border border-border px-3 py-2">
-                <p className="text-xs font-semibold text-muted-foreground">Assigned reviewer</p>
-                <p className="mt-1 text-sm font-semibold text-foreground">
-                  {submission.assignedReviewer}
-                </p>
-              </div>
-              <div className="rounded-md border border-border px-3 py-2">
-                <p className="text-xs font-semibold text-muted-foreground">Review due</p>
-                <p className="mt-1 text-sm font-semibold text-foreground">
-                  {dateLabel(submission.reviewDueAt)} | {submission.slaStatus}
-                </p>
-              </div>
+            </div>
+            <div className="min-w-0 rounded-md border border-border px-3 py-3">
+              <p className="text-xs font-semibold text-muted-foreground">Assigned reviewer</p>
+              <p className="mt-1 break-words text-sm font-semibold leading-5 text-foreground">
+                {submission.assignedReviewer}
+              </p>
+            </div>
+            <div className="min-w-0 rounded-md border border-border px-3 py-3">
+              <p className="text-xs font-semibold text-muted-foreground">Review due</p>
+              <p className="mt-1 text-sm font-semibold leading-5 text-foreground">
+                {dateLabel(submission.reviewDueAt)}
+              </p>
+              <p className="mt-1 break-words text-xs font-medium text-muted-foreground">
+                {submission.slaStatus}
+              </p>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2 xl:justify-end">
-            <Link className={buttonClassName({ variant: "secondary" })} href={basePath}>
-              Back to KYC
+        </div>
+
+        <div className="flex min-w-0 flex-wrap items-center gap-2 border-t border-border bg-muted/20 px-5 py-4">
+          <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={basePath}>
+            Back to KYC
+          </Link>
+          {portal === "admin" ? (
+            <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={`/admin/kyc/reviewers?submissionId=${encodeURIComponent(submission.id)}`}>
+              <UserPlus aria-hidden="true" className="h-4 w-4" />
+              Assign Reviewer
             </Link>
-            {portal === "admin" ? (
-              <Link className={buttonClassName({ variant: "secondary" })} href={`/admin/kyc/reviewers?submissionId=${encodeURIComponent(submission.id)}`}>
-                <UserPlus aria-hidden="true" className="h-4 w-4" />
-                Assign Reviewer
-              </Link>
-            ) : null}
-            <Link className={buttonClassName({ variant: "secondary" })} href={portalHref(submission.clientHref, portal)}>
-              View Client
-            </Link>
-            <Link className={buttonClassName({ variant: "secondary" })} href={portalHref(submission.engagementHref, portal)}>
-              View Engagement
-            </Link>
-            {submission.status === "approved" ? (
-              <span className="inline-flex h-10 items-center gap-2 rounded-md bg-emerald-100 px-4 text-sm font-semibold text-emerald-800">
+          ) : null}
+          <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={portalHref(submission.clientHref, portal)}>
+            View Client
+          </Link>
+          <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={portalHref(submission.engagementHref, portal)}>
+            View Engagement
+          </Link>
+          {submission.status === "approved" ? (
+            <span className="inline-flex h-9 items-center gap-2 rounded-md bg-emerald-100 px-3 text-sm font-semibold text-emerald-800">
+              <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
+              Approved
+            </span>
+          ) : (
+            <form action={approveClientKycSubmissionAction}>
+              <input name="submissionId" type="hidden" value={submission.id} />
+              <input name="returnPath" type="hidden" value={returnPath} />
+              <SubmitButton className="h-9 px-3" disabled={!submission.canProceed} pendingText="Approving KYC...">
                 <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
-                Approved
-              </span>
-            ) : (
-              <form action={approveClientKycSubmissionAction}>
-                <input name="submissionId" type="hidden" value={submission.id} />
-                <input name="returnPath" type="hidden" value={returnPath} />
-                <SubmitButton disabled={!submission.canProceed} pendingText="Approving KYC...">
-                  <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
-                  Approve KYC
-                </SubmitButton>
-              </form>
-            )}
-          </div>
+                Approve KYC
+              </SubmitButton>
+            </form>
+          )}
         </div>
       </section>
 
@@ -221,8 +229,8 @@ export function KycReviewWorkspace({
         </section>
       ) : null}
 
-      <section className="grid gap-5 lg:grid-cols-[310px_minmax(0,1fr)_340px]">
-        <aside className="grid content-start gap-4 lg:sticky lg:top-52">
+      <section className="grid min-w-0 gap-5 2xl:grid-cols-[280px_minmax(0,1fr)_320px]">
+        <aside className="grid min-w-0 content-start gap-4 2xl:sticky 2xl:top-24">
           <Card>
             <CardHeader>
               <CardTitle>Requirement checklist</CardTitle>
@@ -260,7 +268,7 @@ export function KycReviewWorkspace({
           </Card>
         </aside>
 
-        <main className="grid gap-5">
+        <main className="grid min-w-0 gap-5">
           <Card>
             <CardHeader>
               <CardTitle>Questionnaire answers</CardTitle>
@@ -422,7 +430,7 @@ export function KycReviewWorkspace({
           </Card>
         </main>
 
-        <aside className="grid content-start gap-5 xl:sticky xl:top-52">
+        <aside className="grid min-w-0 content-start gap-5 2xl:sticky 2xl:top-24">
           <Card>
             <CardHeader>
               <CardTitle>Review controls</CardTitle>

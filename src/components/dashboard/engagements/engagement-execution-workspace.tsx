@@ -34,7 +34,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { Textarea } from "@/components/ui/textarea";
-import { uploadClientDocumentAction } from "@/features/client/document-actions";
+import { reviewClientDeliverableAction, uploadClientDocumentAction } from "@/features/client/document-actions";
 import {
   addEngagementDocumentCommentAction,
   archiveCompletedEngagementAction,
@@ -115,9 +115,13 @@ function MobileSection({ title, children }: { title: string; children: React.Rea
   );
 }
 
-function taskNextAction(status: string) {
+function taskNextAction(status: string, approvalRequired: boolean) {
   if (["not_started", "ready"].includes(status)) return { label: "Start task", status: "in_progress" };
-  if (status === "in_progress") return { label: "Submit for review", status: "waiting_for_approval" };
+  if (status === "in_progress") {
+    return approvalRequired
+      ? { label: "Submit for review", status: "waiting_for_approval" }
+      : { label: "Complete task", status: "completed" };
+  }
   if (status === "blocked") return { label: "Resume task", status: "in_progress" };
   return null;
 }
@@ -158,7 +162,7 @@ export function EngagementExecutionWorkspace({
   data: EngagementExecutionData;
   portal: "admin" | "staff" | "client";
   principal: { id: string; roleKeys: AppRole[] };
-  query: { error?: string; saved?: string; missing?: string; team?: string; note?: string; replace?: string; transitionError?: string; transitioned?: string };
+  query: { error?: string; saved?: string; missing?: string; team?: string; note?: string; replace?: string; kind?: string; reviewed?: string; transitionError?: string; transitioned?: string };
   teamCandidates?: EngagementTeamCandidate[];
 }) {
   const { workflow } = data;
@@ -206,6 +210,13 @@ export function EngagementExecutionWorkspace({
   const outstandingActions = workflow.clientActions.filter((action) => !["approved", "completed"].includes(action.status));
   const pendingDocumentReviews = workingDocuments.filter((document) => document.status === "pending_review");
   const documentsNeedingReplacement = workingDocuments.filter((document) => document.status === "replacement_requested");
+  const clientReviewAction = workflow.clientActions.find((action) => action.key === "review_deliverable");
+  const clientApprovedDraft = clientReviewAction?.status === "completed";
+  const requestedDocumentKind = !consultant
+    ? "technical_evidence"
+    : query.kind === "final_deliverable" && clientApprovedDraft
+      ? "final_deliverable"
+      : query.kind === "technical_evidence" ? "technical_evidence" : "draft_deliverable";
   const teamReady = ["consultant", "reviewer", "finance_officer"].every((role) =>
     workflow.team.some((member) => member.role === role && member.userId),
   );
@@ -287,18 +298,22 @@ export function EngagementExecutionWorkspace({
             {headerMetrics.map(([label, value]) => <div className="min-w-0 rounded-md border border-border bg-background px-4 py-3" key={label}><p className="text-xs font-medium text-muted-foreground">{label}</p><p className="mt-1 break-words text-lg font-bold text-foreground">{value}</p></div>)}
           </div>
         </CardHeader>
-        <nav aria-label="Engagement workspace" className="flex min-w-0 gap-1 overflow-x-auto p-2">
-          {visibleTabs.map((tab) => {
-            const complete = sectionState[tab.key].complete;
-            const Icon = complete ? CheckCircle2 : tab.icon;
-            return <Link className={`${buttonClassName({ variant: activeTab === tab.key ? "primary" : "ghost", size: "sm" })} whitespace-nowrap`} href={`${basePath}?tab=${tab.key}`} key={tab.key}><Icon aria-hidden="true" className={`h-4 w-4 ${complete && activeTab !== tab.key ? "text-success" : ""}`} />{tab.label}{complete ? <span className="sr-only"> complete</span> : null}</Link>;
-          })}
-        </nav>
       </Card>
+      <nav
+        aria-label="Engagement workspace"
+        className="sticky top-[101px] z-40 flex min-w-0 gap-1 overflow-x-auto rounded-md border border-border bg-card/95 p-2 shadow-sm backdrop-blur-md xl:top-[68px]"
+      >
+        {visibleTabs.map((tab) => {
+          const complete = sectionState[tab.key].complete;
+          const Icon = complete ? CheckCircle2 : tab.icon;
+          return <Link className={`${buttonClassName({ variant: activeTab === tab.key ? "primary" : "ghost", size: "sm" })} whitespace-nowrap`} href={`${basePath}?tab=${tab.key}`} key={tab.key}><Icon aria-hidden="true" className={`h-4 w-4 ${complete && activeTab !== tab.key ? "text-success" : ""}`} />{tab.label}{complete ? <span className="sr-only"> complete</span> : null}</Link>;
+        })}
+      </nav>
 
       {query.saved ? <p className="rounded-md border border-success/30 bg-success-soft px-4 py-3 text-sm font-semibold text-success">Saved successfully. The engagement workspace and relevant notifications were updated.</p> : null}
       {query.error ? <ActionErrorPopup message="Check the information and your assigned role, then try again. Your existing engagement data has not been changed." /> : null}
       {query.team === "saved" ? <p className="rounded-md border border-success/30 bg-success-soft px-4 py-3 text-sm font-semibold text-success">The complete engagement team was saved and notified.</p> : null}
+      {query.reviewed ? <p className="rounded-md border border-success/30 bg-success-soft px-4 py-3 text-sm font-semibold text-success">Your deliverable decision was saved and the engagement team was notified.</p> : null}
       {query.transitioned === "1" ? <p className="rounded-md border border-success/30 bg-success-soft px-4 py-3 text-sm font-semibold text-success">The engagement moved to the next process stage.</p> : null}
       {query.transitionError ? <p className="rounded-md border border-danger/30 bg-danger-soft px-4 py-3 text-sm font-semibold text-danger">The process stage could not advance: {query.transitionError}</p> : null}
 
@@ -354,14 +369,89 @@ export function EngagementExecutionWorkspace({
               <CardHeader><CardTitle>Engagement tasks</CardTitle><CardDescription>Work moves from To Do to In Progress, Waiting Review, and Completed.</CardDescription></CardHeader>
               <CardContent className="grid gap-3">
                 {workflow.tasks.map((task) => {
-                  const action = taskNextAction(task.status);
-                  const canUpdate = editable && (isAdmin || task.assignedUserId === principal.id) && action;
-                  return <article className="rounded-md border border-border p-4" key={task.key}><div className="flex flex-col justify-between gap-3 md:flex-row md:items-start"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="font-semibold text-foreground">{task.title}</h3><Badge tone={statusTone(task.status)}>{statusLabel(task.status)}</Badge><Badge tone={task.priority === "critical" || task.priority === "high" ? "red" : "slate"}>{statusLabel(task.priority)}</Badge></div><p className="mt-2 text-sm leading-6 text-muted-foreground">{task.description}</p><div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground"><span>Assigned: {task.assignedUserName || statusLabel(task.assignedRole)}</span><span>Due: {dateLabel(task.dueDate)}</span></div></div>{canUpdate ? <form action={updateEngagementTaskAction}><input name="workflowId" type="hidden" value={workflow.id} /><input name="taskKey" type="hidden" value={task.key} /><input name="status" type="hidden" value={action.status} /><input name="returnPath" type="hidden" value={basePath} /><SubmitButton pendingText="Updating..." size="sm" variant="secondary">{action.label}<ArrowRight className="h-4 w-4" /></SubmitButton></form> : null}</div>{task.reviewHistory.length > 0 ? <div className="mt-3 grid gap-2 border-t border-border pt-3">{task.reviewHistory.map((review, index) => <p className="text-sm text-muted-foreground" key={`${review.reviewedAt}-${index}`}><strong className="text-foreground">{statusLabel(review.decision)}</strong> by {review.reviewerName}: {review.comments}</p>)}</div> : null}{reviewer && editable && task.status === "waiting_for_approval" ? <form action={reviewEngagementTaskAction} className="mt-4 grid gap-3 rounded-md bg-muted/25 p-3"><input name="workflowId" type="hidden" value={workflow.id} /><input name="taskKey" type="hidden" value={task.key} /><input name="returnPath" type="hidden" value={basePath} /><div className="grid gap-2 sm:grid-cols-[12rem_minmax(0,1fr)]"><Select name="decision"><option value="approved">Approve</option><option value="changes_requested">Request changes</option></Select><Textarea className="min-h-20" name="comments" placeholder="Record the review decision and comments..." required /></div><SubmitButton className="justify-self-end" pendingText="Saving review..." size="sm"><ShieldCheck className="h-4 w-4" />Save review decision</SubmitButton></form> : null}</article>;
-                })}
-                {workflow.tasks.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">No tasks have been created for this engagement.</p> : null}
+                  const action = taskNextAction(task.status, task.approvalRequired);
+                  const assignedTask = editable && (isAdmin || task.assignedUserId === principal.id);
+                  const blockedDependencies = task.dependencies.filter((dependencyKey) => {
+                    const dependency = workflow.tasks.find((candidate) => candidate.key === dependencyKey);
+                    return dependency && dependency.status !== "completed";
+                  });
+                  const documentControlledTask = ["draft_deliverable", "final_deliverable"].includes(task.key);
+                  const guidedHref = task.key === "initial_review" && workflow.clientUserId && portal === "staff"
+                    ? `/staff/clients/${encodeURIComponent(workflow.clientUserId)}?engagement=${workflow.id}&task=${task.key}`
+                    : task.key === "draft_deliverable"
+                      ? `${basePath}?tab=documents&kind=draft_deliverable#document-upload`
+                      : task.key === "final_deliverable"
+                        ? `${basePath}?tab=documents&kind=final_deliverable#document-upload`
+                        : null;
+                  const showGuidedLink = assignedTask && task.status === "in_progress" && guidedHref;
+                  const canUpdate = assignedTask && action && blockedDependencies.length === 0 && !showGuidedLink;
+                  const reviewHref = task.key === "draft_deliverable"
+                    ? `${basePath}?tab=documents`
+                    : `${basePath}?tab=deliverables`;
+
+                  return (
+                    <article className="rounded-md border border-border p-4" key={task.key}>
+                      <div className="flex flex-col justify-between gap-3 md:flex-row md:items-start">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="font-semibold text-foreground">{task.title}</h3>
+                            <Badge tone={statusTone(task.status)}>{statusLabel(task.status)}</Badge>
+                            <Badge tone={task.priority === "critical" || task.priority === "high" ? "red" : "slate"}>{statusLabel(task.priority)}</Badge>
+                          </div>
+                          <p className="mt-2 text-sm leading-6 text-muted-foreground">{task.description}</p>
+                          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                            <span>Assigned: {task.assignedUserName || statusLabel(task.assignedRole)}</span>
+                            <span>Due: {dateLabel(task.dueDate)}</span>
+                          </div>
+                          {blockedDependencies.length > 0 ? (
+                            <p className="mt-3 rounded-md border border-warning/30 bg-warning-soft px-3 py-2 text-sm text-foreground">
+                              Complete {blockedDependencies.map((dependency) => statusLabel(dependency.replaceAll("_", " "))).join(", ")} first.
+                            </p>
+                          ) : null}
+                        </div>
+                        {showGuidedLink ? (
+                          <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={guidedHref}>
+                            {task.key === "initial_review" ? "Review client details" : task.key === "final_deliverable" ? "Prepare final deliverable" : "Prepare draft"}
+                            <ArrowRight className="h-4 w-4" />
+                          </Link>
+                        ) : canUpdate ? (
+                          <form action={updateEngagementTaskAction}>
+                            <input name="workflowId" type="hidden" value={workflow.id} />
+                            <input name="taskKey" type="hidden" value={task.key} />
+                            <input name="status" type="hidden" value={action.status} />
+                            <input name="returnPath" type="hidden" value={basePath} />
+                            <SubmitButton pendingText="Updating..." size="sm" variant="secondary">{action.label}<ArrowRight className="h-4 w-4" /></SubmitButton>
+                          </form>
+                        ) : documentControlledTask && task.status === "waiting_for_approval" ? (
+                          <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={reviewHref}>
+                            Open document review
+                            <ArrowRight className="h-4 w-4" />
+                          </Link>
+                        ) : null}
+                      </div>
+                      {task.reviewHistory.length > 0 ? (
+                        <div className="mt-3 grid gap-2 border-t border-border pt-3">
+                          {task.reviewHistory.map((review, index) => <p className="text-sm text-muted-foreground" key={`${review.reviewedAt}-${index}`}><strong className="text-foreground">{statusLabel(review.decision)}</strong> by {review.reviewerName}: {review.comments}</p>)}
+                        </div>
+                      ) : null}
+                      {reviewer && editable && task.status === "waiting_for_approval" && !documentControlledTask ? (
+                        <form action={reviewEngagementTaskAction} className="mt-4 grid gap-3 rounded-md bg-muted/25 p-3">
+                          <input name="workflowId" type="hidden" value={workflow.id} />
+                          <input name="taskKey" type="hidden" value={task.key} />
+                          <input name="returnPath" type="hidden" value={basePath} />
+                          <div className="grid gap-2 sm:grid-cols-[12rem_minmax(0,1fr)]">
+                            <Select name="decision"><option value="approved">Approve</option><option value="changes_requested">Request changes</option></Select>
+                            <Textarea className="min-h-20" name="comments" placeholder="Record the review decision and comments..." required />
+                          </div>
+                          <SubmitButton className="justify-self-end" pendingText="Saving review..." size="sm"><ShieldCheck className="h-4 w-4" />Save review decision</SubmitButton>
+                        </form>
+                      ) : null}
+                    </article>
+                  );
+                })}                {workflow.tasks.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">No tasks have been created for this engagement.</p> : null}
               </CardContent>
             </Card>
-            {consultant && editable ? <Card className="h-fit shadow-none"><CardHeader><CardTitle>Create task</CardTitle><CardDescription>Assign a clear piece of work to one team member.</CardDescription></CardHeader><CardContent><form action={createEngagementTaskAction} className="grid gap-3"><input name="workflowId" type="hidden" value={workflow.id} /><input name="returnPath" type="hidden" value={basePath} /><div className="grid gap-2"><Label htmlFor="task-title">Task title</Label><Input id="task-title" name="title" required /></div><div className="grid gap-2"><Label htmlFor="task-description">Description</Label><Textarea id="task-description" name="description" required /></div><div className="grid gap-2"><Label htmlFor="task-assignee">Assigned staff</Label><Select id="task-assignee" name="assignedUserId" required><option value="">Select staff</option>{workflow.team.filter((member) => member.userId).map((member) => <option key={`${member.userId}-${member.role}`} value={member.userId ?? ""}>{member.name} - {statusLabel(member.role)}</option>)}</Select></div><div className="grid grid-cols-2 gap-3"><div className="grid gap-2"><Label htmlFor="task-priority">Priority</Label><Select id="task-priority" name="priority"><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option><option value="low">Low</option></Select></div><div className="grid gap-2"><Label htmlFor="task-due">Due date</Label><Input id="task-due" name="dueDate" required type="date" /></div></div><SubmitButton pendingText="Creating task..."><Plus className="h-4 w-4" />Create task</SubmitButton></form></CardContent></Card> : null}
+            {isAdmin && editable ? <Card className="h-fit shadow-none"><CardHeader><CardTitle>Create task</CardTitle><CardDescription>Assign a clear piece of work to one team member.</CardDescription></CardHeader><CardContent><form action={createEngagementTaskAction} className="grid gap-3"><input name="workflowId" type="hidden" value={workflow.id} /><input name="returnPath" type="hidden" value={basePath} /><div className="grid gap-2"><Label htmlFor="task-title">Task title</Label><Input id="task-title" name="title" required /></div><div className="grid gap-2"><Label htmlFor="task-description">Description</Label><Textarea id="task-description" name="description" required /></div><div className="grid gap-2"><Label htmlFor="task-assignee">Assigned staff</Label><Select id="task-assignee" name="assignedUserId" required><option value="">Select staff</option>{workflow.team.filter((member) => member.userId).map((member) => <option key={`${member.userId}-${member.role}`} value={member.userId ?? ""}>{member.name} - {statusLabel(member.role)}</option>)}</Select></div><div className="grid grid-cols-2 gap-3"><div className="grid gap-2"><Label htmlFor="task-priority">Priority</Label><Select id="task-priority" name="priority"><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option><option value="low">Low</option></Select></div><div className="grid gap-2"><Label htmlFor="task-due">Due date</Label><Input id="task-due" name="dueDate" required type="date" /></div></div><SubmitButton pendingText="Creating task..."><Plus className="h-4 w-4" />Create task</SubmitButton></form></CardContent></Card> : null}
           </div>
         </MobileSection>
       ) : null}
@@ -398,6 +488,20 @@ export function EngagementExecutionWorkspace({
                         </form>
                       ) : null}
 
+                      {isClient && document.documentKind === "draft_deliverable" && document.status === "approved" && clientReviewAction && clientReviewAction.status !== "completed" ? (
+                        <form action={reviewClientDeliverableAction} className="mt-4 grid gap-3 rounded-md border border-primary/25 bg-primary/5 p-4">
+                          <input name="workflowId" type="hidden" value={workflow.id} />
+                          <input name="documentId" type="hidden" value={document.id} />
+                          <input name="returnPath" type="hidden" value={basePath} />
+                          <div>
+                            <p className="font-semibold text-foreground">Review this draft</p>
+                            <p className="mt-1 text-sm leading-6 text-muted-foreground">Approve it to allow the team to prepare the final deliverable, or return it with clear revision notes.</p>
+                          </div>
+                          <Select aria-label="Draft review decision" name="decision"><option value="approved">Approve draft</option><option value="changes_requested">Request changes</option></Select>
+                          <Textarea className="min-h-24" name="feedback" placeholder="Add your approval note or explain what should be improved..." required />
+                          <SubmitButton className="justify-self-end" pendingText="Saving decision..." size="sm"><ShieldCheck className="h-4 w-4" />Send decision</SubmitButton>
+                        </form>
+                      ) : null}
                       {document.comments.length > 0 ? <div className="mt-3 grid gap-2 border-t border-border pt-3">{document.comments.map((comment, index) => <p className="text-sm text-muted-foreground" key={`${comment.createdAt}-${index}`}><strong className="text-foreground">{comment.authorName}</strong>: {comment.body}</p>)}</div> : null}
                       {editable ? <form action={addEngagementDocumentCommentAction} className="mt-3 flex flex-col gap-2 sm:flex-row"><input name="workflowId" type="hidden" value={workflow.id} /><input name="documentId" type="hidden" value={document.id} /><input name="returnPath" type="hidden" value={basePath} /><Input aria-label={`Comment on ${document.name}`} name="body" placeholder="Add a document comment..." required /><SubmitButton pendingText="Adding..." size="sm" variant="secondary">Add comment</SubmitButton></form> : null}
                     </article>
@@ -413,7 +517,7 @@ export function EngagementExecutionWorkspace({
                   {!isClient ? <ol className="grid gap-2 text-xs text-muted-foreground"><li className="flex gap-2"><span className="font-semibold text-primary">1.</span><span>Drafts and evidence enter Pending review.</span></li><li className="flex gap-2"><span className="font-semibold text-primary">2.</span><span>The assigned reviewer approves the file or requests a replacement.</span></li><li className="flex gap-2"><span className="font-semibold text-primary">3.</span><span>Final outputs move to Deliverables and are released separately.</span></li></ol> : null}
                   <form action={isClient ? uploadClientDocumentAction : uploadEngagementDocumentAction} className="grid gap-3 border-t border-border pt-4" encType="multipart/form-data">
                     <input name="workflowId" type="hidden" value={workflow.id} /><input name="returnPath" type="hidden" value={basePath} />
-                    {!isClient ? <><div className="grid gap-2"><Label htmlFor="document-title">Document title</Label><Input id="document-title" name="title" placeholder="Corporate tax review - draft" required /></div><div className="grid gap-2"><Label htmlFor="document-kind">Document type</Label><Select id="document-kind" name="documentKind"><option value="draft_deliverable">Draft report or deliverable</option><option value="technical_evidence">Working paper or technical evidence</option><option value="final_deliverable">Final deliverable for release</option></Select></div></> : null}
+                    {!isClient ? <><div className="grid gap-2"><Label htmlFor="document-title">Document title</Label><Input id="document-title" name="title" placeholder="Corporate tax review - draft" required /></div><div className="grid gap-2"><Label htmlFor="document-kind">Document type</Label><Select defaultValue={requestedDocumentKind} id="document-kind" name="documentKind">{consultant ? <option value="draft_deliverable">Draft report or deliverable</option> : null}<option value="technical_evidence">Working paper or technical evidence</option>{consultant ? <option disabled={!clientApprovedDraft} value="final_deliverable">Final deliverable{clientApprovedDraft ? "" : " - available after client approval"}</option> : null}</Select></div></> : null}
                     {isClient ? (
                       query.replace ? <><input name="replacesDocumentId" type="hidden" value={query.replace} /><p className="rounded-md border border-warning/30 bg-warning-soft p-3 text-sm text-foreground">This file will replace the version returned by your reviewer.</p></> : null
                     ) : (

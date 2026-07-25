@@ -81,6 +81,16 @@ function isAdmin(principal: Principal) {
   return principal.roleKeys.some((role) => role === "admin" || role === "super_admin");
 }
 
+async function activeAdministratorIds(excludeUserId?: string) {
+  const administrators = await UserModel.find({
+    status: "active",
+    archivedAt: null,
+    roleKeys: { $in: ["admin", "super_admin"] },
+  }).select("_id").lean().exec();
+  return administrators.map((administrator) => administrator._id.toString())
+    .filter((userId) => userId !== excludeUserId);
+}
+
 async function writableWorkflow(principal: Principal, workflowId: string) {
   if (principal.readOnly || isClient(principal)) return null;
   const workflow = await getWorkflowForPrincipal(principal, workflowId);
@@ -142,7 +152,12 @@ export async function listEngagementDocumentsForPrincipal(principal: Principal, 
     .sort({ uploadedAt: -1 })
     .lean()
     .exec() as RawEngagementDocument[];
-  const clientVisibleDocumentIds = new Set(workflow.documents.map((document) => document.documentId));
+  const clientVisibleDocumentIds = new Set(workflow.documents
+    .filter((document) => document.visibility === "client" || document.visibility === "all")
+    .map((document) => document.documentId));
+  const assignedStaff = workflow.responsibleUserId === principal.id
+    || workflow.team.some((member) => member.userId === principal.id)
+    || workflow.tasks.some((task) => task.assignedUserId === principal.id);
   const visibleRecords = isClient(principal)
     ? records.filter((record) => {
         const uploadedByClient = record.uploadedByUserId.toString() === principal.id;
@@ -154,7 +169,7 @@ export async function listEngagementDocumentsForPrincipal(principal: Principal, 
           || record.documentKind === "signed_engagement_letter"
           || clientVisibleDocumentIds.has(record._id.toString());
       })
-    : records;
+    : isAdmin(principal) || assignedStaff ? records : [];
   const uploaderIds = [...new Set(visibleRecords.map((record) => record.uploadedByUserId.toString()))];
   const uploaders = uploaderIds.length > 0
     ? await UserModel.find({ _id: { $in: uploaderIds } }).select("firstName lastName email").lean().exec()
@@ -209,7 +224,14 @@ export async function updateEngagementTask(input: {
   const canManageAny = isAdmin(input.principal) || assignedManager;
   if (task.assignedUserId && task.assignedUserId !== input.principal.id && !canManageAny) return false;
   if (input.status === "waiting_for_approval" && task.status !== "in_progress") return false;
-  if (input.status === "completed" && task.approvalRequired) return false;
+  if (input.status === "completed" && (task.approvalRequired || task.status !== "in_progress")) return false;
+  if (input.status === "in_progress") {
+    const incompleteDependencies = task.dependencies.filter((dependencyKey) => {
+      const dependency = workflow.tasks.find((candidate) => candidate.key === dependencyKey);
+      return dependency && dependency.status !== "completed";
+    });
+    if (incompleteDependencies.length > 0) return false;
+  }
   const now = new Date();
   const set: Record<string, unknown> = {
     "tasks.$[task].status": input.status,
@@ -248,19 +270,21 @@ export async function updateEngagementTask(input: {
     { arrayFilters: [{ "task.key": input.taskKey }] },
   ).exec();
   if (result.matchedCount > 0 && input.status === "waiting_for_approval") {
-    const reviewer = workflow.team.find((member) => member.role === "reviewer");
-    if (reviewer?.userId) {
-      await createCommunicationNotification({
-        recipientUserId: reviewer.userId,
-        type: "action_required",
-        title: "Work submitted for review",
-        description: `${task.title} in ${workflow.reference} is ready for your decision.`,
-        relatedModule: "engagements",
-        relatedRecordId: workflow.id,
-        actionUrl: `/staff/engagements/${workflow.id}?tab=tasks`,
-        createdByUserId: input.principal.id,
-      });
-    }
+    const reviewer = workflow.team.find((member) => member.role === "reviewer")?.userId;
+    const administratorIds = await activeAdministratorIds(input.principal.id);
+    const recipients = [...new Set([reviewer, ...administratorIds].filter((userId): userId is string => Boolean(userId) && userId !== input.principal.id))];
+    await Promise.allSettled(recipients.map((recipientUserId) => createCommunicationNotification({
+      recipientUserId,
+      type: "action_required",
+      title: "Work submitted for review",
+      description: `${task.title} in ${workflow.reference} is ready for your decision.`,
+      relatedModule: "engagements",
+      relatedRecordId: workflow.id,
+      actionUrl: administratorIds.includes(recipientUserId)
+        ? `/admin/active-engagements/${workflow.id}?tab=tasks`
+        : `/staff/engagements/${workflow.id}?tab=tasks`,
+      createdByUserId: input.principal.id,
+    })));
   }
   return result.matchedCount > 0;
 }
@@ -277,8 +301,25 @@ export async function createEngagementDocument(input: {
 }) {
   const workflow = await writableWorkflow(input.principal, input.workflowId);
   if (!workflow?.clientUserId || !Types.ObjectId.isValid(input.principal.id)) return null;
-  const [settings] = await Promise.all([getPlatformSettings(), connectToDatabase()]);
+  const isDraft = input.documentKind === "draft_deliverable";
   const isDeliverable = input.documentKind === "final_deliverable";
+  const controlledTaskKey = isDraft ? "draft_deliverable" : isDeliverable ? "final_deliverable" : null;
+  const controlledTask = controlledTaskKey ? workflow.tasks.find((task) => task.key === controlledTaskKey) : null;
+  const assignedPreparer = isAdmin(input.principal)
+    || workflow.responsibleUserId === input.principal.id
+    || controlledTask?.assignedUserId === input.principal.id
+    || workflow.team.some((member) => member.role === "consultant" && member.userId === input.principal.id);
+  if ((isDraft || isDeliverable) && !assignedPreparer) return null;
+  if (controlledTask) {
+    const prerequisitesComplete = controlledTask.dependencies.every((dependencyKey) => {
+      const dependency = workflow.tasks.find((task) => task.key === dependencyKey);
+      return !dependency || dependency.status === "completed";
+    });
+    if (!prerequisitesComplete || controlledTask.status !== "in_progress") return null;
+  }
+  const clientDraftApproved = workflow.clientActions.some((action) => action.key === "review_deliverable" && action.status === "completed");
+  if (isDeliverable && !clientDraftApproved) return null;
+  const [settings] = await Promise.all([getPlatformSettings(), connectToDatabase()]);
   const deliverableStatus: DeliverableStatus = isDeliverable
     ? settings.engagement.requireDeliverableApproval
       ? "pending_review"
@@ -306,6 +347,18 @@ export async function createEngagementDocument(input: {
     uploadedByUserId: input.principal.id,
   });
   const now = new Date();
+  const taskStatus = isDeliverable && deliverableStatus === "approved" ? "completed" : "waiting_for_approval";
+  const workflowSet: Record<string, unknown> = { lastActivityAt: now };
+  if (controlledTaskKey) {
+    workflowSet["tasks.$[task].status"] = taskStatus;
+    workflowSet["tasks.$[task].completionNotes"] = `${input.name} uploaded for controlled review.`;
+    workflowSet.currentStageName = taskStatus === "completed" ? "Final Deliverable" : "Internal Review";
+    workflowSet.nextAction = taskStatus === "completed" ? "Release the final deliverable to the client" : `Review ${input.name}`;
+    if (taskStatus === "completed") {
+      workflowSet["tasks.$[task].completedAt"] = now;
+      workflowSet["tasks.$[task].completedByUserId"] = new Types.ObjectId(input.principal.id);
+    }
+  }
   await WorkflowInstanceModel.updateOne(
     { _id: workflow.id },
     {
@@ -320,7 +373,7 @@ export async function createEngagementDocument(input: {
         },
         activity: {
           type: "document_uploaded",
-          title: isDeliverable ? "Final deliverable submitted" : "Engagement document uploaded",
+          title: isDraft ? "Draft deliverable submitted" : isDeliverable ? "Final deliverable submitted" : "Engagement document uploaded",
           actorName: input.principal.email,
           actorUserId: new Types.ObjectId(input.principal.id),
           description: input.name,
@@ -329,37 +382,28 @@ export async function createEngagementDocument(input: {
           createdAt: now,
         },
       },
-      $set: { lastActivityAt: now },
+      $set: workflowSet,
     },
+    controlledTaskKey ? { arrayFilters: [{ "task.key": controlledTaskKey }] } : undefined,
   ).exec();
-  if (isDeliverable && deliverableStatus === "pending_review") {
-    const reviewer = workflow.team.find((member) => member.role === "reviewer");
-    if (reviewer?.userId) {
-      await createCommunicationNotification({
-        recipientUserId: reviewer.userId,
-        type: "action_required",
-        title: "Deliverable submitted for review",
-        description: `${input.name} is ready for review in ${workflow.reference}.`,
-        relatedModule: "engagements",
-        relatedRecordId: workflow.id,
-        actionUrl: `/staff/engagements/${workflow.id}?tab=deliverables`,
-        createdByUserId: input.principal.id,
-      });
-    }
-  } else if (!isDeliverable) {
-    const reviewer = workflow.team.find((member) => member.role === "reviewer");
-    if (reviewer?.userId) {
-      await createCommunicationNotification({
-        recipientUserId: reviewer.userId,
-        type: "document_uploaded",
-        title: "Engagement document uploaded",
-        description: `${input.name} is ready for review in ${workflow.reference}.`,
-        relatedModule: "engagements",
-        relatedRecordId: workflow.id,
-        actionUrl: `/staff/engagements/${workflow.id}?tab=documents`,
-        createdByUserId: input.principal.id,
-      });
-    }
+  if (status === "pending_review") {
+    const reviewer = workflow.team.find((member) => member.role === "reviewer")?.userId;
+    const administratorIds = await activeAdministratorIds(input.principal.id);
+    const recipients = [...new Set([reviewer, ...administratorIds].filter((userId): userId is string => Boolean(userId) && userId !== input.principal.id))];
+    const tab = isDeliverable ? "deliverables" : "documents";
+    const title = isDraft ? "Draft deliverable submitted for review" : isDeliverable ? "Final deliverable submitted for review" : "Engagement document uploaded";
+    await Promise.allSettled(recipients.map((recipientUserId) => createCommunicationNotification({
+      recipientUserId,
+      type: isDraft || isDeliverable ? "action_required" : "document_uploaded",
+      title,
+      description: `${input.name} is ready for review in ${workflow.reference}.`,
+      relatedModule: "engagements",
+      relatedRecordId: workflow.id,
+      actionUrl: administratorIds.includes(recipientUserId)
+        ? `/admin/active-engagements/${workflow.id}?tab=${tab}`
+        : `/staff/engagements/${workflow.id}?tab=${tab}`,
+      createdByUserId: input.principal.id,
+    })));
   }
   if (replaced) {
     await Promise.all([
@@ -433,6 +477,26 @@ export async function reviewEngagementDeliverable(input: {
     ).exec(),
   ]);
 
+  if (workflow.tasks.some((task) => task.key === "final_deliverable")) {
+    await WorkflowInstanceModel.updateOne(
+      { _id: workflow.id },
+      {
+        $set: {
+          "tasks.$[task].status": approved ? "waiting_for_approval" : "in_progress",
+          "tasks.$[task].completionNotes": input.comments,
+          nextAction: approved ? "Release the approved final deliverable to the client" : `Revise ${stored.name} and upload a replacement`,
+        },
+        $push: { "tasks.$[task].reviewHistory": {
+          decision: input.decision,
+          comments: input.comments,
+          reviewerUserId: new Types.ObjectId(input.principal.id),
+          reviewerName: input.principal.displayName || input.principal.email,
+          reviewedAt: now,
+        } },
+      },
+      { arrayFilters: [{ "task.key": "final_deliverable" }] },
+    ).exec();
+  }
   const preparerIds = [stored.uploadedByUserId.toString(), ...workflow.team
     .filter((member) => member.role === "consultant")
     .map((member) => member.userId)
@@ -510,6 +574,28 @@ export async function releaseEngagementDeliverable(input: {
       { arrayFilters: [{ "document.documentId": input.documentId }] },
     ).exec(),
   ]);
+  const finalTaskIndex = workflow.tasks.findIndex((task) => task.key === "final_deliverable");
+  const activeStageIndex = workflow.stages.findIndex((stage) => stage.key === "active_work");
+  const financeStageIndex = workflow.stages.findIndex((stage) => stage.key === "finance");
+  const progressionSet: Record<string, unknown> = {
+    currentStageKey: financeStageIndex >= 0 ? "finance" : workflow.currentStageKey,
+    currentStageName: financeStageIndex >= 0 ? "Invoice Completion" : "Final Deliverable Released",
+    nextAction: financeStageIndex >= 0 ? "Finance officer to prepare and issue the engagement invoice" : "Continue the engagement workflow",
+  };
+  if (finalTaskIndex >= 0) Object.assign(progressionSet, {
+    [`tasks.${finalTaskIndex}.status`]: "completed",
+    [`tasks.${finalTaskIndex}.completedAt`]: now,
+    [`tasks.${finalTaskIndex}.completedByUserId`]: new Types.ObjectId(input.principal.id),
+  });
+  if (activeStageIndex >= 0) Object.assign(progressionSet, {
+    [`stages.${activeStageIndex}.status`]: "completed",
+    [`stages.${activeStageIndex}.completedAt`]: now,
+  });
+  if (financeStageIndex >= 0) Object.assign(progressionSet, {
+    [`stages.${financeStageIndex}.status`]: "in_progress",
+    [`stages.${financeStageIndex}.enteredAt`]: workflow.stages[financeStageIndex].enteredAt ?? now,
+  });
+  await WorkflowInstanceModel.updateOne({ _id: workflow.id }, { $set: progressionSet }).exec();
   await notifyClientOfReleasedDocument({
     actor: input.principal,
     clientUserId: workflow.clientUserId,
@@ -573,75 +659,157 @@ export async function recordEngagementTechnicalReview(input: {
   if (!allowed) return false;
   const stored = await ClientDocumentModel.findOne({ _id: input.documentId, workflowId: input.workflowId }).lean().exec() as RawEngagementDocument | null;
   if (!stored) return false;
-  const status = input.decision === "approved" ? "approved" : "replacement_requested";
-  const visibility = input.decision === "approved" && stored.documentKind === "draft_deliverable" ? "all" : "staff";
+
+  const approved = input.decision === "approved";
+  const isDraft = stored.documentKind === "draft_deliverable";
+  const status = approved ? "approved" : "replacement_requested";
+  const visibility = approved && isDraft ? "all" : "staff";
   const now = new Date();
   const approvalIndex = workflow.approvals.findIndex((approval) => approval.key === "technical-review");
-  const update: Record<string, unknown> = {
-    $set: {
-      "documents.$[document].status": status,
-      "documents.$[document].visibility": visibility,
-      "documents.$[document].reviewerComments": input.comments,
-      lastActivityAt: now,
-    },
-    $push: { activity: {
+  const draftTaskIndex = workflow.tasks.findIndex((task) => task.key === "draft_deliverable");
+  const activeStageIndex = workflow.stages.findIndex((stage) => stage.key === "active_work");
+  const clientStageIndex = workflow.stages.findIndex((stage) => stage.key === "client_review");
+  const clientReviewIndex = workflow.clientActions.findIndex((action) => action.key === "review_deliverable");
+  const set: Record<string, unknown> = {
+    "documents.$[document].status": status,
+    "documents.$[document].visibility": visibility,
+    "documents.$[document].reviewerComments": input.comments,
+    lastActivityAt: now,
+  };
+  const push: Record<string, unknown> = {
+    activity: {
       type: "approval_decision",
-      title: input.decision === "approved" ? "Technical review approved" : "Technical changes requested",
-      actorName: input.principal.email,
+      title: approved ? "Technical review approved" : "Technical changes requested",
+      actorName: input.principal.displayName || input.principal.email,
       actorUserId: new Types.ObjectId(input.principal.id),
       description: `${stored.name}: ${input.comments}`,
       relatedResource: input.documentId,
-      clientVisible: input.decision === "approved" && stored.documentKind === "draft_deliverable",
+      clientVisible: approved && isDraft,
       createdAt: now,
-    } },
+    },
   };
+
   if (approvalIndex >= 0) {
-    Object.assign((update.$set as Record<string, unknown>), {
+    Object.assign(set, {
       [`approvals.${approvalIndex}.status`]: input.decision,
       [`approvals.${approvalIndex}.approverUserId`]: new Types.ObjectId(input.principal.id),
-      [`approvals.${approvalIndex}.approverName`]: input.principal.email,
+      [`approvals.${approvalIndex}.approverName`]: input.principal.displayName || input.principal.email,
       [`approvals.${approvalIndex}.approvalDate`]: now,
       [`approvals.${approvalIndex}.decision`]: input.decision,
       [`approvals.${approvalIndex}.comments`]: input.comments,
     });
   } else {
-    (update.$push as Record<string, unknown>).approvals = {
+    push.approvals = {
       key: "technical-review",
       title: "Technical review",
       stageKey: workflow.currentStageKey,
       status: input.decision,
       approverUserId: new Types.ObjectId(input.principal.id),
-      approverName: input.principal.email,
+      approverName: input.principal.displayName || input.principal.email,
       approvalDate: now,
       decision: input.decision,
       comments: input.comments,
     };
   }
-  const clientReviewIndex = workflow.clientActions.findIndex((action) => action.key === "review_deliverable");
-  if (clientReviewIndex >= 0 && input.decision === "approved" && stored.documentKind === "draft_deliverable") {
-    Object.assign((update.$set as Record<string, unknown>), {
-      [`clientActions.${clientReviewIndex}.status`]: "pending",
+
+  if (isDraft && draftTaskIndex >= 0) {
+    Object.assign(set, {
+      [`tasks.${draftTaskIndex}.status`]: approved ? "completed" : "in_progress",
+      [`tasks.${draftTaskIndex}.completionNotes`]: input.comments,
+      [`tasks.${draftTaskIndex}.completedAt`]: approved ? now : null,
+      [`tasks.${draftTaskIndex}.completedByUserId`]: approved ? new Types.ObjectId(input.principal.id) : null,
+    });
+    push[`tasks.${draftTaskIndex}.reviewHistory`] = {
+      decision: input.decision,
+      comments: input.comments,
+      reviewerUserId: new Types.ObjectId(input.principal.id),
+      reviewerName: input.principal.displayName || input.principal.email,
+      reviewedAt: now,
+    };
+  }
+
+  if (isDraft && approved) {
+    Object.assign(set, {
+      currentStageKey: "client_review",
+      currentStageName: "Client Review",
+      nextAction: "Waiting for the client to review the approved draft deliverable",
+    });
+    if (activeStageIndex >= 0) Object.assign(set, {
+      [`stages.${activeStageIndex}.status`]: "completed",
+      [`stages.${activeStageIndex}.completedAt`]: now,
+    });
+    if (clientStageIndex >= 0) Object.assign(set, {
+      [`stages.${clientStageIndex}.status`]: "waiting_for_client",
+      [`stages.${clientStageIndex}.enteredAt`]: workflow.stages[clientStageIndex].enteredAt ?? now,
+    });
+    if (clientReviewIndex >= 0) {
+      Object.assign(set, {
+        [`clientActions.${clientReviewIndex}.status`]: "pending",
+        [`clientActions.${clientReviewIndex}.response`]: "",
+        [`clientActions.${clientReviewIndex}.respondedAt`]: null,
+      });
+    } else {
+      push.clientActions = {
+        key: "review_deliverable",
+        title: "Review draft deliverable",
+        instructions: `Review ${stored.name}. Approve it to allow final preparation, or request changes with clear feedback.`,
+        dueDate: new Date(now.getTime() + 5 * 86_400_000),
+        relatedTaskKey: "draft_deliverable",
+        requiredDocumentType: null,
+        priority: "high",
+        assignedClientUserId: workflow.clientUserId,
+        status: "pending",
+        response: "",
+        respondedAt: null,
+      };
+    }
+  } else if (isDraft && !approved) {
+    Object.assign(set, {
+      currentStageKey: "active_work",
+      currentStageName: "Active Work",
+      nextAction: `Revise ${stored.name} and submit a replacement`,
     });
   }
+
   await Promise.all([
-    WorkflowInstanceModel.updateOne({ _id: workflow.id }, update, { arrayFilters: [{ "document.documentId": input.documentId }] }).exec(),
-    ClientDocumentModel.updateOne({ _id: input.documentId }, { $set: { status } }).exec(),
+    WorkflowInstanceModel.updateOne(
+      { _id: workflow.id },
+      { $set: set, $push: push },
+      { arrayFilters: [{ "document.documentId": input.documentId }] },
+    ).exec(),
+    ClientDocumentModel.updateOne(
+      { _id: input.documentId },
+      { $set: {
+        status,
+        feedback: input.comments,
+        reviewedByUserId: new Types.ObjectId(input.principal.id),
+        reviewedByName: input.principal.displayName || input.principal.email,
+        reviewedAt: now,
+      } },
+    ).exec(),
   ]);
-  if (input.decision === "approved" && stored.documentKind === "draft_deliverable") {
-    await notifyClientOfReleasedDocument({ actor: input.principal, clientUserId: stored.clientUserId.toString(), documentId: input.documentId, documentName: stored.name, reference: workflow.reference, workflowId: workflow.id, final: false });
+
+  if (approved && isDraft) {
+    await notifyClientOfReleasedDocument({
+      actor: input.principal,
+      clientUserId: stored.clientUserId.toString(),
+      documentId: input.documentId,
+      documentName: stored.name,
+      reference: workflow.reference,
+      workflowId: workflow.id,
+      final: false,
+    });
   }
   const uploaderUserId = stored.uploadedByUserId.toString();
   if (uploaderUserId !== input.principal.id) {
     await createCommunicationNotification({
       recipientUserId: uploaderUserId,
-      type: input.decision === "approved" ? "engagement_update" : "action_required",
-      title: input.decision === "approved" ? "Document approved" : "Document changes requested",
+      type: approved ? "engagement_update" : "action_required",
+      title: approved ? "Document approved" : "Document changes requested",
       description: `${stored.name}: ${input.comments}`,
       relatedModule: "engagements",
       relatedRecordId: workflow.id,
-      actionUrl: uploaderUserId === workflow.clientUserId
-        ? `/client/engagements/${workflow.id}?tab=documents`
-        : `/staff/engagements/${workflow.id}?tab=documents`,
+      actionUrl: `/staff/engagements/${workflow.id}?tab=documents`,
       createdByUserId: input.principal.id,
     });
   }
@@ -655,6 +823,17 @@ export async function getEngagementDocumentFile(principal: Principal, documentId
   if (!document?.workflowId) return null;
   const workflow = await getWorkflowForPrincipal(principal, document.workflowId.toString(), true);
   if (!workflow) return null;
+  const assignedStaff = workflow.responsibleUserId === principal.id
+    || workflow.team.some((member) => member.userId === principal.id)
+    || workflow.tasks.some((task) => task.assignedUserId === principal.id);
+  if (!isClient(principal) && !isAdmin(principal) && !assignedStaff) return null;
+  if (isClient(principal)) {
+    const workflowDocument = workflow.documents.find((record) => record.documentId === documentId);
+    const clientVisible = workflowDocument?.visibility === "client" || workflowDocument?.visibility === "all";
+    if (document.documentKind === "technical_evidence") return null;
+    if (document.documentKind === "draft_deliverable"
+      && (!clientVisible || !["approved", "final"].includes(document.status))) return null;
+  }
   const legacyReleased = document.documentKind === "final_deliverable"
     && !document.deliverableStatus
     && document.status === "final";
