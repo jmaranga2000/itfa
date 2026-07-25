@@ -11,7 +11,9 @@ import {
   updateClientProfileAction,
   uploadClientAvatarAction,
 } from "@/features/client/profile-actions";
+import { ClientAccountClosureRequest } from "@/components/dashboard/client/client-account-closure-request";
 import type { ClientProfileRecord } from "@/repositories/client-profile-repository";
+import type { AccountClosureRequestRecord } from "@/repositories/account-closure-repository";
 
 const errors: Record<string, string> = {
   profile: "Enter a valid first and last name.",
@@ -31,10 +33,18 @@ function initials(profile: ClientProfileRecord) {
 export function ClientProfile({
   error,
   profile,
+  request,
+  query,
   success,
 }: {
   error?: string;
   profile: ClientProfileRecord;
+  request: AccountClosureRequestRecord | null;
+  query?: {
+    closureRequested?: string;
+    closureRequestPending?: string;
+    closureRequestRejected?: string;
+  };
   success?: "avatar" | "saved";
 }) {
   const avatarUrl = `/api/client/avatar/${profile.id}?v=${encodeURIComponent(profile.avatarUpdatedAt ?? "none")}`;
@@ -169,6 +179,8 @@ export function ClientProfile({
               </SubmitButton>
             </div>
           </form>
+
+          <ClientAccountClosureRequest request={request} query={query ?? {}} />
         </div>
       </div>
     </AdminPageSurface>

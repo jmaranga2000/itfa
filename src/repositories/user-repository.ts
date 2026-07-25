@@ -171,6 +171,60 @@ export async function getRegisteredClientForAdmin(clientId: string) {
   return user ? serializeAdminDirectoryUser(user as RawAdminDirectoryUser) : null;
 }
 
+export type ClientAccountStatus = "active" | "invited" | "suspended" | "disabled" | "anonymised";
+
+export async function setClientAccountStatus(clientId: string, status: ClientAccountStatus) {
+  await connectToDatabase();
+  if (!Types.ObjectId.isValid(clientId)) {
+    return false;
+  }
+
+  const result = await UserModel.updateOne(
+    {
+      _id: new Types.ObjectId(clientId),
+      roleKeys: { $in: clientDirectoryRoles },
+      status: { $ne: "archived" },
+    },
+    { $set: { status, archivedAt: null } },
+  ).exec();
+
+  return result.matchedCount > 0;
+}
+
+export async function anonymiseClientAccount(clientId: string) {
+  await connectToDatabase();
+  if (!Types.ObjectId.isValid(clientId)) {
+    return false;
+  }
+
+  const anonymisedEmail = `anonymised+${clientId}@anonymised.ifta`;
+
+  const result = await UserModel.updateOne(
+    {
+      _id: new Types.ObjectId(clientId),
+      roleKeys: { $in: clientDirectoryRoles },
+      status: { $ne: "archived" },
+    },
+    {
+      $set: {
+        status: "anonymised",
+        archivedAt: null,
+        email: anonymisedEmail,
+        firstName: "Anonymised",
+        lastName: "User",
+        avatarKey: null,
+        avatarContentType: null,
+        avatarUpdatedAt: null,
+        emailVerifiedAt: null,
+        directPermissions: [],
+        roleKeys: ["client"],
+      },
+    },
+  ).exec();
+
+  return result.matchedCount > 0;
+}
+
 export async function listStaffForAdmin() {
   return listUsersForAdminDirectory({
     roleKeys: { $in: staffDirectoryRoles },

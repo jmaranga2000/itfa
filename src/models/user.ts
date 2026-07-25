@@ -15,7 +15,7 @@ const userSchema = new Schema(
     lastLoginAt: { type: Date, default: null },
     status: {
       type: String,
-      enum: ["active", "invited", "suspended", "archived"],
+      enum: ["active", "invited", "suspended", "disabled", "anonymised", "archived"],
       default: "active",
       index: true,
     },

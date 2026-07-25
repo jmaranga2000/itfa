@@ -19,12 +19,25 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { buttonClassName } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { SubmitButton } from "@/components/ui/submit-button";
 import { requirePermission } from "@/features/auth/server";
 import { ROLE_LABELS } from "@/features/authorization/roles";
 import {
   getRegisteredClientForAdmin,
   type AdminDirectoryUser,
 } from "@/repositories/user-repository";
+import { getAccountClosureRequestByClient } from "@/repositories/account-closure-repository";
+import {
+  approveAccountClosureRequestAction,
+  completeAccountClosureRequestAction,
+  disableClientAccountAction,
+  reactivateClientAccountAction,
+  rejectAccountClosureRequestAction,
+  suspendClientAccountAction,
+  anonymiseClientAccountAction,
+} from "@/features/admin/client-account-actions";
 
 function displayName(client: AdminDirectoryUser) {
   const name = `${client.firstName} ${client.lastName}`.trim();
@@ -51,6 +64,8 @@ function statusTone(status: string) {
   if (status === "active") return "green" as const;
   if (status === "invited") return "gold" as const;
   if (status === "suspended") return "red" as const;
+  if (status === "disabled") return "red" as const;
+  if (status === "anonymised") return "slate" as const;
   return "slate" as const;
 }
 
@@ -85,6 +100,7 @@ export default async function AdminClientDetailPage({
   if (!client) notFound();
 
   const clientName = displayName(client);
+  const request = await getAccountClosureRequestByClient(client.id);
   const roles = client.roleKeys.map((role) => ROLE_LABELS[role]).join(", ");
   const readiness = [
     {
@@ -311,6 +327,92 @@ export default async function AdminClientDetailPage({
                   </div>
                 </div>
               ))}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <CardTitle>Closure request</CardTitle>
+                  <CardDescription>Review the latest client closure request.</CardDescription>
+                </div>
+                {request ? (
+                  <Badge tone={
+                    request.status === "requested"
+                      ? "gold"
+                      : request.status === "approved"
+                      ? "green"
+                      : "red"
+                  }>
+                    {request.status}
+                  </Badge>
+                ) : null}
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4 p-5">
+              {request ? (
+                <div className="space-y-4">
+                  <div className="rounded-md border border-border bg-muted/20 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">{request.requestReference}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Submitted {dateLabel(request.requestedAt, true)}
+                        </p>
+                      </div>
+                      <Badge tone={
+                        request.status === "requested"
+                          ? "gold"
+                          : request.status === "approved"
+                          ? "green"
+                          : "red"
+                      }>
+                        {request.status}
+                      </Badge>
+                    </div>
+                    <div className="mt-3 text-sm text-muted-foreground">{request.reason}</div>
+                  </div>
+
+                  {request.status === "requested" ? (
+                    <div className="grid gap-3">
+                      <form action={approveAccountClosureRequestAction} className="grid gap-2">
+                        <input name="requestId" type="hidden" value={request.id} />
+                        <Label htmlFor="approveReviewNotes">Review notes</Label>
+                        <Input id="approveReviewNotes" name="reviewNotes" required />
+                        <SubmitButton pendingText="Approving..." size="sm">
+                          Approve closure
+                        </SubmitButton>
+                      </form>
+                      <form action={rejectAccountClosureRequestAction} className="grid gap-2">
+                        <input name="requestId" type="hidden" value={request.id} />
+                        <Label htmlFor="rejectReviewNotes">Review notes</Label>
+                        <Input id="rejectReviewNotes" name="reviewNotes" required />
+                        <SubmitButton pendingText="Rejecting..." size="sm" variant="secondary">
+                          Reject closure
+                        </SubmitButton>
+                      </form>
+                    </div>
+                  ) : request.status === "approved" ? (
+                    <form action={completeAccountClosureRequestAction} className="grid gap-2">
+                      <input name="requestId" type="hidden" value={request.id} />
+                      <Label htmlFor="completeReviewNotes">Completion notes</Label>
+                      <Input id="completeReviewNotes" name="reviewNotes" required />
+                      <SubmitButton pendingText="Completing..." size="sm" variant="destructive">
+                        Complete anonymisation
+                      </SubmitButton>
+                    </form>
+                  ) : (
+                    <div className="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-900">
+                      This request has been {request.status}.
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-900">
+                  No closure request has been submitted for this client.
+                </div>
+              )}
             </CardContent>
           </Card>
 
