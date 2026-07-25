@@ -112,11 +112,12 @@ export function PublicHeader() {
           <ThemeToggle />
           <Link
             aria-label="Open service cart"
-            className={buttonClassName({ size: "icon", variant: "secondary" })}
+            className={buttonClassName({ size: "sm", variant: "secondary" })}
             href="/cart"
             title="Service cart"
           >
-            <ShoppingCart aria-hidden="true" className="h-4 w-4" />
+            <ShoppingCart aria-hidden="true" className="h-5 w-5" />
+            <span>Cart</span>
           </Link>
           <AuthNavLink className={buttonClassName({ variant: "secondary", size: "sm" })} href="/sign-in">
             Sign in
@@ -161,8 +162,8 @@ export function PublicHeader() {
               <Link className={buttonClassName({ className: "col-span-2", size: "sm" })} href="/client" onClick={() => setMobileOpen(false)}>
                 Open client portal
               </Link>
-              <Link className={buttonClassName({ className: "col-span-2", size: "sm", variant: "secondary" })} href="/cart" onClick={() => setMobileOpen(false)}>
-                <ShoppingCart aria-hidden="true" className="h-4 w-4" />
+              <Link className={buttonClassName({ className: "col-span-2", size: "md", variant: "secondary" })} href="/cart" onClick={() => setMobileOpen(false)}>
+                <ShoppingCart aria-hidden="true" className="h-5 w-5" />
                 Service cart
               </Link>
             </div>
