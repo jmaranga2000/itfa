@@ -2,6 +2,10 @@ import { createHash, randomBytes } from "node:crypto";
 import { Types } from "mongoose";
 import type { Principal } from "@/features/authorization/access-control";
 import { writeAuditLog } from "@/features/audit/audit-service";
+import {
+  resolveClientJourneyRecipient,
+  sendClientJourneyEmailToUser,
+} from "@/features/engagements/client-journey-email";
 import { connectToDatabase } from "@/lib/db/mongoose";
 import { EngagementLetterModel } from "@/models/engagement-letter";
 import { EngagementRequestModel } from "@/models/engagement-request";
@@ -255,6 +259,14 @@ export async function ensureEngagementLetterForRequest(requestId: string, actor:
   ]);
   if (!request) return null;
 
+  const recipient = await resolveClientJourneyRecipient(
+    request.clientUserId.toString(),
+    request.clientName,
+  );
+  if (!recipient) return null;
+
+  request.clientEmail = recipient.email;
+
   const now = new Date();
   const serviceNames = request.items.map((item) => item.serviceTitle);
   const scopeItems = request.items.map((item) => item.serviceSummary?.trim() || item.serviceTitle);
@@ -262,8 +274,8 @@ export async function ensureEngagementLetterForRequest(requestId: string, actor:
   const currency = request.quotationCurrency || settings.engagement.defaultCurrency;
   const variables = {
     letterDate: new Intl.DateTimeFormat("en-KE", { dateStyle: "long", timeZone: settings.portal.timezone }).format(now),
-    clientName: request.clientName,
-    clientEmail: request.clientEmail,
+    clientName: recipient.name,
+    clientEmail: recipient.email,
     engagementNumber: request.reference,
     serviceName: serviceNames.join(", "),
     scopeOfWork: scopeItems.map((item, index) => `${index + 1}. ${item}`).join("\n"),
@@ -286,8 +298,8 @@ export async function ensureEngagementLetterForRequest(requestId: string, actor:
     requestId: request._id,
     requestReference: request.reference,
     clientUserId: request.clientUserId,
-    clientName: request.clientName,
-    clientEmail: request.clientEmail,
+    clientName: recipient.name,
+    clientEmail: recipient.email,
     serviceNames,
     scopeItems,
     fee,
@@ -312,8 +324,8 @@ export async function ensureEngagementLetterForRequest(requestId: string, actor:
       },
       {
         role: "client",
-        name: request.clientName,
-        email: request.clientEmail,
+        name: recipient.name,
+        email: recipient.email,
         title: "Client authorized signatory",
         required: true,
       },
@@ -423,7 +435,11 @@ export async function updateEngagementLetterDraft(input: {
   return serialize(record.toObject() as unknown as RawLetter);
 }
 
-export async function sendEngagementLetter(letterId: string, actor: Principal) {
+export async function sendEngagementLetter(
+  letterId: string,
+  actor: Principal,
+  options: { sendEmail?: boolean } = {},
+) {
   if (!Types.ObjectId.isValid(letterId)) return null;
   await connectToDatabase();
   const now = new Date();
@@ -439,16 +455,26 @@ export async function sendEngagementLetter(letterId: string, actor: Principal) {
   ).exec();
   const settings = await getPlatformSettings();
   if (settings.portal.notifyClientOnLetterReady) {
-    await createCommunicationNotification({
-      recipientUserId: record.clientUserId.toString(),
-      type: "engagement_update",
-      title: "Engagement letter ready for signature",
-      description: `${record.reference} is ready for your review and electronic signature.`,
-      relatedModule: "engagements",
-      relatedRecordId: record._id.toString(),
-      actionUrl: `/client/engagement-letters/${record._id}`,
-      createdByUserId: actor.id,
-    });
+    await Promise.allSettled([
+      createCommunicationNotification({
+        recipientUserId: record.clientUserId.toString(),
+        type: "engagement_update",
+        title: "Engagement letter ready for signature",
+        description: `${record.reference} is ready for your review and electronic signature.`,
+        relatedModule: "engagements",
+        relatedRecordId: record._id.toString(),
+        actionUrl: `/client/engagement-letters/${record._id}`,
+        createdByUserId: actor.id,
+      }),
+      ...(options.sendEmail === false ? [] : [sendClientJourneyEmailToUser({
+        clientUserId: record.clientUserId.toString(),
+        fallbackName: record.clientName,
+        title: "Engagement letter ready for signature",
+        summary: `${record.reference} is ready for your review and electronic signature.`,
+        actionLabel: "Review and sign letter",
+        actionPath: `/client/engagement-letters/${record._id}`,
+      })]),
+    ]);
   }
   await writeAuditLog({
     actor,

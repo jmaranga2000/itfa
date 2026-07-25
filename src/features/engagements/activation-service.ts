@@ -1,5 +1,5 @@
 import type { Principal } from "@/features/authorization/access-control";
-import { sendClientJourneyEmail } from "@/features/engagements/client-journey-email";
+import { sendClientJourneyEmailToUser } from "@/features/engagements/client-journey-email";
 import { UserModel } from "@/models/user";
 import { createCommunicationNotification } from "@/repositories/communication-repository";
 import {
@@ -41,9 +41,9 @@ export async function activateCompletedEngagementLetter(letterId: string, actor:
       roleKeys: { $in: ["super_admin", "admin", "engagement_manager"] },
     }).select("_id").lean().exec();
     await Promise.allSettled([
-      sendClientJourneyEmail({
-        recipientEmail: letter.clientEmail,
-        recipientName: letter.clientName,
+      sendClientJourneyEmailToUser({
+        clientUserId: letter.clientUserId,
+        fallbackName: letter.clientName,
         title: "Your IFTA engagement is now active",
         summary: `${letter.requestReference} has completed onboarding. Your engagement workspace is ready and the administrator is assigning your delivery team.`,
         actionLabel: "Open engagement",

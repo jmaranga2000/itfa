@@ -140,7 +140,7 @@ export function KycReviewCentre({ data }: { data: KycDashboardData }) {
         ))}
       </section>
 
-      <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+      <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
         <Card>
           <CardHeader>
             <CardTitle>KYC review queue</CardTitle>

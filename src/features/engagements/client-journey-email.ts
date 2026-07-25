@@ -1,5 +1,9 @@
+import { Types } from "mongoose";
 import { getServerEnv } from "@/lib/env";
+import { connectToDatabase } from "@/lib/db/mongoose";
+import { clientRecipientName } from "@/lib/client-recipient";
 import { sendPortalEmail } from "@/lib/email/smtp";
+import { UserModel } from "@/models/user";
 
 function escapeHtml(value: string) {
   return value
@@ -29,4 +33,74 @@ export async function sendClientJourneyEmail(input: {
     text: `Hello ${input.recipientName || "Client"}, ${input.summary} ${input.actionLabel}: ${actionUrl}`,
     html: `<!doctype html><html><body style="margin:0;background:#f2f7f6;color:#03363D;font-family:Arial,sans-serif;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:32px 16px;"><tr><td align="center"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#fff;border:1px solid #BDD9D7;border-radius:8px;overflow:hidden;"><tr><td style="background:#03363D;padding:26px 30px;color:#fff;"><p style="margin:0;color:#BDD9D7;font-size:12px;font-weight:700;text-transform:uppercase;">IFTA Consulting</p><h1 style="margin:10px 0 0;font-size:24px;line-height:1.35;">${title}</h1></td></tr><tr><td style="padding:30px;"><p style="margin:0 0 18px;font-size:16px;">Hello ${recipientName},</p><div style="border-left:4px solid #BDD9D7;background:#f5f9f9;padding:18px;"><p style="margin:0;font-size:15px;line-height:1.7;color:#38585c;">${summary}</p></div><p style="margin:24px 0;"><a href="${actionUrl}" style="display:inline-block;background:#03363D;color:#fff;padding:12px 18px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:700;">${escapeHtml(input.actionLabel)}</a></p><p style="margin:0;font-size:13px;line-height:1.6;color:#6b7f81;">Sign in to your secure portal to view the full update and complete any required action.</p></td></tr><tr><td style="border-top:1px solid #e3ebea;padding:18px 30px;font-size:12px;color:#718486;">This is an automated service update from IFTA Consulting.</td></tr></table></td></tr></table></body></html>`,
   });
+}
+
+export async function resolveClientJourneyRecipient(
+  clientUserId: string,
+  fallbackName = "Client",
+) {
+  if (!Types.ObjectId.isValid(clientUserId)) return null;
+
+  await connectToDatabase();
+  const client = await UserModel.findOne({
+    _id: new Types.ObjectId(clientUserId),
+    roleKeys: { $in: ["client", "client_representative"] },
+    status: "active",
+    archivedAt: null,
+  })
+    .select("email firstName lastName")
+    .lean()
+    .exec();
+
+  if (!client?.email) return null;
+
+  return {
+    email: client.email.trim().toLowerCase(),
+    name: clientRecipientName(client, fallbackName),
+  };
+}
+
+export async function sendClientJourneyEmailToUser(input: {
+  clientUserId: string;
+  fallbackName?: string;
+  title: string;
+  summary: string;
+  actionLabel: string;
+  actionPath: string;
+}) {
+  const recipient = await resolveClientJourneyRecipient(
+    input.clientUserId,
+    input.fallbackName,
+  );
+
+  if (!recipient) {
+    console.error("Client journey email was not sent because the active client account could not be resolved.", {
+      clientUserId: input.clientUserId,
+      title: input.title,
+    });
+    return {
+      delivered: false,
+      recipient: "",
+      reason: "The active client account could not be resolved.",
+    };
+  }
+
+  const delivery = await sendClientJourneyEmail({
+    recipientEmail: recipient.email,
+    recipientName: recipient.name,
+    title: input.title,
+    summary: input.summary,
+    actionLabel: input.actionLabel,
+    actionPath: input.actionPath,
+  });
+
+  if (!delivery.delivered) {
+    console.error("Client journey email delivery failed.", {
+      clientUserId: input.clientUserId,
+      title: input.title,
+      reason: delivery.reason,
+    });
+  }
+
+  return delivery;
 }

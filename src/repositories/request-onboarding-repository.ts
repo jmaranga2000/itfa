@@ -2,7 +2,7 @@ import { Types } from "mongoose";
 import type { Principal } from "@/features/authorization/access-control";
 import { assertPermission } from "@/features/authorization/access-control";
 import { writeAuditLog } from "@/features/audit/audit-service";
-import { sendClientJourneyEmail } from "@/features/engagements/client-journey-email";
+import { sendClientJourneyEmailToUser } from "@/features/engagements/client-journey-email";
 import { connectToDatabase } from "@/lib/db/mongoose";
 import { ClientKycSubmissionModel } from "@/models/client-kyc-submission";
 import { EngagementRequestModel } from "@/models/engagement-request";
@@ -29,7 +29,7 @@ async function notifyClient(input: {
   actionPath: string;
   actionLabel: string;
 }) {
-  await Promise.all([
+  await Promise.allSettled([
     createCommunicationNotification({
       recipientUserId: input.request.clientUserId.toString(),
       type: "engagement_update",
@@ -40,9 +40,9 @@ async function notifyClient(input: {
       actionUrl: input.actionPath,
       createdByUserId: input.actor.id,
     }),
-    sendClientJourneyEmail({
-      recipientEmail: input.request.clientEmail,
-      recipientName: input.request.clientName,
+    sendClientJourneyEmailToUser({
+      clientUserId: input.request.clientUserId.toString(),
+      fallbackName: input.request.clientName,
       title: input.title,
       summary: input.description,
       actionLabel: input.actionLabel,
@@ -324,7 +324,7 @@ export async function approveClientKycSubmission(submissionId: string, actor: Pr
     const prepared = await ensureEngagementLetterForRequest(request._id.toString(), actor);
     if (prepared) {
       const letter = prepared.letter.status === "draft"
-        ? await sendEngagementLetter(prepared.letter.id, actor)
+        ? await sendEngagementLetter(prepared.letter.id, actor, { sendEmail: false })
         : prepared.letter;
       if (letter) generatedLetterIds.push(letter.id);
     }
@@ -332,7 +332,7 @@ export async function approveClientKycSubmission(submissionId: string, actor: Pr
   const client = await UserModel.findById(submission.userId).select("email firstName lastName").lean().exec();
   if (client) {
     const clientName = `${client.firstName ?? ""} ${client.lastName ?? ""}`.trim() || client.email;
-    await Promise.all([
+    await Promise.allSettled([
       createCommunicationNotification({
         recipientUserId: submission.userId.toString(),
         type: "engagement_update",
@@ -343,9 +343,9 @@ export async function approveClientKycSubmission(submissionId: string, actor: Pr
         actionUrl: "/client/documents",
         createdByUserId: actor.id,
       }),
-      sendClientJourneyEmail({
-        recipientEmail: client.email,
-        recipientName: clientName,
+      sendClientJourneyEmailToUser({
+        clientUserId: submission.userId.toString(),
+        fallbackName: clientName,
         title: "KYC approved, your engagement letter is ready",
         summary: "Your KYC review is complete. Review and sign the generated engagement letter in Documents to begin the engagement.",
         actionLabel: "Review engagement letter",

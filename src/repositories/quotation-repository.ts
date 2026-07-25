@@ -238,8 +238,8 @@ export async function saveAndSendQuotation(input: {
     sendQuotationEmail({
       quotationId: record.id,
       number: record.number,
-      recipientEmail: record.clientEmail,
-      recipientName: record.clientName,
+      recipientEmail,
+      recipientName,
       currency: record.currency,
       subtotal: record.subtotal,
       taxRate: record.taxRate,

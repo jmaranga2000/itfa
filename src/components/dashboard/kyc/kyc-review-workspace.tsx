@@ -127,7 +127,7 @@ export function KycReviewWorkspace({
         </div>
       ) : null}
       <section className="sticky top-16 z-20 rounded-md border border-border bg-card p-5 shadow-sm">
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone="teal">{submission.reference}</Badge>
@@ -221,8 +221,8 @@ export function KycReviewWorkspace({
         </section>
       ) : null}
 
-      <section className="grid gap-5 xl:grid-cols-[310px_minmax(0,1fr)_340px]">
-        <aside className="grid content-start gap-4 xl:sticky xl:top-52">
+      <section className="grid gap-5 lg:grid-cols-[310px_minmax(0,1fr)_340px]">
+        <aside className="grid content-start gap-4 lg:sticky lg:top-52">
           <Card>
             <CardHeader>
               <CardTitle>Requirement checklist</CardTitle>
