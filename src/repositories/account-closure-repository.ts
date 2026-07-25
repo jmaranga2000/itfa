@@ -19,7 +19,7 @@ export type AccountClosureRequestRecord = {
   completedAt: string | null;
 };
 
-function serializeRequest(request: AccountClosureRequestDocument): AccountClosureRequestRecord {
+function serializeRequest(request: AccountClosureRequestDocument & { _id: Types.ObjectId }): AccountClosureRequestRecord {
   return {
     id: request._id.toString(),
     requestReference: request.requestReference,
