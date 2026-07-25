@@ -33,7 +33,7 @@ export function AdminNotificationForm({
           <input name="notificationId" type="hidden" value={notification.id} />
         ) : null}
 
-        <div className="grid gap-6 p-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="grid gap-6 p-5 lg:grid-cols-[minmax(0,1fr)_320px]">
           <section className="grid content-start gap-5">
             <div>
               <h2 className="text-base font-bold text-foreground">Message</h2>

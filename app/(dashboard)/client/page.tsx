@@ -83,7 +83,7 @@ export default async function ClientDashboardPage() {
         })}
       </section>
 
-      <section className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(300px,0.75fr)]">
+      <section className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(300px,0.75fr)]">
         <Card className="min-w-0">
           <CardHeader>
             <CardTitle>Engagement journey</CardTitle>

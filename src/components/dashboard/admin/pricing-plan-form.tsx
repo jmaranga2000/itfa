@@ -33,7 +33,7 @@ export function PricingPlanForm({
       {plan ? <input name="planId" type="hidden" value={plan.id} /> : null}
       {setupService ? <input name="returnToServiceId" type="hidden" value={setupService.id} /> : null}
 
-      <div className="grid gap-6 p-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid gap-6 p-5 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="grid gap-6">
           <section className="grid gap-4">
             <div>

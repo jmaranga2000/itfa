@@ -134,7 +134,7 @@ export function AdminSettings({ settings, saved, error }: {
         <form action={updatePlatformSettingsAction}>
           <input name="section" type="hidden" value="engagement" />
           <SectionHeader description="Control how engagement letters are generated, accepted and signed." icon={FileSignature} title="Engagement letters and signatures" />
-          <div className="grid gap-5 p-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="grid gap-5 p-5 lg:grid-cols-[minmax(0,1fr)_360px]">
             <div className="grid gap-4 md:grid-cols-2">
               <Field defaultValue={settings.engagement.defaultCurrency} label="Default currency" name="defaultCurrency" required />
               <Field defaultValue={settings.engagement.letterValidityDays} label="Acceptance period (days)" name="letterValidityDays" required type="number" />
@@ -169,7 +169,7 @@ export function AdminSettings({ settings, saved, error }: {
         <form action={updatePlatformSettingsAction}>
           <input name="section" type="hidden" value="portal" />
           <SectionHeader description="Set client-facing contact details and useful signature notifications." icon={Bell} title="Portal and notifications" />
-          <div className="grid gap-5 p-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="grid gap-5 p-5 lg:grid-cols-[minmax(0,1fr)_360px]">
             <div className="grid gap-4 md:grid-cols-2">
               <Field defaultValue={settings.portal.timezone} label="Timezone" name="timezone" required />
               <Field defaultValue={settings.portal.supportEmail} label="Support email" name="supportEmail" type="email" />

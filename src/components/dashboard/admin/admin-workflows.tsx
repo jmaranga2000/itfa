@@ -96,7 +96,7 @@ export function AdminWorkflows() {
         ))}
       </section>
 
-      <section className="grid gap-5 xl:grid-cols-[1fr_340px]">
+      <section className="grid gap-5 lg:grid-cols-[1fr_340px]">
         <Card>
           <CardHeader>
             <CardTitle>Workflow library</CardTitle>

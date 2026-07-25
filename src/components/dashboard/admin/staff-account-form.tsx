@@ -22,7 +22,7 @@ export function StaffAccountForm({
   return (
     <form action={action}>
       {staff ? <input name="staffId" type="hidden" value={staff.id} /> : null}
-      <div className="grid gap-6 p-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid gap-6 p-5 lg:grid-cols-[minmax(0,1fr)_320px]">
         <section className="grid content-start gap-5">
           <div>
             <h2 className="text-base font-bold text-foreground">Staff profile</h2>

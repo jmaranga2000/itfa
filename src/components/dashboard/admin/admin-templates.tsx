@@ -137,7 +137,7 @@ export function AdminTemplates() {
         </Card>
       </section>
 
-      <section className="grid gap-5 xl:grid-cols-[1fr_340px]">
+      <section className="grid gap-5 lg:grid-cols-[1fr_340px]">
         <Card>
           <CardHeader>
             <CardTitle>Templates</CardTitle>
