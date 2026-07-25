@@ -3,6 +3,8 @@ import { connectToDatabase } from "@/lib/db/mongoose";
 import { AccountClosureRequestModel, type AccountClosureRequestDocument } from "@/models/account-closure-request";
 import type { AccountClosureRequestStatus } from "@/models/account-closure-request";
 
+type AccountClosureRequestLean = AccountClosureRequestDocument & { _id: Types.ObjectId };
+
 export type AccountClosureRequestRecord = {
   id: string;
   requestReference: string;
@@ -19,7 +21,7 @@ export type AccountClosureRequestRecord = {
   completedAt: string | null;
 };
 
-function serializeRequest(request: AccountClosureRequestDocument & { _id: Types.ObjectId }): AccountClosureRequestRecord {
+function serializeRequest(request: AccountClosureRequestLean): AccountClosureRequestRecord {
   return {
     id: request._id.toString(),
     requestReference: request.requestReference,
@@ -71,7 +73,7 @@ export async function getAccountClosureRequestByClient(clientUserId: string) {
     .lean()
     .exec();
 
-  return request ? serializeRequest(request as AccountClosureRequestDocument) : null;
+  return request ? serializeRequest(request as unknown as AccountClosureRequestLean) : null;
 }
 
 export async function getAccountClosureRequestById(requestId: string) {
@@ -81,7 +83,7 @@ export async function getAccountClosureRequestById(requestId: string) {
   }
 
   const request = await AccountClosureRequestModel.findById(requestId).lean().exec();
-  return request ? serializeRequest(request as AccountClosureRequestDocument) : null;
+  return request ? serializeRequest(request as unknown as AccountClosureRequestLean) : null;
 }
 
 export async function listAccountClosureRequests() {
@@ -92,7 +94,7 @@ export async function listAccountClosureRequests() {
     .lean()
     .exec();
 
-  return requests.map((request) => serializeRequest(request as AccountClosureRequestDocument));
+  return requests.map((request) => serializeRequest(request as unknown as AccountClosureRequestLean));
 }
 
 export async function updateAccountClosureRequestStatus(
@@ -123,5 +125,5 @@ export async function updateAccountClosureRequestStatus(
     new: true,
   }).lean();
 
-  return request ? serializeRequest(request as AccountClosureRequestDocument) : null;
+  return request ? serializeRequest(request as unknown as AccountClosureRequestLean) : null;
 }

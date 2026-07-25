@@ -66,7 +66,7 @@ export function ClientProfile({
         </p>
       ) : null}
 
-      <div className="grid gap-6 p-5 xl:grid-cols-[280px_minmax(0,1fr)]">
+      <div className="grid gap-6 p-5 lg:grid-cols-[280px_minmax(0,1fr)]">
         <aside className="grid content-start gap-5 rounded-md border border-border bg-muted/20 p-5">
           <div className="grid justify-items-center gap-3 text-center">
             {profile.avatarUpdatedAt ? (

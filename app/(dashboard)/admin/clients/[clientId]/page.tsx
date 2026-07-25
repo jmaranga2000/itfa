@@ -228,7 +228,7 @@ export default async function AdminClientDetailPage({
         </div>
       </section>
 
-      <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+      <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
         <Card>
           <CardHeader className="border-b border-border">
             <CardTitle>Client profile</CardTitle>
