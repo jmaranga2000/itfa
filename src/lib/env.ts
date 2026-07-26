@@ -21,6 +21,8 @@ export const serverEnvSchema = publicEnvSchema.extend({
   R2_SECRET_ACCESS_KEY: z.string().optional(),
   R2_BUCKET_NAME: z.string().optional(),
   R2_ENDPOINT: z.string().optional(),
+  KRA_ETIMS_API_URL: z.string().url().optional(),
+  KRA_ETIMS_API_TOKEN: z.string().optional(),
   CRON_SECRET: z.string().optional(),
   ENCRYPTION_KEY: z.string().optional(),
   WEBHOOK_SIGNING_SECRET: z.string().optional(),

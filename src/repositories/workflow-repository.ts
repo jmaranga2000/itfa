@@ -601,7 +601,7 @@ function calculateProgress(rawWorkflow: Pick<
     ? 1
     : invoiceStatus === "partially_paid"
       ? 0.75
-      : ["issued", "approved"].includes(invoiceStatus)
+      : ["issued", "approved", "pending_etims_submission", "etims_accepted"].includes(invoiceStatus)
         ? 0.5
         : stageWeight;
 
@@ -746,7 +746,7 @@ function serializeWorkflow(workflow: RawWorkflowInstance, clientView = false): W
       balanceDue: workflow.financial.balanceDue,
       currency: workflow.financial.currency,
       invoices: (workflow.financial.invoices ?? [])
-        .filter((invoice) => !clientView || !["draft", "pending_approval", "approved"].includes(invoice.status))
+        .filter((invoice) => !clientView || !["draft", "pending_approval", "approved", "pending_etims_submission", "etims_rejected"].includes(invoice.status))
         .map((invoice) => ({
         invoiceId: invoice.invoiceId,
         invoiceNumber: invoice.invoiceNumber,

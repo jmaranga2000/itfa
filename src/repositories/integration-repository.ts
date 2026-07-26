@@ -120,6 +120,15 @@ async function runConnectionTest(key: IntegrationKey) {
     );
     return;
   }
+  if (key === "kra_etims") {
+    if (!env.KRA_ETIMS_API_URL || env.KRA_ETIMS_API_URL.trim().length === 0) {
+      throw new Error("The KRA eTIMS API URL is not configured.");
+    }
+    if (!env.KRA_ETIMS_API_TOKEN || env.KRA_ETIMS_API_TOKEN.trim().length === 0) {
+      throw new Error("The KRA eTIMS API token is not configured.");
+    }
+    return;
+  }
   if (!env.WEBHOOK_SIGNING_SECRET || env.WEBHOOK_SIGNING_SECRET.length < 24) {
     throw new Error("The webhook signing secret must be at least 24 characters.");
   }

@@ -4,6 +4,7 @@ export const INTEGRATION_KEYS = [
   "cloudflare_r2",
   "push_notifications",
   "signed_webhooks",
+  "kra_etims",
 ] as const;
 
 export type IntegrationKey = (typeof INTEGRATION_KEYS)[number];
@@ -59,6 +60,15 @@ export const INTEGRATION_CATALOG: Record<IntegrationKey, {
     purpose: "Protects webhook payloads from tampering by requiring a shared signing secret.",
     requiredSettings: [
       { key: "WEBHOOK_SIGNING_SECRET", label: "Signing secret" },
+    ],
+  },
+  kra_etims: {
+    name: "KRA eTIMS",
+    description: "Sends approved invoices to KRA eTIMS for official acceptance before client delivery.",
+    purpose: "Automatically submits stamped invoices to KRA and ensures client delivery is gated on eTIMS acceptance.",
+    requiredSettings: [
+      { key: "KRA_ETIMS_API_URL", label: "eTIMS API URL" },
+      { key: "KRA_ETIMS_API_TOKEN", label: "eTIMS API token" },
     ],
   },
 };

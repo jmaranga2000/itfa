@@ -351,7 +351,7 @@ export async function createClientPayment(input: {
   if (!Types.ObjectId.isValid(input.principal.id) || !Types.ObjectId.isValid(input.workflowId)) return null;
   const workflow = await WorkflowInstanceModel.findOne({ _id: input.workflowId, clientUserId: input.principal.id }).lean().exec();
   if (!workflow) return null;
-  if (!["approved", "issued", "partially_paid", "overdue"].includes(workflow.financial.invoiceStatus)) return null;
+  if (!["approved", "issued", "partially_paid", "overdue", "etims_accepted"].includes(workflow.financial.invoiceStatus)) return null;
   if (workflow.financial.balanceDue <= 0 || input.amount > workflow.financial.balanceDue) return null;
   const duplicate = await ClientPaymentModel.exists({
     workflowId: input.workflowId,

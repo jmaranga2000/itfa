@@ -95,14 +95,17 @@ function statusLabel(status: string) {
     completed: "Completed",
     issued: "Sent",
     partially_paid: "Partially paid",
+    pending_etims_submission: "Awaiting eTIMS acceptance",
+    etims_accepted: "KRA accepted",
+    etims_rejected: "KRA rejected",
   };
   return labels[status] ?? status.replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase());
 }
 
 function statusTone(status: string) {
   if (["completed", "approved", "paid", "verified", "final"].includes(status)) return "green" as const;
-  if (["overdue", "rejected", "changes_requested", "blocked"].includes(status)) return "red" as const;
-  if (["waiting_for_approval", "pending", "pending_review", "partially_paid"].includes(status)) return "gold" as const;
+  if (["overdue", "rejected", "changes_requested", "blocked", "etims_rejected"].includes(status)) return "red" as const;
+  if (["waiting_for_approval", "pending", "pending_review", "partially_paid", "pending_etims_submission"].includes(status)) return "gold" as const;
   return "teal" as const;
 }
 

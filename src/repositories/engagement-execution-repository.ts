@@ -32,6 +32,7 @@ import {
   type EngagementDocumentRecord,
 } from "@/repositories/engagement-workspace-repository";
 import { getPlatformSettings } from "@/repositories/platform-settings-repository";
+import { getIntegrationConnection } from "@/repositories/integration-repository";
 import {
   getWorkflowForPrincipal,
   type WorkflowInstanceRecord,
@@ -225,6 +226,63 @@ function invoiceCompanyDetails(settings: Awaited<ReturnType<typeof getPlatformSe
   };
 }
 
+async function isKraEtimsEnabled() {
+  const connection = await getIntegrationConnection("kra_etims");
+  return Boolean(connection && connection.enabled && connection.configured && connection.status !== "failed");
+}
+
+async function submitInvoiceToKraEtims(input: {
+  invoice: {
+    invoiceId: string;
+    invoiceNumber: string;
+    issueDate: Date | string | null;
+    dueDate: Date | string | null;
+    amount: number;
+    currency: string;
+    notes: string;
+  };
+  workflow: WorkflowInstanceRecord;
+  company: InvoiceCompanyDetails;
+}) {
+  const env = getServerEnv();
+  if (!env.KRA_ETIMS_API_URL?.trim() || !env.KRA_ETIMS_API_TOKEN?.trim()) {
+    throw new Error("KRA eTIMS is not configured.");
+  }
+
+  const response = await fetch(env.KRA_ETIMS_API_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.KRA_ETIMS_API_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      invoice: {
+        invoiceId: input.invoice.invoiceId,
+        invoiceNumber: input.invoice.invoiceNumber,
+        issueDate: input.invoice.issueDate,
+        dueDate: input.invoice.dueDate,
+        amount: input.invoice.amount,
+        currency: input.invoice.currency,
+        notes: input.invoice.notes,
+      },
+      workflow: {
+        reference: input.workflow.reference,
+        clientName: input.workflow.clientName,
+        serviceName: input.workflow.serviceName,
+      },
+      company: input.company,
+    }),
+    signal: AbortSignal.timeout(15_000),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`KRA eTIMS submission failed with status ${response.status}: ${body}`);
+  }
+
+  return await response.text();
+}
+
 function teamMember(workflow: WorkflowInstanceRecord, principal: Principal, role: string) {
   return workflow.team.some((member) => member.userId === principal.id && member.role === role);
 }
@@ -269,8 +327,13 @@ export function getEngagementHealth(workflow: WorkflowInstanceRecord): Engagemen
   )) {
     return { status: "waiting_for_review", label: "Waiting for review", description: "Submitted work is waiting for an internal review decision.", tone: "gold" };
   }
+  if (workflow.status === "active" && workflow.financial.invoices.some((invoice) =>
+    ["pending_etims_submission", "etims_rejected"].includes(invoice.status),
+  )) {
+    return { status: "waiting_for_review", label: "Waiting for review", description: "An approved invoice is awaiting KRA eTIMS acceptance.", tone: "gold" };
+  }
   if (workflow.status === "active" && workflow.financial.balanceDue > 0 && workflow.financial.invoices.some((invoice) =>
-    ["issued", "partially_paid", "overdue"].includes(invoice.status),
+    ["issued", "partially_paid", "overdue", "etims_accepted"].includes(invoice.status),
   )) {
     return { status: "waiting_for_payment", label: "Waiting for payment", description: "An issued invoice still has an outstanding balance.", tone: "teal" };
   }
@@ -357,7 +420,7 @@ export function getCompletionRequirements(
     !["approved", "completed"].includes(action.status),
   );
   const issuedInvoices = workflow.financial.invoices.filter((invoice) =>
-    ["issued", "partially_paid", "paid"].includes(invoice.status),
+    ["pending_etims_submission", "etims_accepted", "issued", "partially_paid", "paid"].includes(invoice.status),
   );
   const invoiceRequired = workflow.financial.balanceDue > 0 || workflow.financial.invoices.length > 0;
   const pendingPayments = payments.filter((payment) => payment.status === "pending");
@@ -687,11 +750,13 @@ export async function sendEngagementInvoice(input: { principal: Principal; workf
     administratorId: input.principal.id,
     approvedAt: now,
   });
+  const kraEtimsEnabled = await isKraEtimsEnabled();
+  const invoiceStatus = kraEtimsEnabled ? "pending_etims_submission" : "issued";
+  const workflowStatus = kraEtimsEnabled ? "pending_etims_submission" : "issued";
   const financeTask = workflow.tasks.find((task) => task.key === "approve_invoice" || (task.stageKey === "finance" && task.assignedRole === "finance_officer"));
   const setValues: Record<string, unknown> = {
-    "financial.invoices.$[invoice].status": "issued",
+    "financial.invoices.$[invoice].status": invoiceStatus,
     "financial.invoices.$[invoice].issueDate": now,
-    "financial.invoices.$[invoice].sentAt": now,
     "financial.invoices.$[invoice].approvedByUserId": input.principal.id,
     "financial.invoices.$[invoice].approvedByName": approvedByName,
     "financial.invoices.$[invoice].approvedAt": now,
@@ -705,9 +770,9 @@ export async function sendEngagementInvoice(input: { principal: Principal; workf
     "financial.invoices.$[invoice].approvalStampPhone": stampSnapshot.phone,
     "financial.invoices.$[invoice].approvalStampWebsite": stampSnapshot.website,
     "financial.invoices.$[invoice].approvalStampApproverTitle": stampSnapshot.approverTitle,
-    "financial.invoiceStatus": "issued",
+    "financial.invoiceStatus": workflowStatus,
     currentStageName: "Finance",
-    nextAction: "Await client payment",
+    nextAction: kraEtimsEnabled ? "Submit invoice to KRA eTIMS for acceptance" : "Await client payment",
     lastActivityAt: now,
   };
   if (financeTask) {
@@ -761,70 +826,177 @@ export async function sendEngagementInvoice(input: { principal: Principal; workf
     return { ok: false as const, emailDelivered: false, reason: "conflict" as const };
   }
 
-  await notifyUsers({
-    recipientIds: [workflow.clientUserId],
-    actor: input.principal,
-    type: "invoice_generated",
-    title: "Invoice approved and ready",
-    description: `${invoice.invoiceNumber} is available in your engagement workspace.`,
-    workflowId: workflow.id,
-    tab: "finance",
-  });
+  if (!kraEtimsEnabled) {
+    await notifyUsers({
+      recipientIds: [workflow.clientUserId],
+      actor: input.principal,
+      type: "invoice_generated",
+      title: "Invoice approved and ready",
+      description: `${invoice.invoiceNumber} is available in your engagement workspace.`,
+      workflowId: workflow.id,
+      tab: "finance",
+    });
 
-  let delivery: EmailDeliveryResult = { delivered: false, recipient: "", reason: "The invoice email could not be prepared." };
-  try {
-    const pdf = await createInvoicePdf({
-      clientName: workflow.clientName,
-      engagementReference: workflow.reference,
-      serviceName: workflow.serviceName,
-      company,
-      invoice: {
-        ...invoice,
-        issueDate: now,
-        status: "issued",
-        approvedByName,
-        approvedAt: now,
+    let delivery: EmailDeliveryResult = { delivered: false, recipient: "", reason: "The invoice email could not be prepared." };
+    try {
+      const pdf = await createInvoicePdf({
+        clientName: workflow.clientName,
+        engagementReference: workflow.reference,
+        serviceName: workflow.serviceName,
+        company,
+        invoice: {
+          ...invoice,
+          issueDate: now,
+          status: "issued",
+          approvedByName,
+          approvedAt: now,
+          approvalStampId,
+        },
+      });
+      delivery = await sendClientJourneyEmailToUser({
+        clientUserId: workflow.clientUserId ?? "",
+        fallbackName: workflow.clientName,
+        title: "Your IFTA invoice is ready",
+        summary: `${invoice.invoiceNumber} for ${invoice.currency} ${invoice.amount.toLocaleString("en-KE")} has been approved and is attached to this email.`,
+        actionLabel: "Open finance",
+        actionPath: `/client/engagements/${workflow.id}?tab=finance`,
+        attachments: [{ filename: `${invoice.invoiceNumber}.pdf`, content: pdf, contentType: "application/pdf" }],
+      });
+    } catch (error) {
+      console.error("Unable to prepare the approved invoice email.", error);
+    }
+    await WorkflowInstanceModel.updateOne(
+      { _id: workflow.id },
+      {
+        $set: {
+          "financial.invoices.$[invoice].emailDeliveryStatus": delivery.delivered ? "sent" : "failed",
+          "financial.invoices.$[invoice].emailedTo": delivery.recipient,
+          "financial.invoices.$[invoice].emailSentAt": delivery.delivered ? new Date() : null,
+          "financial.invoices.$[invoice].emailDeliveryError": delivery.delivered ? "" : delivery.reason ?? "Email delivery failed.",
+        },
+      },
+      { arrayFilters: [{ "invoice.invoiceId": input.invoiceId }] },
+    ).exec();
+    await writeAuditLog({
+      actor: input.principal,
+      action: "invoice.approved_and_issued",
+      resourceType: "WorkflowInstance",
+      resourceId: workflow.id,
+      newValues: {
+        invoiceId: invoice.invoiceId,
         approvalStampId,
+        approvalStampDetails: stampSnapshot,
+        emailedTo: delivery.recipient,
+        emailDelivered: delivery.delivered,
       },
     });
-    delivery = await sendClientJourneyEmailToUser({
-      clientUserId: workflow.clientUserId ?? "",
-      fallbackName: workflow.clientName,
-      title: "Your IFTA invoice is ready",
-      summary: `${invoice.invoiceNumber} for ${invoice.currency} ${invoice.amount.toLocaleString("en-KE")} has been approved and is attached to this email.`,
-      actionLabel: "Open finance",
-      actionPath: `/client/engagements/${workflow.id}?tab=finance`,
-      attachments: [{ filename: `${invoice.invoiceNumber}.pdf`, content: pdf, contentType: "application/pdf" }],
-    });
-  } catch (error) {
-    console.error("Unable to prepare the approved invoice email.", error);
+    return { ok: true as const, emailDelivered: delivery.delivered };
   }
-  await WorkflowInstanceModel.updateOne(
-    { _id: workflow.id },
-    {
-      $set: {
-        "financial.invoices.$[invoice].emailDeliveryStatus": delivery.delivered ? "sent" : "failed",
-        "financial.invoices.$[invoice].emailedTo": delivery.recipient,
-        "financial.invoices.$[invoice].emailSentAt": delivery.delivered ? new Date() : null,
-        "financial.invoices.$[invoice].emailDeliveryError": delivery.delivered ? "" : delivery.reason ?? "Email delivery failed.",
+
+  try {
+    await submitInvoiceToKraEtims({ invoice, workflow, company });
+    await WorkflowInstanceModel.updateOne(
+      { _id: workflow.id, status: "active", "financial.invoices.invoiceId": input.invoiceId },
+      {
+        $set: {
+          "financial.invoices.$[invoice].status": "etims_accepted",
+          "financial.invoiceStatus": "etims_accepted",
+          "financial.invoices.$[invoice].sentAt": now,
+          "financial.invoices.$[invoice].emailDeliveryStatus": "pending",
+        },
       },
-    },
-    { arrayFilters: [{ "invoice.invoiceId": input.invoiceId }] },
-  ).exec();
-  await writeAuditLog({
-    actor: input.principal,
-    action: "invoice.approved_and_issued",
-    resourceType: "WorkflowInstance",
-    resourceId: workflow.id,
-    newValues: {
-      invoiceId: invoice.invoiceId,
-      approvalStampId,
-      approvalStampDetails: stampSnapshot,
-      emailedTo: delivery.recipient,
-      emailDelivered: delivery.delivered,
-    },
-  });
-  return { ok: true as const, emailDelivered: delivery.delivered };
+      { arrayFilters: [{ "invoice.invoiceId": input.invoiceId }] },
+    ).exec();
+    await notifyUsers({
+      recipientIds: [workflow.clientUserId],
+      actor: input.principal,
+      type: "invoice_generated",
+      title: "Invoice approved and ready",
+      description: `${invoice.invoiceNumber} was accepted by KRA eTIMS and is available in your engagement workspace.`,
+      workflowId: workflow.id,
+      tab: "finance",
+    });
+
+    let delivery: EmailDeliveryResult = { delivered: false, recipient: "", reason: "The invoice email could not be prepared." };
+    try {
+      const pdf = await createInvoicePdf({
+        clientName: workflow.clientName,
+        engagementReference: workflow.reference,
+        serviceName: workflow.serviceName,
+        company,
+        invoice: {
+          ...invoice,
+          issueDate: now,
+          status: "etims_accepted",
+          approvedByName,
+          approvedAt: now,
+          approvalStampId,
+        },
+      });
+      delivery = await sendClientJourneyEmailToUser({
+        clientUserId: workflow.clientUserId ?? "",
+        fallbackName: workflow.clientName,
+        title: "Your KRA-approved invoice is ready",
+        summary: `${invoice.invoiceNumber} for ${invoice.currency} ${invoice.amount.toLocaleString("en-KE")} has been accepted by KRA eTIMS and is attached to this email.`,
+        actionLabel: "Open finance",
+        actionPath: `/client/engagements/${workflow.id}?tab=finance`,
+        attachments: [{ filename: `${invoice.invoiceNumber}.pdf`, content: pdf, contentType: "application/pdf" }],
+      });
+    } catch (error) {
+      console.error("Unable to prepare the KRA-approved invoice email.", error);
+    }
+    await WorkflowInstanceModel.updateOne(
+      { _id: workflow.id },
+      {
+        $set: {
+          "financial.invoices.$[invoice].emailDeliveryStatus": delivery.delivered ? "sent" : "failed",
+          "financial.invoices.$[invoice].emailedTo": delivery.recipient,
+          "financial.invoices.$[invoice].emailSentAt": delivery.delivered ? new Date() : null,
+          "financial.invoices.$[invoice].emailDeliveryError": delivery.delivered ? "" : delivery.reason ?? "Email delivery failed.",
+        },
+      },
+      { arrayFilters: [{ "invoice.invoiceId": input.invoiceId }] },
+    ).exec();
+    await writeAuditLog({
+      actor: input.principal,
+      action: "invoice.etims_accepted",
+      resourceType: "WorkflowInstance",
+      resourceId: workflow.id,
+      newValues: {
+        invoiceId: invoice.invoiceId,
+        approvalStampId,
+        approvalStampDetails: stampSnapshot,
+        emailedTo: delivery.recipient,
+        emailDelivered: delivery.delivered,
+      },
+    });
+    return { ok: true as const, emailDelivered: delivery.delivered };
+  } catch (error) {
+    console.error("KRA eTIMS submission failed.", error);
+    await WorkflowInstanceModel.updateOne(
+      { _id: workflow.id },
+      {
+        $set: {
+          "financial.invoices.$[invoice].status": "etims_rejected",
+          "financial.invoiceStatus": "etims_rejected",
+          "financial.invoices.$[invoice].emailDeliveryStatus": "failed",
+          "financial.invoices.$[invoice].emailDeliveryError": error instanceof Error ? error.message : String(error),
+        },
+      },
+      { arrayFilters: [{ "invoice.invoiceId": input.invoiceId }] },
+    ).exec();
+    await writeAuditLog({
+      actor: input.principal,
+      action: "invoice.etims_rejected",
+      resourceType: "WorkflowInstance",
+      resourceId: workflow.id,
+      newValues: {
+        invoiceId: invoice.invoiceId,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    });
+    return { ok: false as const, emailDelivered: false, reason: "conflict" as const };
+  }
 }
 export async function reviewEngagementPayment(input: {
   principal: Principal;

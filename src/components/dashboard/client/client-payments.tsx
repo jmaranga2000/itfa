@@ -12,7 +12,7 @@ import { submitClientPaymentAction } from "@/features/client/payment-actions";
 import { money } from "@/components/dashboard/client/client-invoices";
 import type { ClientInvoiceRecord, ClientPaymentRecord } from "@/repositories/client-portal-repository";
 
-const payableStatuses = new Set(["approved", "issued", "partially_paid", "overdue"]);
+const payableStatuses = new Set(["approved", "issued", "partially_paid", "overdue", "etims_accepted"]);
 
 export function ClientPayments({ payments, invoices, notice }: { payments: ClientPaymentRecord[]; invoices: ClientInvoiceRecord[]; notice?: string }) {
   const payable = invoices.filter((invoice) => invoice.balanceDue > 0 && payableStatuses.has(invoice.status));
