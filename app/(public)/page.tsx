@@ -23,6 +23,8 @@ import {
 } from "lucide-react";
 
 import { buttonClassName } from "@/components/ui/button";
+import { serviceImageSource } from "@/features/services/presentation";
+import { listServices } from "@/repositories/service-catalog-repository";
 
 export const metadata: Metadata = {
   title: "Tax, Accounting and Financial Consulting | IFTA Consulting",
@@ -47,16 +49,7 @@ export const metadata: Metadata = {
   },
 };
 
-type Service = {
-  id: string;
-  title: string;
-  summary: string;
-  description: string;
-  href: string;
-  icon: LucideIcon;
-  image: string;
-  imageAlt: string;
-};
+export const dynamic = "force-dynamic";
 
 type Feature = {
   id: string;
@@ -138,47 +131,7 @@ const clientTypes = [
   },
 ] as const;
 
-const services: readonly Service[] = [
-  {
-    id: "tax-advisory",
-    title: "Tax advisory and compliance",
-    summary:
-      "Understand tax obligations, address compliance issues and make informed decisions before important transactions or deadlines.",
-    description:
-      "Support may include tax reviews, computations, compliance assessments, transaction considerations, documentation requirements and responses to identified tax risks.",
-    href: "/services#tax-advisory",
-    icon: ScrollText,
-    image: "/images/tax-advisory-review.jpg",
-    imageAlt:
-      "Financial consultant reviewing tax schedules and business documents",
-  },
-  {
-    id: "accounting-and-reporting",
-    title: "Accounting and financial reporting",
-    summary:
-      "Improve the accuracy, structure and usefulness of financial statements, management accounts and reporting packs.",
-    description:
-      "We help organise accounting information, strengthen reconciliations, review reporting quality and develop outputs that support management and stakeholder decisions.",
-    href: "/services#financial-reporting",
-    icon: Calculator,
-    image: "/images/financial-reporting-review.jpg",
-    imageAlt:
-      "Finance team reviewing financial statements and management reports",
-  },
-  {
-    id: "financial-analysis",
-    title: "Financial analysis and business advisory",
-    summary:
-      "Turn financial information into practical insight for planning, performance improvement and business decisions.",
-    description:
-      "Engagements may include budgets, forecasts, cash-flow analysis, performance reviews, scenario modelling and finance-process improvement.",
-    href: "/services#finance-consulting",
-    icon: BarChart3,
-    image: "/images/business-financial-analysis.jpg",
-    imageAlt:
-      "Consultants analysing financial charts and business performance",
-  },
-];
+const homepageServiceIcons = [ScrollText, Calculator, BarChart3] as const;
 
 const engagementSteps = [
   {
@@ -292,7 +245,9 @@ const faqs = [
   },
 ] as const;
 
-export default function PublicHomePage() {
+export default async function PublicHomePage() {
+  const catalogServices = await listServices({ publishedOnly: true });
+
   return (
     <main>
       <section className="relative isolate flex min-h-[100svh] overflow-hidden bg-brand-deep text-white">
@@ -492,8 +447,8 @@ export default function PublicHomePage() {
           </div>
 
           <div className="mt-12 grid gap-7 lg:grid-cols-3">
-            {services.map((service) => {
-              const Icon = service.icon;
+            {catalogServices.slice(0, 6).map((service, index) => {
+              const Icon = homepageServiceIcons[index % homepageServiceIcons.length];
 
               return (
                 <article
@@ -506,7 +461,7 @@ export default function PublicHomePage() {
                       className="object-cover transition duration-500 group-hover:scale-[1.03]"
                       fill
                       sizes="(min-width: 1024px) 33vw, 100vw"
-                      src={service.image}
+                      src={serviceImageSource(service, index)}
                     />
 
                     <div className="absolute inset-0 bg-gradient-to-t from-brand-deep/55 via-transparent to-transparent" />
@@ -526,12 +481,12 @@ export default function PublicHomePage() {
                     </p>
 
                     <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                      {service.description}
+                      {service.outcome}
                     </p>
 
                     <Link
                       className="mt-6 inline-flex items-center gap-2 text-sm font-bold text-primary transition-colors hover:text-brand-deep focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-4"
-                      href={service.href}
+                      href={`/services#${service.slug}`}
                     >
                       Explore this service
                       <ArrowRight

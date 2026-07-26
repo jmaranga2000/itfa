@@ -1,5 +1,6 @@
+import Image from "next/image";
 import Link from "next/link";
-import { Save } from "lucide-react";
+import { ImageIcon, Save, Upload } from "lucide-react";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { buttonClassName } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,7 +19,7 @@ export function ServiceCatalogForm({
   submitLabel: string;
 }) {
   return (
-    <form action={action}>
+    <form action={action} encType="multipart/form-data">
       {service ? <input name="serviceId" type="hidden" value={service.id} /> : null}
 
       <div className="grid gap-6 p-5 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -69,6 +70,34 @@ export function ServiceCatalogForm({
                 placeholder="Explain what the service helps clients achieve."
                 required
               />
+            </div>
+          </section>
+
+          <section className="grid gap-4 border-t border-border pt-6">
+            <div>
+              <h2 className="text-base font-bold text-foreground">Service image</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Add a clear image that represents the service on the website and client portal.</p>
+            </div>
+            <div className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)] md:items-start">
+              <div className="relative aspect-[4/3] overflow-hidden rounded-md border border-border bg-muted/30">
+                {service?.imageUrl ? (
+                  <Image alt={service.imageAlt} className="object-cover" fill sizes="220px" src={service.imageUrl} />
+                ) : (
+                  <div className="grid h-full place-items-center text-center text-muted-foreground"><div><ImageIcon aria-hidden="true" className="mx-auto h-7 w-7" /><p className="mt-2 text-xs font-semibold">No image uploaded</p></div></div>
+                )}
+              </div>
+              <div className="grid gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="serviceImage">Upload image</Label>
+                  <Input accept="image/jpeg,image/png,image/webp" id="serviceImage" name="serviceImage" type="file" />
+                  <p className="flex items-center gap-2 text-xs text-muted-foreground"><Upload aria-hidden="true" className="h-3.5 w-3.5" />JPG, PNG or WebP, up to 8 MB. Uploading a new image replaces the current one.</p>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="imageAlt">Image description</Label>
+                  <Input defaultValue={service?.imageAlt} id="imageAlt" maxLength={180} name="imageAlt" placeholder="Consultant reviewing financial reports with a client" />
+                  <p className="text-xs text-muted-foreground">Describe the image briefly for people using screen readers.</p>
+                </div>
+              </div>
             </div>
           </section>
 

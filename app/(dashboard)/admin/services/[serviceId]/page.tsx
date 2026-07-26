@@ -61,7 +61,15 @@ export default async function AdminServiceDetailPage({
         <p className="border-b border-red-200 bg-red-50 px-5 py-3 text-sm font-semibold text-red-800">
           {query.error === "pricing-required"
             ? "Add and publish a price for this service before publishing it."
-            : "Check the required fields and try again."}
+            : query.error === "image-size"
+              ? "Choose an image smaller than 8 MB."
+              : query.error === "image-type"
+                ? "Choose a JPG, PNG or WebP image."
+                : query.error === "image-upload"
+                  ? "The image could not be uploaded to secure storage. Check the R2 connection and try again."
+                  : query.error === "save"
+                    ? "The service could not be saved. Please try again."
+                    : "Check the required fields and try again."}
         </p>
       ) : null}
       <ServiceCatalogForm

@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { Check, Plus, ShoppingCart } from "lucide-react";
 import { AdminPageSurface } from "@/components/dashboard/admin/admin-page-surface";
@@ -5,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { buttonClassName } from "@/components/ui/button";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { addServiceToCartAction } from "@/features/client/commerce-actions";
+import { serviceImageSource } from "@/features/services/presentation";
 import type { PricingPlanRecord, ServiceCatalogRecord } from "@/repositories/service-catalog-repository";
 
 export function ClientServices({
@@ -37,10 +39,13 @@ export function ClientServices({
     >
       {added ? <p className="border-b border-emerald-200 bg-emerald-50 px-5 py-3 text-sm font-semibold text-emerald-800">Service added to your cart.</p> : null}
       <div className="divide-y divide-border">
-        {services.map((service) => {
+        {services.map((service, index) => {
           const plan = plansByService.get(service.id);
           return (
-            <article className="grid gap-5 p-5 lg:grid-cols-[minmax(0,1fr)_240px]" key={service.id}>
+            <article className="grid gap-5 p-5 md:grid-cols-[180px_minmax(0,1fr)] lg:grid-cols-[180px_minmax(0,1fr)_240px]" key={service.id}>
+              <div className="relative aspect-[4/3] overflow-hidden rounded-md border border-border bg-muted md:aspect-square">
+                <Image alt={service.imageAlt} className="object-cover" fill sizes="(min-width: 768px) 180px, 100vw" src={serviceImageSource(service, index)} />
+              </div>
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="text-lg font-bold text-foreground">{service.title}</h2>

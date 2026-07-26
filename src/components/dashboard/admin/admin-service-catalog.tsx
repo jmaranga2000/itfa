@@ -1,8 +1,10 @@
+import Image from "next/image";
 import Link from "next/link";
 import { Archive, Eye, FilePenLine, ListChecks, Plus, Send } from "lucide-react";
 import { AdminPageSurface } from "@/components/dashboard/admin/admin-page-surface";
 import { Badge } from "@/components/ui/badge";
 import { buttonClassName } from "@/components/ui/button";
+import { serviceImageSource } from "@/features/services/presentation";
 import {
   Table,
   TableBody,
@@ -78,13 +80,13 @@ export function AdminServiceCatalog({ services }: { services: ServiceCatalogReco
               </TableRow>
             </TableHeader>
             <TableBody>
-              {services.map((service) => (
+              {services.map((service, index) => (
                 <TableRow key={service.id}>
                   <TableCell>
-                    <p className="font-semibold text-foreground">{service.title}</p>
-                    <p className="mt-1 max-w-md truncate text-xs text-muted-foreground">
-                      {service.summary}
-                    </p>
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="relative h-12 w-16 shrink-0 overflow-hidden rounded-md border border-border bg-muted"><Image alt="" className="object-cover" fill sizes="64px" src={serviceImageSource(service, index)} /></div>
+                      <div className="min-w-0"><p className="font-semibold text-foreground">{service.title}</p><p className="mt-1 max-w-md truncate text-xs text-muted-foreground">{service.summary}</p></div>
+                    </div>
                   </TableCell>
                   <TableCell>
                     <Badge tone={statusTone(service.status)}>{service.status}</Badge>

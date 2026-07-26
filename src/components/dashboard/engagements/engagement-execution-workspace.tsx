@@ -105,6 +105,33 @@ function statusTone(status: string) {
   return "teal" as const;
 }
 
+const workspaceErrorCopy: Record<string, { title: string; message: string }> = {
+  "document-consultant_assignment": {
+    title: "Draft upload is not assigned to you",
+    message: "Only the consultant assigned to this engagement can upload draft and final deliverables. Ask an administrator to check the engagement team assignment.",
+  },
+  "document-dependencies": {
+    title: "Complete the earlier task first",
+    message: "The draft cannot be submitted until its required earlier task is completed. Open Tasks to see the outstanding dependency.",
+  },
+  "document-task_not_ready": {
+    title: "The deliverable task is not ready",
+    message: "This task is already waiting for review, completed, or blocked. Open Tasks to check its current status before uploading another version.",
+  },
+  "document-client_approval": {
+    title: "Client approval is still required",
+    message: "A final deliverable can only be uploaded after the client approves the draft. Draft uploads are still available to the assigned consultant.",
+  },
+  "document-storage": {
+    title: "The file could not be stored",
+    message: "The document did not reach secure storage. Check the file and R2 connection, then try again.",
+  },
+  "invoice-email": {
+    title: "Invoice email was not delivered",
+    message: "The invoice was approved, stamped, and saved in the client portal, but Gmail did not accept the delivery. Check the registered client email and SMTP account, then resend from the invoice record.",
+  },
+};
+
 function MobileSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <details className="group min-w-0" open>
@@ -317,7 +344,7 @@ export function EngagementExecutionWorkspace({
       </nav>
 
       {query.saved ? <p className="rounded-md border border-success/30 bg-success-soft px-4 py-3 text-sm font-semibold text-success">Saved successfully. The engagement workspace and relevant notifications were updated.</p> : null}
-      {query.error ? <ActionErrorPopup message={query.error === "invoice-email" ? "The invoice was approved, stamped, and saved in the client portal, but Gmail did not accept the delivery. Check the registered client email and SMTP account, then resend from the invoice record." : "Check the information and your assigned role, then try again. Your existing engagement data has not been changed."} title={query.error === "invoice-email" ? "Invoice email was not delivered" : undefined} /> : null}
+      {query.error ? <ActionErrorPopup message={workspaceErrorCopy[query.error]?.message ?? "Check the information and your assigned role, then try again. Your existing engagement data has not been changed."} title={workspaceErrorCopy[query.error]?.title} /> : null}
       {query.team === "saved" ? <p className="rounded-md border border-success/30 bg-success-soft px-4 py-3 text-sm font-semibold text-success">The complete engagement team was saved and notified.</p> : null}
       {query.reviewed ? <p className="rounded-md border border-success/30 bg-success-soft px-4 py-3 text-sm font-semibold text-success">Your deliverable decision was saved and the engagement team was notified.</p> : null}
       {query.transitioned === "1" ? <p className="rounded-md border border-success/30 bg-success-soft px-4 py-3 text-sm font-semibold text-success">The engagement moved to the next process stage.</p> : null}

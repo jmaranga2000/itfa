@@ -15,6 +15,9 @@ export type ServiceCatalogRecord = {
   slug: string;
   title: string;
   summary: string;
+  imageUrl: string | null;
+  imageAlt: string;
+  hasImage: boolean;
   inclusions: string[];
   bestFor: string;
   outcome: string;
@@ -43,8 +46,15 @@ export type PricingPlanRecord = {
 
 export type ServiceCatalogInput = Pick<
   ServiceCatalogRecord,
-  "slug" | "title" | "summary" | "inclusions" | "bestFor" | "outcome" | "status" | "displayOrder"
+  "slug" | "title" | "summary" | "imageAlt" | "inclusions" | "bestFor" | "outcome" | "status" | "displayOrder"
 >;
+
+export type ServiceImageInput = {
+  storageKey: string;
+  contentType: string;
+  size: number;
+  originalName: string;
+};
 
 export type PricingPlanInput = Pick<
   PricingPlanRecord,
@@ -56,6 +66,11 @@ type RawService = {
   slug: string;
   title: string;
   summary: string;
+  imageStorageKey?: string;
+  imageContentType?: string;
+  imageSize?: number;
+  imageOriginalName?: string;
+  imageAlt?: string;
   inclusions?: string[];
   bestFor: string;
   outcome: string;
@@ -100,6 +115,9 @@ function mapService(service: RawService): ServiceCatalogRecord {
     slug: service.slug,
     title: service.title,
     summary: service.summary,
+    imageUrl: service.imageStorageKey ? `/api/services/${service._id.toString()}/image` : null,
+    imageAlt: service.imageAlt?.trim() || `${service.title} consulting service`,
+    hasImage: Boolean(service.imageStorageKey),
     inclusions: service.inclusions ?? [],
     bestFor: service.bestFor,
     outcome: service.outcome,
@@ -178,6 +196,7 @@ export async function seedServiceAndPricingCatalog() {
             $set: {
               title: service.title,
               summary: service.summary,
+              imageAlt: `${service.title} consulting service`,
               inclusions: [...service.inclusions],
               bestFor: service.bestFor,
               outcome: service.outcome,
@@ -276,7 +295,7 @@ export async function getPricingPlan(planId: string) {
   return mapPricingPlan(plan, serviceTitles);
 }
 
-export async function createService(input: ServiceCatalogInput, actor: Principal) {
+export async function createService(input: ServiceCatalogInput, actor: Principal, image?: ServiceImageInput | null) {
   assertPermission(actor, "services.manage");
   await connectToDatabase();
   const slug = await uniqueSlug(
@@ -288,6 +307,11 @@ export async function createService(input: ServiceCatalogInput, actor: Principal
     ...input,
     slug,
     status: "draft",
+    imageStorageKey: image?.storageKey ?? "",
+    imageContentType: image?.contentType ?? "",
+    imageSize: image?.size ?? 0,
+    imageOriginalName: image?.originalName ?? "",
+    imageAlt: input.imageAlt.trim() || `${input.title} consulting service`,
     createdByUserId: actor.id,
     updatedByUserId: actor.id,
     archivedAt: null,
@@ -302,7 +326,7 @@ export async function createService(input: ServiceCatalogInput, actor: Principal
   return service._id.toString();
 }
 
-export async function updateService(serviceId: string, input: ServiceCatalogInput, actor: Principal) {
+export async function updateService(serviceId: string, input: ServiceCatalogInput, actor: Principal, image?: ServiceImageInput | null) {
   assertPermission(actor, "services.manage");
   if (!Types.ObjectId.isValid(serviceId)) return false;
   await connectToDatabase();
@@ -328,6 +352,13 @@ export async function updateService(serviceId: string, input: ServiceCatalogInpu
       $set: {
         ...input,
         slug,
+        imageAlt: input.imageAlt.trim() || `${input.title} consulting service`,
+        ...(image ? {
+          imageStorageKey: image.storageKey,
+          imageContentType: image.contentType,
+          imageSize: image.size,
+          imageOriginalName: image.originalName,
+        } : {}),
         updatedByUserId: actor.id,
         archivedAt: input.status === "archived" ? previous.archivedAt ?? new Date() : null,
       },
@@ -341,7 +372,7 @@ export async function updateService(serviceId: string, input: ServiceCatalogInpu
     previousValues: previous,
     newValues: input,
   });
-  return true;
+  return { updated: true as const, previousImageStorageKey: previous.imageStorageKey ?? null };
 }
 
 export async function createPricingPlan(input: PricingPlanInput, actor: Principal) {

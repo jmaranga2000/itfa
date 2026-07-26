@@ -108,6 +108,7 @@ export async function uploadEngagementDocumentAction(formData: FormData) {
   const storageKey = `engagement-documents/${workflowId}/${kind.data}/${randomUUID()}-${cleanFileName}`;
   const configuration = getR2Configuration();
 
+  let documentResult: Awaited<ReturnType<typeof createEngagementDocument>>;
   try {
     await getR2Client().send(new PutObjectCommand({
       Bucket: configuration.bucketName,
@@ -116,7 +117,7 @@ export async function uploadEngagementDocumentAction(formData: FormData) {
       ContentType: file.type,
       ContentDisposition: `attachment; filename="${name}"`,
     }));
-    const documentId = await createEngagementDocument({
+    documentResult = await createEngagementDocument({
       principal,
       workflowId,
       documentKind: kind.data,
@@ -126,11 +127,14 @@ export async function uploadEngagementDocumentAction(formData: FormData) {
       size: file.size,
       replacesDocumentId: replacesDocumentId || null,
     });
-    if (!documentId) throw new Error("Document record was not created.");
   } catch (error) {
     console.error("Unable to upload engagement document.", error);
     await getR2Client().send(new DeleteObjectCommand({ Bucket: configuration.bucketName, Key: storageKey })).catch(() => undefined);
-    redirect(`${back}?tab=documents&error=document-upload`);
+    redirect(`${back}?tab=documents&error=document-storage`);
+  }
+  if (!documentResult.ok) {
+    await getR2Client().send(new DeleteObjectCommand({ Bucket: configuration.bucketName, Key: storageKey })).catch(() => undefined);
+    redirect(`${back}?tab=documents&error=document-${documentResult.reason}`);
   }
   refresh(workflowId);
   redirect(`${back}?tab=${kind.data === "final_deliverable" ? "deliverables" : "documents"}&saved=document`);

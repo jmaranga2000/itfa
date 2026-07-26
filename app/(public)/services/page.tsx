@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, BarChart3, Check, Plus, Scale, ScrollText } from "lucide-react";
 import { PublicPageIntro } from "@/components/public/public-page-intro";
@@ -5,6 +6,7 @@ import { buttonClassName } from "@/components/ui/button";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { addServiceToCartAction } from "@/features/client/commerce-actions";
 import { workflowSteps } from "@/content/public-site";
+import { serviceImageSource } from "@/features/services/presentation";
 import { listServices } from "@/repositories/service-catalog-repository";
 
 export const dynamic = "force-dynamic";
@@ -36,12 +38,13 @@ export default async function ServicesPage() {
               <article className="scroll-mt-32 py-10" id={service.slug} key={service.id}>
                 <div className="grid gap-8 lg:grid-cols-[220px_minmax(0,1fr)_280px] lg:gap-12">
                   <div>
-                    <span className="grid h-12 w-12 place-items-center rounded-md bg-brand-soft text-brand-deep">
-                      <Icon aria-hidden="true" className="h-6 w-6" />
-                    </span>
-                    <p className="mt-4 font-mono text-xs font-bold text-muted-foreground">
-                      SERVICE {String(index + 1).padStart(2, "0")}
-                    </p>
+                    <div className="relative aspect-[4/3] overflow-hidden rounded-md border border-border bg-muted">
+                      <Image alt={service.imageAlt} className="object-cover" fill sizes="220px" src={serviceImageSource(service, index)} />
+                      <span className="absolute bottom-3 left-3 grid h-10 w-10 place-items-center rounded-md bg-white text-brand-deep shadow-md">
+                        <Icon aria-hidden="true" className="h-5 w-5" />
+                      </span>
+                    </div>
+                    <p className="mt-4 font-mono text-xs font-bold text-muted-foreground">SERVICE {String(index + 1).padStart(2, "0")}</p>
                   </div>
 
                   <div>

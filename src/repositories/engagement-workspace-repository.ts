@@ -289,6 +289,17 @@ export async function updateEngagementTask(input: {
   return result.matchedCount > 0;
 }
 
+export type EngagementDocumentCreateFailure =
+  | "access"
+  | "consultant_assignment"
+  | "dependencies"
+  | "task_not_ready"
+  | "client_approval";
+
+export type EngagementDocumentCreateResult =
+  | { ok: true; documentId: string }
+  | { ok: false; reason: EngagementDocumentCreateFailure };
+
 export async function createEngagementDocument(input: {
   principal: Principal;
   workflowId: string;
@@ -300,7 +311,7 @@ export async function createEngagementDocument(input: {
   replacesDocumentId?: string | null;
 }) {
   const workflow = await writableWorkflow(input.principal, input.workflowId);
-  if (!workflow?.clientUserId || !Types.ObjectId.isValid(input.principal.id)) return null;
+  if (!workflow?.clientUserId || !Types.ObjectId.isValid(input.principal.id)) return { ok: false, reason: "access" } as const;
   const isDraft = input.documentKind === "draft_deliverable";
   const isDeliverable = input.documentKind === "final_deliverable";
   const controlledTaskKey = isDraft ? "draft_deliverable" : isDeliverable ? "final_deliverable" : null;
@@ -309,16 +320,19 @@ export async function createEngagementDocument(input: {
     && workflow.team.some((member) =>
       member.role === "consultant" && member.userId === input.principal.id,
     );
-  if ((isDraft || isDeliverable) && !assignedPreparer) return null;
+  if ((isDraft || isDeliverable) && !assignedPreparer) return { ok: false, reason: "consultant_assignment" } as const;
   if (controlledTask) {
     const prerequisitesComplete = controlledTask.dependencies.every((dependencyKey) => {
       const dependency = workflow.tasks.find((task) => task.key === dependencyKey);
       return !dependency || dependency.status === "completed";
     });
-    if (!prerequisitesComplete || controlledTask.status !== "in_progress") return null;
+    if (!prerequisitesComplete) return { ok: false, reason: "dependencies" } as const;
+    if (!["not_started", "ready", "in_progress"].includes(controlledTask.status)) {
+      return { ok: false, reason: "task_not_ready" } as const;
+    }
   }
   const clientDraftApproved = workflow.clientActions.some((action) => action.key === "review_deliverable" && action.status === "completed");
-  if (isDeliverable && !clientDraftApproved) return null;
+  if (isDeliverable && !clientDraftApproved) return { ok: false, reason: "client_approval" } as const;
   const [settings] = await Promise.all([getPlatformSettings(), connectToDatabase()]);
   const deliverableStatus: DeliverableStatus = isDeliverable
     ? settings.engagement.requireDeliverableApproval
@@ -414,7 +428,7 @@ export async function createEngagementDocument(input: {
       ).exec(),
     ]);
   }
-  return document._id.toString();
+  return { ok: true, documentId: document._id.toString() } as const;
 }
 
 export async function reviewEngagementDeliverable(input: {
