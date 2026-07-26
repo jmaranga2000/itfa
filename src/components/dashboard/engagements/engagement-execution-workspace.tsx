@@ -47,6 +47,7 @@ import {
   respondToClientCollaborationAction,
   reviewEngagementTaskAction,
   reviewEngagementDeliverableAction,
+  reviewEngagementPaymentAction,
   sendEngagementInvoiceAction,
   sendEngagementMessageAction,
 } from "@/features/engagements/execution-actions";
@@ -190,9 +191,14 @@ export function EngagementExecutionWorkspace({
           label: ({ overview: "Summary", documents: "Files", deliverables: "Results", finance: "Invoices", timeline: "Updates", completion: "Completion" } as Partial<Record<EngagementWorkspaceTab, string>>)[tab.key] ?? tab.label,
         }))
     : tabMeta;
-  const consultant = isAdmin || (isEngagementManager && assignedToEngagement) || workflow.team.some((member) => member.userId === principal.id && member.role === "consultant");
-  const reviewer = isAdmin || workflow.team.some((member) => member.userId === principal.id && member.role === "reviewer");
-  const finance = isAdmin || workflow.team.some((member) => member.userId === principal.id && member.role === "finance_officer");
+  const assignedConsultant = principal.roleKeys.includes("consultant")
+    && workflow.team.some((member) => member.userId === principal.id && member.role === "consultant");
+  const consultant = isAdmin || (isEngagementManager && assignedToEngagement) || assignedConsultant;
+  const reviewer = isAdmin || (principal.roleKeys.includes("reviewer")
+    && workflow.team.some((member) => member.userId === principal.id && member.role === "reviewer"));
+  const assignedFinanceOfficer = principal.roleKeys.includes("finance_officer")
+    && workflow.team.some((member) => member.userId === principal.id && member.role === "finance_officer");
+  const canUploadDeliverables = portal === "staff" && assignedConsultant;
   const editable = workflow.status === "active" && (!isEngagementManager || assignedToEngagement);
   const workingDocuments = data.documents.filter((document) =>
     document.documentKind !== "final_deliverable" || document.deliverableStatus === "draft",
@@ -212,7 +218,7 @@ export function EngagementExecutionWorkspace({
   const documentsNeedingReplacement = workingDocuments.filter((document) => document.status === "replacement_requested");
   const clientReviewAction = workflow.clientActions.find((action) => action.key === "review_deliverable");
   const clientApprovedDraft = clientReviewAction?.status === "completed";
-  const requestedDocumentKind = !consultant
+  const requestedDocumentKind = !canUploadDeliverables
     ? "technical_evidence"
     : query.kind === "final_deliverable" && clientApprovedDraft
       ? "final_deliverable"
@@ -311,7 +317,7 @@ export function EngagementExecutionWorkspace({
       </nav>
 
       {query.saved ? <p className="rounded-md border border-success/30 bg-success-soft px-4 py-3 text-sm font-semibold text-success">Saved successfully. The engagement workspace and relevant notifications were updated.</p> : null}
-      {query.error ? <ActionErrorPopup message="Check the information and your assigned role, then try again. Your existing engagement data has not been changed." /> : null}
+      {query.error ? <ActionErrorPopup message={query.error === "invoice-email" ? "The invoice was approved, stamped, and saved in the client portal, but Gmail did not accept the delivery. Check the registered client email and SMTP account, then resend from the invoice record." : "Check the information and your assigned role, then try again. Your existing engagement data has not been changed."} title={query.error === "invoice-email" ? "Invoice email was not delivered" : undefined} /> : null}
       {query.team === "saved" ? <p className="rounded-md border border-success/30 bg-success-soft px-4 py-3 text-sm font-semibold text-success">The complete engagement team was saved and notified.</p> : null}
       {query.reviewed ? <p className="rounded-md border border-success/30 bg-success-soft px-4 py-3 text-sm font-semibold text-success">Your deliverable decision was saved and the engagement team was notified.</p> : null}
       {query.transitioned === "1" ? <p className="rounded-md border border-success/30 bg-success-soft px-4 py-3 text-sm font-semibold text-success">The engagement moved to the next process stage.</p> : null}
@@ -517,7 +523,7 @@ export function EngagementExecutionWorkspace({
                   {!isClient ? <ol className="grid gap-2 text-xs text-muted-foreground"><li className="flex gap-2"><span className="font-semibold text-primary">1.</span><span>Drafts and evidence enter Pending review.</span></li><li className="flex gap-2"><span className="font-semibold text-primary">2.</span><span>The assigned reviewer approves the file or requests a replacement.</span></li><li className="flex gap-2"><span className="font-semibold text-primary">3.</span><span>Final outputs move to Deliverables and are released separately.</span></li></ol> : null}
                   <form action={isClient ? uploadClientDocumentAction : uploadEngagementDocumentAction} className="grid gap-3 border-t border-border pt-4" encType="multipart/form-data">
                     <input name="workflowId" type="hidden" value={workflow.id} /><input name="returnPath" type="hidden" value={basePath} />
-                    {!isClient ? <><div className="grid gap-2"><Label htmlFor="document-title">Document title</Label><Input id="document-title" name="title" placeholder="Corporate tax review - draft" required /></div><div className="grid gap-2"><Label htmlFor="document-kind">Document type</Label><Select defaultValue={requestedDocumentKind} id="document-kind" name="documentKind">{consultant ? <option value="draft_deliverable">Draft report or deliverable</option> : null}<option value="technical_evidence">Working paper or technical evidence</option>{consultant ? <option disabled={!clientApprovedDraft} value="final_deliverable">Final deliverable{clientApprovedDraft ? "" : " - available after client approval"}</option> : null}</Select></div></> : null}
+                    {!isClient ? <><div className="grid gap-2"><Label htmlFor="document-title">Document title</Label><Input id="document-title" name="title" placeholder="Corporate tax review - draft" required /></div><div className="grid gap-2"><Label htmlFor="document-kind">Document type</Label><Select defaultValue={requestedDocumentKind} id="document-kind" name="documentKind">{canUploadDeliverables ? <option value="draft_deliverable">Draft report or deliverable</option> : null}<option value="technical_evidence">Working paper or technical evidence</option>{canUploadDeliverables ? <option disabled={!clientApprovedDraft} value="final_deliverable">Final deliverable{clientApprovedDraft ? "" : " - available after client approval"}</option> : null}</Select></div></> : null}
                     {isClient ? (
                       query.replace ? <><input name="replacesDocumentId" type="hidden" value={query.replace} /><p className="rounded-md border border-warning/30 bg-warning-soft p-3 text-sm text-foreground">This file will replace the version returned by your reviewer.</p></> : null
                     ) : (
@@ -604,7 +610,7 @@ export function EngagementExecutionWorkspace({
                   </article>
                 );
               })}
-              {latestDeliverables.length === 0 ? <div className="grid justify-items-center gap-2 py-12 text-center"><FileCheck2 className="h-8 w-8 text-muted-foreground" /><p className="font-semibold text-foreground">No official deliverables yet</p><p className="max-w-md text-sm text-muted-foreground">{isClient ? "Released final outputs will appear here." : "Upload a final report from Documents to begin its approval and release process."}</p>{!isClient && editable ? <Link className={buttonClassName({ size: "sm" })} href={`${basePath}?tab=documents`}><Upload className="h-4 w-4" />Upload final document</Link> : null}</div> : null}
+              {latestDeliverables.length === 0 ? <div className="grid justify-items-center gap-2 py-12 text-center"><FileCheck2 className="h-8 w-8 text-muted-foreground" /><p className="font-semibold text-foreground">No official deliverables yet</p><p className="max-w-md text-sm text-muted-foreground">{isClient ? "Released final outputs will appear here." : "Upload a final report from Documents to begin its approval and release process."}</p>{canUploadDeliverables && editable ? <Link className={buttonClassName({ size: "sm" })} href={`${basePath}?tab=documents`}><Upload className="h-4 w-4" />Upload final document</Link> : null}</div> : null}
             </CardContent>
           </Card>
         </MobileSection>
@@ -619,17 +625,89 @@ export function EngagementExecutionWorkspace({
 
       {activeTab === "finance" ? (
         <MobileSection title="Finance">
-          <SectionIntro complete={sectionState.finance.complete} doneWhen={sectionState.finance.doneWhen} nextAction={sectionState.finance.nextAction} purpose={sectionState.finance.purpose} title="Invoices and payments" />
+          <SectionIntro complete={sectionState.finance.complete} doneWhen={sectionState.finance.doneWhen} nextAction={sectionState.finance.nextAction} purpose="Finance officers prepare invoices. Administrators approve and digitally stamp invoices and payments before the client receives them." title="Invoices and payments" />
           <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
-            <div className="grid gap-4">
-              <Card className="shadow-none"><CardHeader><CardTitle>Invoices</CardTitle><CardDescription>Draft, sent, partially paid, paid, and overdue invoice records.</CardDescription></CardHeader><CardContent className="grid gap-3">{workflow.financial.invoices.map((invoice) => <article className="flex flex-col justify-between gap-3 rounded-md border border-border p-4 sm:flex-row sm:items-center" key={invoice.invoiceId}><div><div className="flex flex-wrap items-center gap-2"><p className="font-semibold text-foreground">{invoice.invoiceNumber}</p><Badge tone={statusTone(invoice.status)}>{statusLabel(invoice.status)}</Badge></div><p className="mt-2 text-sm text-muted-foreground">Issued {dateLabel(invoice.issueDate)} | Due {dateLabel(invoice.dueDate)} | {money(invoice.currency, invoice.amount)}</p></div><div className="flex gap-2"><Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={`/api/engagements/${workflow.id}/invoices/${invoice.invoiceId}`} target="_blank"><FileText className="h-4 w-4" />View invoice</Link>{finance && editable && invoice.status === "draft" ? <form action={sendEngagementInvoiceAction}><input name="workflowId" type="hidden" value={workflow.id} /><input name="invoiceId" type="hidden" value={invoice.invoiceId} /><input name="returnPath" type="hidden" value={basePath} /><SubmitButton pendingText="Sending..." size="sm"><Send className="h-4 w-4" />Send</SubmitButton></form> : null}</div></article>)}{workflow.financial.invoices.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">No invoices have been generated.</p> : null}</CardContent></Card>
-              <Card className="shadow-none"><CardHeader><CardTitle>Payments and receipts</CardTitle><CardDescription>Client payment records and finance verification decisions.</CardDescription></CardHeader><CardContent className="grid gap-3">{data.payments.map((payment) => <article className="flex flex-col justify-between gap-3 rounded-md border border-border p-4 sm:flex-row sm:items-center" key={payment.id}><div><div className="flex flex-wrap items-center gap-2"><p className="font-semibold text-foreground">{payment.transactionReference}</p><Badge tone={statusTone(payment.status)}>{statusLabel(payment.status)}</Badge></div><p className="mt-2 text-sm text-muted-foreground">{dateLabel(payment.submittedAt)} | {statusLabel(payment.method)} | {money(payment.currency, payment.amount)}</p></div>{payment.status === "verified" ? <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={`/api/engagements/${workflow.id}/payments/${payment.id}/receipt`} target="_blank"><Download className="h-4 w-4" />Receipt</Link> : null}</article>)}{data.payments.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">No payments have been recorded.</p> : null}{isClient && editable ? <Link className={buttonClassName()} href={`/client/payments/new?workflowId=${workflow.id}`}>Record a payment<ArrowRight className="h-4 w-4" /></Link> : null}</CardContent></Card>
+            <div className="grid min-w-0 gap-4">
+              <Card className="min-w-0 shadow-none">
+                <CardHeader><CardTitle>Invoices</CardTitle><CardDescription>Invoices remain internal until an administrator approves and stamps them.</CardDescription></CardHeader>
+                <CardContent className="grid gap-3">
+                  {workflow.financial.invoices.map((invoice) => (
+                    <article className="grid min-w-0 gap-4 rounded-md border border-border p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center" key={invoice.invoiceId}>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2"><p className="break-words font-semibold text-foreground">{invoice.invoiceNumber}</p><Badge tone={statusTone(invoice.status)}>{statusLabel(invoice.status)}</Badge></div>
+                        <p className="mt-2 break-words text-sm text-muted-foreground">Created {dateLabel(invoice.issueDate)} | Due {dateLabel(invoice.dueDate)} | {money(invoice.currency, invoice.amount)}</p>
+                        {invoice.approvedAt ? <p className="mt-2 text-xs font-semibold text-primary">Digitally approved by {invoice.approvedByName} on {dateLabel(invoice.approvedAt, true)} | {invoice.approvalStampId}</p> : null}
+                        {isAdmin && invoice.emailDeliveryStatus === "sent" ? <p className="mt-2 break-all text-xs text-success">Email delivered to {invoice.emailedTo}.</p> : null}
+                        {isAdmin && invoice.emailDeliveryStatus === "failed" ? <p className="mt-2 text-xs font-semibold text-danger">Invoice approved, but email delivery failed. The client can still open it in the portal.</p> : null}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={`/api/engagements/${workflow.id}/invoices/${invoice.invoiceId}`} target="_blank"><FileText className="h-4 w-4" />View invoice</Link>
+                        {isAdmin && editable && ["draft", "pending_approval"].includes(invoice.status) ? (
+                          <form action={sendEngagementInvoiceAction}>
+                            <input name="workflowId" type="hidden" value={workflow.id} />
+                            <input name="invoiceId" type="hidden" value={invoice.invoiceId} />
+                            <input name="returnPath" type="hidden" value={basePath} />
+                            <SubmitButton pendingText="Approving..." size="sm"><ShieldCheck className="h-4 w-4" />Approve, stamp and send</SubmitButton>
+                          </form>
+                        ) : null}
+                      </div>
+                    </article>
+                  ))}
+                  {workflow.financial.invoices.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">No invoices have been prepared.</p> : null}
+                </CardContent>
+              </Card>
+
+              <Card className="min-w-0 shadow-none">
+                <CardHeader><CardTitle>Payments and receipts</CardTitle><CardDescription>Client payment submissions require administrator approval before a receipt is created.</CardDescription></CardHeader>
+                <CardContent className="grid gap-3">
+                  {data.payments.map((payment) => (
+                    <article className="grid min-w-0 gap-4 rounded-md border border-border p-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] lg:items-center" key={payment.id}>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2"><p className="break-all font-semibold text-foreground">{payment.transactionReference}</p><Badge tone={statusTone(payment.status)}>{statusLabel(payment.status)}</Badge></div>
+                        <p className="mt-2 text-sm text-muted-foreground">{dateLabel(payment.submittedAt)} | {statusLabel(payment.method)} | {money(payment.currency, payment.amount)}</p>
+                        {payment.reviewNote ? <p className="mt-2 text-sm text-muted-foreground">Review note: {payment.reviewNote}</p> : null}
+                      </div>
+                      {isAdmin && editable && payment.status === "pending" ? (
+                        <form action={reviewEngagementPaymentAction} className="grid min-w-0 gap-2">
+                          <input name="workflowId" type="hidden" value={workflow.id} />
+                          <input name="paymentId" type="hidden" value={payment.id} />
+                          <input name="returnPath" type="hidden" value={basePath} />
+                          <Textarea className="min-h-20" name="reviewNote" placeholder="Optional note for the client" />
+                          <div className="grid grid-cols-2 gap-2">
+                            <SubmitButton name="decision" pendingText="Saving..." size="sm" value="rejected" variant="secondary">Reject</SubmitButton>
+                            <SubmitButton name="decision" pendingText="Approving..." size="sm" value="verified">Approve payment</SubmitButton>
+                          </div>
+                        </form>
+                      ) : payment.status === "verified" ? (
+                        <Link className={buttonClassName({ variant: "secondary", size: "sm", className: "w-fit" })} href={`/api/engagements/${workflow.id}/payments/${payment.id}/receipt`} target="_blank"><Download className="h-4 w-4" />Receipt</Link>
+                      ) : payment.status === "pending" && !isClient ? <p className="text-sm font-semibold text-warning">Waiting for administrator approval</p> : null}
+                    </article>
+                  ))}
+                  {data.payments.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">No payments have been recorded.</p> : null}
+                  {isClient && editable ? <Link className={buttonClassName()} href={`/client/payments/new?workflowId=${workflow.id}`}>Record a payment<ArrowRight className="h-4 w-4" /></Link> : null}
+                </CardContent>
+              </Card>
             </div>
-            {finance && editable ? <Card className="h-fit shadow-none"><CardHeader><CardTitle>Generate invoice</CardTitle><CardDescription>Create a draft, then review and send it to the client.</CardDescription></CardHeader><CardContent><form action={createEngagementInvoiceAction} className="grid gap-3"><input name="workflowId" type="hidden" value={workflow.id} /><input name="returnPath" type="hidden" value={basePath} /><div className="grid gap-2"><Label htmlFor="invoice-amount">Amount ({workflow.financial.currency})</Label><Input id="invoice-amount" min="1" name="amount" required step="0.01" type="number" /></div><div className="grid gap-2"><Label htmlFor="invoice-due">Due date</Label><Input id="invoice-due" name="dueDate" required type="date" /></div><div className="grid gap-2"><Label htmlFor="invoice-notes">Notes</Label><Textarea id="invoice-notes" name="notes" placeholder="Scope, billing milestone, or payment instructions..." /></div><SubmitButton pendingText="Creating invoice..."><Plus className="h-4 w-4" />Create draft invoice</SubmitButton></form></CardContent></Card> : null}
+
+            {assignedFinanceOfficer && editable ? (
+              <Card className="h-fit shadow-none">
+                <CardHeader><CardTitle>Prepare invoice</CardTitle><CardDescription>Submit the invoice to an administrator for approval, digital stamping, and client delivery.</CardDescription></CardHeader>
+                <CardContent>
+                  <form action={createEngagementInvoiceAction} className="grid gap-3">
+                    <input name="workflowId" type="hidden" value={workflow.id} /><input name="returnPath" type="hidden" value={basePath} />
+                    <div className="grid gap-2"><Label htmlFor="invoice-amount">Amount ({workflow.financial.currency})</Label><Input id="invoice-amount" min="1" name="amount" required step="0.01" type="number" /></div>
+                    <div className="grid gap-2"><Label htmlFor="invoice-due">Due date</Label><Input id="invoice-due" name="dueDate" required type="date" /></div>
+                    <div className="grid gap-2"><Label htmlFor="invoice-notes">Notes</Label><Textarea id="invoice-notes" name="notes" placeholder="Scope, billing milestone, or payment instructions..." /></div>
+                    <SubmitButton pendingText="Submitting invoice..."><Send className="h-4 w-4" />Submit for approval</SubmitButton>
+                  </form>
+                </CardContent>
+              </Card>
+            ) : isAdmin ? (
+              <Card className="h-fit shadow-none"><CardHeader><CardTitle>Administrator approval</CardTitle><CardDescription>Use the action beside each pending invoice or payment. Approval creates the digital stamp before anything is sent to the client.</CardDescription></CardHeader><CardContent><p className="text-sm text-muted-foreground">Pending invoices: {workflow.financial.invoices.filter((invoice) => ["draft", "pending_approval"].includes(invoice.status)).length}<br />Pending payments: {data.payments.filter((payment) => payment.status === "pending").length}</p></CardContent></Card>
+            ) : null}
           </div>
         </MobileSection>
       ) : null}
-
       {activeTab === "timeline" ? (
         <MobileSection title="Timeline">
           <SectionIntro complete={sectionState.timeline.complete} doneWhen={sectionState.timeline.doneWhen} nextAction={sectionState.timeline.nextAction} purpose={sectionState.timeline.purpose} title="Timeline and audit history" />

@@ -9,12 +9,19 @@ export type EmailDeliveryResult = {
   reason?: string;
 };
 
+export type PortalEmailAttachment = {
+  filename: string;
+  content: Buffer;
+  contentType: string;
+};
+
 export async function sendPortalEmail(input: {
   recipientEmail: string;
   subject: string;
   html: string;
   text?: string;
   replyTo?: string;
+  attachments?: PortalEmailAttachment[];
 }): Promise<EmailDeliveryResult> {
   const env = getServerEnv();
   const recipient = normalizeRecipientEmail(input.recipientEmail);
@@ -41,6 +48,7 @@ export async function sendPortalEmail(input: {
       subject: input.subject,
       html: input.html,
       text: input.text,
+      attachments: input.attachments,
     });
     const accepted = (result.accepted ?? [])
       .map((address) => normalizeRecipientEmail(String(address)))

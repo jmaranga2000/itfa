@@ -7,8 +7,6 @@ import { AdminPageSurface } from "@/components/dashboard/admin/admin-page-surfac
 import { StaffEmptyState, staffDate, staffStatusLabel, staffStatusTone } from "@/components/dashboard/staff/staff-work-ui";
 import { Badge } from "@/components/ui/badge";
 import { buttonClassName } from "@/components/ui/button";
-import { SubmitButton } from "@/components/ui/submit-button";
-import { approveAndIssueInvoiceAction, reviewClientPaymentAction } from "@/features/staff/finance-actions";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -58,14 +56,12 @@ export function StaffRequests({ requests }: { requests: StaffAssignedRequest[] }
 }
 
 export function StaffFinance({
-  canManage,
   error,
   mode,
   payments = [],
   updated,
   workflows,
 }: {
-  canManage: boolean;
   error?: string;
   mode: "invoices" | "payments";
   payments?: StaffPaymentRecord[];
@@ -84,7 +80,7 @@ export function StaffFinance({
       icon={mode === "invoices" ? ReceiptText : Banknote}
       summary={[
         { label: "Records", value: mode === "invoices" ? workflows.length : payments.length, helper: mode === "invoices" ? "Visible engagements" : "Submitted payments", icon: ReceiptText },
-        { label: "Needs action", value: pending, helper: mode === "invoices" ? "Not fully settled" : "Waiting for verification", icon: Clock3 },
+        { label: "Needs action", value: pending, helper: mode === "invoices" ? "Not fully settled" : "Waiting for administrator approval", icon: Clock3 },
         { label: "Balance due", value: balance.toLocaleString("en-KE"), helper: "Across visible currencies", icon: Banknote },
       ]}
       title={heading}
@@ -98,10 +94,7 @@ export function StaffFinance({
           <div className="divide-y divide-border">
             {workflows.map((workflow) => {
               const task = workflow.tasks.find((item) => item.key === "approve_invoice" || (item.stageKey === "finance" && item.assignedRole === "finance_officer"));
-              const canIssue = canManage
-                && workflow.financial.balanceDue > 0
-                && Boolean(task && ["ready", "in_progress", "waiting_for_approval", "overdue"].includes(task.status))
-                && !["issued", "partially_paid", "paid", "void", "refunded"].includes(workflow.financial.invoiceStatus);
+
               return (
                 <div className="grid min-w-0 scroll-mt-24 gap-4 p-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center" id={`invoice-${workflow.id}`} key={workflow.id}>
                   <div className="min-w-0">
@@ -115,12 +108,7 @@ export function StaffFinance({
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row">
                     <Link className={buttonClassName({ variant: "secondary", size: "sm", className: "justify-center" })} href={`/staff/engagements/${workflow.id}?tab=finance`}>Open finance<ArrowRight aria-hidden="true" className="h-4 w-4" /></Link>
-                    {canIssue ? (
-                      <form action={approveAndIssueInvoiceAction}>
-                        <input name="workflowId" type="hidden" value={workflow.id} />
-                        <SubmitButton className="w-full justify-center" pendingText="Issuing..." size="sm">Approve and issue</SubmitButton>
-                      </form>
-                    ) : null}
+                    {workflow.financial.invoiceStatus === "pending_approval" ? <p className="self-center text-xs font-semibold text-warning">Waiting for administrator approval</p> : null}
                   </div>
                 </div>
               );
@@ -140,18 +128,10 @@ export function StaffFinance({
                 <p className="mt-1 break-all text-xs text-muted-foreground">Reference: {payment.transactionReference} / Submitted {staffDate(payment.submittedAt)}</p>
                 {payment.reviewNote ? <p className="mt-2 text-sm text-muted-foreground">Review note: {payment.reviewNote}</p> : null}
               </div>
-              {canManage && payment.status === "pending" ? (
-                <form action={reviewClientPaymentAction} className="grid min-w-0 gap-2">
-                  <input name="paymentId" type="hidden" value={payment.id} />
-                  <label className="text-xs font-semibold text-muted-foreground" htmlFor={`review-note-${payment.id}`}>Review note</label>
-                  <textarea className="min-h-20 w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground" id={`review-note-${payment.id}`} name="reviewNote" placeholder="Optional note for the client" />
-                  <div className="grid grid-cols-2 gap-2">
-                    <SubmitButton name="decision" pendingText="Saving..." size="sm" value="rejected" variant="secondary">Reject</SubmitButton>
-                    <SubmitButton name="decision" pendingText="Saving..." size="sm" value="verified">Verify payment</SubmitButton>
-                  </div>
-                </form>
-              ) : <Link className={buttonClassName({ variant: "secondary", size: "sm", className: "w-fit" })} href={`/staff/engagements/${payment.workflowId}?tab=finance`}>Open finance<ArrowRight aria-hidden="true" className="h-4 w-4" /></Link>}
-            </div>
+              <div className="grid gap-2">
+                {payment.status === "pending" ? <p className="text-sm font-semibold text-warning">Waiting for administrator approval</p> : null}
+                <Link className={buttonClassName({ variant: "secondary", size: "sm", className: "w-fit" })} href={`/staff/engagements/${payment.workflowId}?tab=finance`}>Open finance<ArrowRight aria-hidden="true" className="h-4 w-4" /></Link>
+              </div>            </div>
           ))}
         </div>
       )}

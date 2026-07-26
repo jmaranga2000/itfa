@@ -305,10 +305,10 @@ export async function createEngagementDocument(input: {
   const isDeliverable = input.documentKind === "final_deliverable";
   const controlledTaskKey = isDraft ? "draft_deliverable" : isDeliverable ? "final_deliverable" : null;
   const controlledTask = controlledTaskKey ? workflow.tasks.find((task) => task.key === controlledTaskKey) : null;
-  const assignedPreparer = isAdmin(input.principal)
-    || workflow.responsibleUserId === input.principal.id
-    || controlledTask?.assignedUserId === input.principal.id
-    || workflow.team.some((member) => member.role === "consultant" && member.userId === input.principal.id);
+  const assignedPreparer = input.principal.roleKeys.includes("consultant")
+    && workflow.team.some((member) =>
+      member.role === "consultant" && member.userId === input.principal.id,
+    );
   if ((isDraft || isDeliverable) && !assignedPreparer) return null;
   if (controlledTask) {
     const prerequisitesComplete = controlledTask.dependencies.every((dependencyKey) => {
@@ -427,7 +427,8 @@ export async function reviewEngagementDeliverable(input: {
   const workflow = await writableWorkflow(input.principal, input.workflowId);
   if (!workflow || !Types.ObjectId.isValid(input.documentId) || !Types.ObjectId.isValid(input.principal.id)) return false;
   const allowed = isAdmin(input.principal)
-    || workflow.team.some((member) => member.role === "reviewer" && member.userId === input.principal.id);
+    || (input.principal.roleKeys.includes("reviewer")
+      && workflow.team.some((member) => member.role === "reviewer" && member.userId === input.principal.id));
   if (!allowed) return false;
   const stored = await ClientDocumentModel.findOne({
     _id: input.documentId,
@@ -655,7 +656,8 @@ export async function recordEngagementTechnicalReview(input: {
   const workflow = await writableWorkflow(input.principal, input.workflowId);
   if (!workflow || !Types.ObjectId.isValid(input.documentId) || !Types.ObjectId.isValid(input.principal.id)) return false;
   const allowed = isAdmin(input.principal)
-    || workflow.team.some((member) => member.role === "reviewer" && member.userId === input.principal.id);
+    || (input.principal.roleKeys.includes("reviewer")
+      && workflow.team.some((member) => member.role === "reviewer" && member.userId === input.principal.id));
   if (!allowed) return false;
   const stored = await ClientDocumentModel.findOne({ _id: input.documentId, workflowId: input.workflowId }).lean().exec() as RawEngagementDocument | null;
   if (!stored) return false;

@@ -2,7 +2,7 @@ import { Types } from "mongoose";
 import { getServerEnv } from "@/lib/env";
 import { connectToDatabase } from "@/lib/db/mongoose";
 import { clientRecipientName } from "@/lib/client-recipient";
-import { sendPortalEmail } from "@/lib/email/smtp";
+import { sendPortalEmail, type PortalEmailAttachment } from "@/lib/email/smtp";
 import { UserModel } from "@/models/user";
 
 function escapeHtml(value: string) {
@@ -21,6 +21,7 @@ export async function sendClientJourneyEmail(input: {
   summary: string;
   actionLabel: string;
   actionPath: string;
+  attachments?: PortalEmailAttachment[];
 }) {
   const env = getServerEnv();
   const actionUrl = `${env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "")}${input.actionPath}`;
@@ -32,6 +33,7 @@ export async function sendClientJourneyEmail(input: {
     subject: input.title,
     text: `Hello ${input.recipientName || "Client"}, ${input.summary} ${input.actionLabel}: ${actionUrl}`,
     html: `<!doctype html><html><body style="margin:0;background:#f2f7f6;color:#03363D;font-family:Arial,sans-serif;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:32px 16px;"><tr><td align="center"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#fff;border:1px solid #BDD9D7;border-radius:8px;overflow:hidden;"><tr><td style="background:#03363D;padding:26px 30px;color:#fff;"><p style="margin:0;color:#BDD9D7;font-size:12px;font-weight:700;text-transform:uppercase;">IFTA Consulting</p><h1 style="margin:10px 0 0;font-size:24px;line-height:1.35;">${title}</h1></td></tr><tr><td style="padding:30px;"><p style="margin:0 0 18px;font-size:16px;">Hello ${recipientName},</p><div style="border-left:4px solid #BDD9D7;background:#f5f9f9;padding:18px;"><p style="margin:0;font-size:15px;line-height:1.7;color:#38585c;">${summary}</p></div><p style="margin:24px 0;"><a href="${actionUrl}" style="display:inline-block;background:#03363D;color:#fff;padding:12px 18px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:700;">${escapeHtml(input.actionLabel)}</a></p><p style="margin:0;font-size:13px;line-height:1.6;color:#6b7f81;">Sign in to your secure portal to view the full update and complete any required action.</p></td></tr><tr><td style="border-top:1px solid #e3ebea;padding:18px 30px;font-size:12px;color:#718486;">This is an automated service update from IFTA Consulting.</td></tr></table></td></tr></table></body></html>`,
+    attachments: input.attachments,
   });
 }
 
@@ -67,6 +69,7 @@ export async function sendClientJourneyEmailToUser(input: {
   summary: string;
   actionLabel: string;
   actionPath: string;
+  attachments?: PortalEmailAttachment[];
 }) {
   const recipient = await resolveClientJourneyRecipient(
     input.clientUserId,
@@ -92,6 +95,7 @@ export async function sendClientJourneyEmailToUser(input: {
     summary: input.summary,
     actionLabel: input.actionLabel,
     actionPath: input.actionPath,
+    attachments: input.attachments,
   });
 
   if (!delivery.delivered) {

@@ -15,6 +15,7 @@ import {
   createFollowUpEngagement,
   respondToClientCollaborationRequest,
   reviewEngagementTask,
+  reviewEngagementPayment,
   sendEngagementInvoice,
 } from "@/repositories/engagement-execution-repository";
 import {
@@ -200,10 +201,32 @@ export async function sendEngagementInvoiceAction(formData: FormData) {
   const workflowId = String(formData.get("workflowId") ?? "");
   const back = workspacePath(formData, workflowId, "finance");
   const invoiceId = String(formData.get("invoiceId") ?? "");
-  const sent = await sendEngagementInvoice({ principal, workflowId, invoiceId });
-  if (!sent) redirect(`${back}&error=invoice-send`);
+  const result = await sendEngagementInvoice({ principal, workflowId, invoiceId });
+  if (!result.ok) redirect(`${back}&error=invoice-send`);
   refresh(workflowId);
-  redirect(`${back}&saved=invoice-sent`);
+  redirect(result.emailDelivered
+    ? `${back}&saved=invoice-approved`
+    : `${back}&saved=invoice-approved&error=invoice-email`);
+}
+
+export async function reviewEngagementPaymentAction(formData: FormData) {
+  const principal = await requireUser();
+  const workflowId = String(formData.get("workflowId") ?? "");
+  const back = workspacePath(formData, workflowId, "finance");
+  const parsed = z.object({
+    paymentId: idSchema,
+    decision: z.enum(["verified", "rejected"]),
+    reviewNote: z.string().trim().max(500),
+  }).safeParse({
+    paymentId: formData.get("paymentId"),
+    decision: formData.get("decision"),
+    reviewNote: formData.get("reviewNote") ?? "",
+  });
+  if (!parsed.success) redirect(`${back}&error=payment-review`);
+  const reviewed = await reviewEngagementPayment({ principal, workflowId, ...parsed.data });
+  if (!reviewed) redirect(`${back}&error=payment-review-access`);
+  refresh(workflowId);
+  redirect(`${back}&saved=payment-${parsed.data.decision}`);
 }
 
 export async function completeEngagementAction(formData: FormData) {

@@ -375,22 +375,33 @@ export async function createClientPayment(input: {
       relatedResource: input.transactionReference, clientVisible: true, createdAt: new Date(),
     } } },
   ).exec();
-  const financeRecipients = workflow.team.flatMap((member) =>
-    member.role === "finance_officer" && member.userId
-      ? [member.userId.toString()]
-      : [],
-  );
-  await Promise.allSettled(financeRecipients.map((recipientUserId) => createCommunicationNotification({
-    recipientUserId,
+  const [administrators] = await Promise.all([
+    UserModel.find({ status: "active", archivedAt: null, roleKeys: { $in: ["admin", "super_admin"] } })
+      .select("_id")
+      .lean()
+      .exec(),
+  ]);
+  const recipients = [
+    ...administrators.map((administrator) => ({
+      userId: administrator._id.toString(),
+      actionUrl: `/admin/active-engagements/${workflow._id.toString()}?tab=finance`,
+    })),
+    ...workflow.team.flatMap((member) =>
+      member.role === "finance_officer" && member.userId
+        ? [{ userId: member.userId.toString(), actionUrl: `/staff/engagements/${workflow._id.toString()}?tab=finance` }]
+        : [],
+    ),
+  ].filter((recipient, index, all) => all.findIndex((candidate) => candidate.userId === recipient.userId) === index);
+  await Promise.allSettled(recipients.map((recipient) => createCommunicationNotification({
+    recipientUserId: recipient.userId,
     type: "action_required",
-    title: "Payment submitted for review",
-    description: `${workflow.reference} has a ${workflow.financial.currency} ${input.amount.toLocaleString("en-KE")} payment awaiting verification.`,
+    title: "Payment needs administrator approval",
+    description: `${workflow.reference} has a ${workflow.financial.currency} ${input.amount.toLocaleString("en-KE")} payment awaiting administrator approval.`,
     relatedModule: "engagements",
     relatedRecordId: workflow._id.toString(),
-    actionUrl: `/staff/engagements/${workflow._id.toString()}?tab=finance`,
+    actionUrl: recipient.actionUrl,
     createdByUserId: input.principal.id,
-  })));
-  return payment._id.toString();
+  })));  return payment._id.toString();
 }
 
 export async function getClientArchive(principal: Principal): Promise<WorkflowInstanceRecord[]> {

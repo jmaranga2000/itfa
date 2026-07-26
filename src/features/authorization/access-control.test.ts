@@ -6,6 +6,7 @@ import {
   assertPermission,
   type Principal,
 } from "@/features/authorization/access-control";
+import { ROLE_PERMISSION_MATRIX } from "@/features/authorization/roles";
 
 const basePrincipal: Principal = {
   id: "user_1",
@@ -37,6 +38,13 @@ describe("access-control", () => {
     );
   });
 
+  it("keeps invoice and payment approval with administrators", () => {
+    expect(ROLE_PERMISSION_MATRIX.finance_officer).toContain("invoices.create");
+    expect(ROLE_PERMISSION_MATRIX.finance_officer).not.toContain("invoices.approve");
+    expect(ROLE_PERMISSION_MATRIX.finance_officer).not.toContain("payments.reconcile");
+    expect(ROLE_PERMISSION_MATRIX.admin).toContain("invoices.approve");
+    expect(ROLE_PERMISSION_MATRIX.admin).toContain("payments.reconcile");
+  });
   it("prevents clients from reading staff-only documents without a document permission", () => {
     expect(() =>
       assertDocumentAccess(

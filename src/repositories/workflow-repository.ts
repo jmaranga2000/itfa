@@ -257,6 +257,14 @@ export type WorkflowInstanceRecord = {
       createdByUserId: string | null;
       createdByName: string;
       sentAt: string | null;
+      approvedByUserId: string | null;
+      approvedByName: string;
+      approvedAt: string | null;
+      approvalStampId: string;
+      emailDeliveryStatus: "pending" | "sent" | "failed";
+      emailedTo: string;
+      emailSentAt: string | null;
+      emailDeliveryError: string;
     }>;
   };
   completionChecklist: Array<{ label: string; completed: boolean }>;
@@ -433,6 +441,14 @@ type RawWorkflowInstance = Omit<
       createdByUserId?: Types.ObjectId | null;
       createdByName?: string;
       sentAt?: Date | null;
+      approvedByUserId?: Types.ObjectId | null;
+      approvedByName?: string;
+      approvedAt?: Date | null;
+      approvalStampId?: string;
+      emailDeliveryStatus?: "pending" | "sent" | "failed";
+      emailedTo?: string;
+      emailSentAt?: Date | null;
+      emailDeliveryError?: string;
     }>;
   };
   completion?: {
@@ -709,7 +725,9 @@ function serializeWorkflow(workflow: RawWorkflowInstance, clientView = false): W
       paymentStatus: workflow.financial.paymentStatus,
       balanceDue: workflow.financial.balanceDue,
       currency: workflow.financial.currency,
-      invoices: (workflow.financial.invoices ?? []).map((invoice) => ({
+      invoices: (workflow.financial.invoices ?? [])
+        .filter((invoice) => !clientView || !["draft", "pending_approval", "approved"].includes(invoice.status))
+        .map((invoice) => ({
         invoiceId: invoice.invoiceId,
         invoiceNumber: invoice.invoiceNumber,
         issueDate: serializeDate(invoice.issueDate) ?? "",
@@ -721,6 +739,14 @@ function serializeWorkflow(workflow: RawWorkflowInstance, clientView = false): W
         createdByUserId: invoice.createdByUserId?.toString() ?? null,
         createdByName: invoice.createdByName ?? "",
         sentAt: serializeDate(invoice.sentAt),
+        approvedByUserId: invoice.approvedByUserId?.toString() ?? null,
+        approvedByName: invoice.approvedByName ?? "",
+        approvedAt: serializeDate(invoice.approvedAt),
+        approvalStampId: invoice.approvalStampId ?? "",
+        emailDeliveryStatus: invoice.emailDeliveryStatus ?? "pending",
+        emailedTo: invoice.emailedTo ?? "",
+        emailSentAt: serializeDate(invoice.emailSentAt),
+        emailDeliveryError: invoice.emailDeliveryError ?? "",
       })),
     },
     completionChecklist: clientView ? [] : workflow.completionChecklist,

@@ -1,12 +1,15 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { Types } from "mongoose";
 import type { Principal } from "@/features/authorization/access-control";
 import { hasPermission } from "@/features/authorization/access-control";
 import { writeAuditLog } from "@/features/audit/audit-service";
-import { sendClientJourneyEmail } from "@/features/engagements/client-journey-email";
+import { sendClientJourneyEmailToUser } from "@/features/engagements/client-journey-email";
+import { createInvoicePdf } from "@/features/invoices/invoice-pdf";
 import type { WorkflowPriority } from "@/features/workflows/types";
 import { connectToDatabase } from "@/lib/db/mongoose";
+import { getServerEnv } from "@/lib/env";
+import type { EmailDeliveryResult } from "@/lib/email/smtp";
 import { getR2Client, getR2Configuration } from "@/lib/r2";
 import { createZipBuffer, type ZipEntry } from "@/lib/zip";
 import { ArchiveRecordModel } from "@/models/archive-record";
@@ -176,6 +179,31 @@ function isAdministrator(principal: Principal) {
   return principal.roleKeys.some((role) => role === "admin" || role === "super_admin");
 }
 
+async function activeAdministratorIds(excludeUserId?: string) {
+  const administrators = await UserModel.find({
+    status: "active",
+    archivedAt: null,
+    roleKeys: { $in: ["admin", "super_admin"] },
+  }).select("_id").lean().exec();
+  return administrators
+    .map((administrator) => administrator._id.toString())
+    .filter((userId) => userId !== excludeUserId);
+}
+
+function invoiceApprovalStamp(input: {
+  invoiceId: string;
+  workflowId: string;
+  administratorId: string;
+  approvedAt: Date;
+}) {
+  const payload = `${input.invoiceId}:${input.workflowId}:${input.administratorId}:${input.approvedAt.toISOString()}`;
+  const secret = getServerEnv().ENCRYPTION_KEY?.trim();
+  const digest = secret
+    ? createHmac("sha256", secret).update(payload).digest("hex")
+    : createHash("sha256").update(payload).digest("hex");
+  return `IFTA-${input.approvedAt.getUTCFullYear()}-${digest.slice(0, 16).toUpperCase()}`;
+}
+
 function teamMember(workflow: WorkflowInstanceRecord, principal: Principal, role: string) {
   return workflow.team.some((member) => member.userId === principal.id && member.role === role);
 }
@@ -198,9 +226,6 @@ function isReviewer(workflow: WorkflowInstanceRecord, principal: Principal) {
   return isAdministrator(principal) || teamMember(workflow, principal, "reviewer");
 }
 
-function isFinance(workflow: WorkflowInstanceRecord, principal: Principal) {
-  return isAdministrator(principal) || teamMember(workflow, principal, "finance_officer");
-}
 
 export function getEngagementHealth(workflow: WorkflowInstanceRecord): EngagementHealth {
   const now = Date.now();
@@ -518,41 +543,296 @@ export async function createEngagementInvoice(input: {
   notes: string;
 }) {
   const workflow = await getWorkflowForPrincipal(input.principal, input.workflowId);
-  if (!workflow || workflow.status !== "active" || !isFinance(workflow, input.principal) || !hasPermission(input.principal, "invoices.create")) return null;
+  const assignedFinanceOfficer = workflow
+    && input.principal.roleKeys.includes("finance_officer")
+    && teamMember(workflow, input.principal, "finance_officer");
+  if (!workflow || workflow.status !== "active" || !assignedFinanceOfficer || !hasPermission(input.principal, "invoices.create")) return null;
   const now = new Date();
   const invoiceId = randomUUID();
   const invoiceNumber = `INV-${now.getFullYear()}-${randomBytes(3).toString("hex").toUpperCase()}`;
+  const financeTask = workflow.tasks.find((task) => task.key === "approve_invoice" || (task.stageKey === "finance" && task.assignedRole === "finance_officer"));
+  const setValues: Record<string, unknown> = {
+    "financial.invoiceStatus": "pending_approval",
+    "financial.balanceDue": workflow.financial.balanceDue > 0 ? workflow.financial.balanceDue : input.amount,
+    currentStageName: "Finance approval",
+    nextAction: `Administrator approval required for ${invoiceNumber}`,
+    lastActivityAt: now,
+  };
+  if (financeTask) {
+    setValues["tasks.$[financeTask].status"] = "waiting_for_approval";
+    setValues["tasks.$[financeTask].completionNotes"] = `${invoiceNumber} submitted for administrator approval.`;
+  }
   await WorkflowInstanceModel.updateOne(
     { _id: workflow.id, status: "active" },
     {
-      $push: { "financial.invoices": { invoiceId, invoiceNumber, issueDate: now, dueDate: input.dueDate, amount: input.amount, currency: workflow.financial.currency, status: "draft", notes: input.notes, createdByUserId: input.principal.id, createdByName: input.principal.displayName || input.principal.email } },
-      $set: { "financial.invoiceStatus": "draft", "financial.balanceDue": workflow.financial.balanceDue > 0 ? workflow.financial.balanceDue : input.amount, currentStageName: "Finance", nextAction: `Review ${invoiceNumber}`, lastActivityAt: now },
+      $push: {
+        "financial.invoices": {
+          invoiceId,
+          invoiceNumber,
+          issueDate: now,
+          dueDate: input.dueDate,
+          amount: input.amount,
+          currency: workflow.financial.currency,
+          status: "pending_approval",
+          notes: input.notes,
+          createdByUserId: input.principal.id,
+          createdByName: input.principal.displayName || input.principal.email,
+          emailDeliveryStatus: "pending",
+        },
+        activity: {
+          type: "approval_submitted",
+          title: "Invoice submitted for approval",
+          actorName: input.principal.displayName || input.principal.email,
+          actorUserId: input.principal.id,
+          description: `${invoiceNumber} - ${workflow.financial.currency} ${input.amount.toLocaleString("en-KE")}`,
+          relatedResource: invoiceId,
+          clientVisible: false,
+          createdAt: now,
+        },
+      },
+      $set: setValues,
     },
+    financeTask ? { arrayFilters: [{ "financeTask.key": financeTask.key }] } : undefined,
   ).exec();
+  const administrators = await activeAdministratorIds(input.principal.id);
+  await notifyUsers({
+    recipientIds: administrators,
+    actor: input.principal,
+    type: "action_required",
+    title: "Invoice needs approval",
+    description: `${invoiceNumber} for ${workflow.clientName} is ready for approval and digital stamping.`,
+    workflowId: workflow.id,
+    tab: "finance",
+  });
+  await writeAuditLog({
+    actor: input.principal,
+    action: "invoice.submitted_for_approval",
+    resourceType: "WorkflowInstance",
+    resourceId: workflow.id,
+    newValues: { invoiceId, invoiceNumber, amount: input.amount, currency: workflow.financial.currency },
+  });
   return invoiceId;
 }
 
 export async function sendEngagementInvoice(input: { principal: Principal; workflowId: string; invoiceId: string }) {
   const workflow = await getWorkflowForPrincipal(input.principal, input.workflowId);
   const invoice = workflow?.financial.invoices.find((item) => item.invoiceId === input.invoiceId);
-  if (!workflow || !invoice || workflow.status !== "active" || invoice.status !== "draft" || !isFinance(workflow, input.principal) || !hasPermission(input.principal, "invoices.approve")) return false;
+  const approvable = invoice && ["draft", "pending_approval"].includes(invoice.status);
+  if (!workflow || !invoice || !approvable || workflow.status !== "active" || !isAdministrator(input.principal) || !hasPermission(input.principal, "invoices.approve")) {
+    return { ok: false as const, emailDelivered: false };
+  }
   const now = new Date();
+  const approvedByName = input.principal.displayName || input.principal.email;
+  const approvalStampId = invoiceApprovalStamp({
+    invoiceId: invoice.invoiceId,
+    workflowId: workflow.id,
+    administratorId: input.principal.id,
+    approvedAt: now,
+  });
+  const financeTask = workflow.tasks.find((task) => task.key === "approve_invoice" || (task.stageKey === "finance" && task.assignedRole === "finance_officer"));
+  const setValues: Record<string, unknown> = {
+    "financial.invoices.$[invoice].status": "issued",
+    "financial.invoices.$[invoice].issueDate": now,
+    "financial.invoices.$[invoice].sentAt": now,
+    "financial.invoices.$[invoice].approvedByUserId": input.principal.id,
+    "financial.invoices.$[invoice].approvedByName": approvedByName,
+    "financial.invoices.$[invoice].approvedAt": now,
+    "financial.invoices.$[invoice].approvalStampId": approvalStampId,
+    "financial.invoiceStatus": "issued",
+    currentStageName: "Finance",
+    nextAction: "Await client payment",
+    lastActivityAt: now,
+  };
+  if (financeTask) {
+    setValues["tasks.$[financeTask].status"] = "completed";
+    setValues["tasks.$[financeTask].completedAt"] = now;
+    setValues["tasks.$[financeTask].completedByUserId"] = input.principal.id;
+    setValues["tasks.$[financeTask].completionNotes"] = `${invoice.invoiceNumber} approved, digitally stamped, and issued.`;
+  }
+  const arrayFilters: Array<Record<string, unknown>> = [{ "invoice.invoiceId": input.invoiceId }];
+  if (financeTask) arrayFilters.push({ "financeTask.key": financeTask.key });
   await WorkflowInstanceModel.updateOne(
     { _id: workflow.id },
     {
-      $set: { "financial.invoices.$[invoice].status": "issued", "financial.invoices.$[invoice].sentAt": now, "financial.invoiceStatus": "issued", currentStageName: "Finance", nextAction: "Await and verify client payment", lastActivityAt: now },
-      $push: { activity: { type: "invoice_issued", title: "Invoice Generated", actorName: input.principal.displayName || input.principal.email, actorUserId: input.principal.id, description: `${invoice.invoiceNumber} - ${invoice.currency} ${invoice.amount.toLocaleString("en-KE")}`, relatedResource: invoice.invoiceId, clientVisible: true, createdAt: now } },
+      $set: setValues,
+      $push: {
+        activity: {
+          type: "invoice_issued",
+          title: "Invoice approved and issued",
+          actorName: approvedByName,
+          actorUserId: input.principal.id,
+          description: `${invoice.invoiceNumber} was digitally stamped and issued for ${invoice.currency} ${invoice.amount.toLocaleString("en-KE")}.`,
+          relatedResource: invoice.invoiceId,
+          clientVisible: true,
+          createdAt: now,
+        },
+      },
+    },
+    { arrayFilters },
+  ).exec();
+
+  await notifyUsers({
+    recipientIds: [workflow.clientUserId],
+    actor: input.principal,
+    type: "invoice_generated",
+    title: "Invoice approved and ready",
+    description: `${invoice.invoiceNumber} is available in your engagement workspace.`,
+    workflowId: workflow.id,
+    tab: "finance",
+  });
+
+  let delivery: EmailDeliveryResult = { delivered: false, recipient: "", reason: "The invoice email could not be prepared." };
+  try {
+    const pdf = await createInvoicePdf({
+      clientName: workflow.clientName,
+      engagementReference: workflow.reference,
+      serviceName: workflow.serviceName,
+      invoice: {
+        ...invoice,
+        issueDate: now,
+        status: "issued",
+        approvedByName,
+        approvedAt: now,
+        approvalStampId,
+      },
+    });
+    delivery = await sendClientJourneyEmailToUser({
+      clientUserId: workflow.clientUserId ?? "",
+      fallbackName: workflow.clientName,
+      title: "Your IFTA invoice is ready",
+      summary: `${invoice.invoiceNumber} for ${invoice.currency} ${invoice.amount.toLocaleString("en-KE")} has been approved and is attached to this email.`,
+      actionLabel: "Open finance",
+      actionPath: `/client/engagements/${workflow.id}?tab=finance`,
+      attachments: [{ filename: `${invoice.invoiceNumber}.pdf`, content: pdf, contentType: "application/pdf" }],
+    });
+  } catch (error) {
+    console.error("Unable to prepare the approved invoice email.", error);
+  }
+  await WorkflowInstanceModel.updateOne(
+    { _id: workflow.id },
+    {
+      $set: {
+        "financial.invoices.$[invoice].emailDeliveryStatus": delivery.delivered ? "sent" : "failed",
+        "financial.invoices.$[invoice].emailedTo": delivery.recipient,
+        "financial.invoices.$[invoice].emailSentAt": delivery.delivered ? new Date() : null,
+        "financial.invoices.$[invoice].emailDeliveryError": delivery.delivered ? "" : delivery.reason ?? "Email delivery failed.",
+      },
     },
     { arrayFilters: [{ "invoice.invoiceId": input.invoiceId }] },
   ).exec();
-  await notifyUsers({ recipientIds: [workflow.clientUserId], actor: input.principal, type: "invoice_generated", title: "Invoice generated", description: `${invoice.invoiceNumber} is ready in your engagement workspace.`, workflowId: workflow.id, tab: "finance" });
-  if (workflow.clientUserId) {
-    const client = await UserModel.findById(workflow.clientUserId).select("email firstName lastName").lean().exec();
-    if (client?.email) await sendClientJourneyEmail({ recipientEmail: client.email, recipientName: `${client.firstName ?? ""} ${client.lastName ?? ""}`.trim() || client.email, title: "Your IFTA invoice is ready", summary: `${invoice.invoiceNumber} for ${invoice.currency} ${invoice.amount.toLocaleString("en-KE")} is available in your engagement workspace.`, actionLabel: "Open finance", actionPath: `/client/engagements/${workflow.id}?tab=finance` }).catch(() => undefined);
-  }
-  return true;
+  await writeAuditLog({
+    actor: input.principal,
+    action: "invoice.approved_and_issued",
+    resourceType: "WorkflowInstance",
+    resourceId: workflow.id,
+    newValues: { invoiceId: invoice.invoiceId, approvalStampId, emailedTo: delivery.recipient, emailDelivered: delivery.delivered },
+  });
+  return { ok: true as const, emailDelivered: delivery.delivered };
 }
 
+export async function reviewEngagementPayment(input: {
+  principal: Principal;
+  workflowId: string;
+  paymentId: string;
+  decision: "verified" | "rejected";
+  reviewNote: string;
+}) {
+  if (!isAdministrator(input.principal) || !hasPermission(input.principal, "payments.reconcile") || !Types.ObjectId.isValid(input.paymentId)) return false;
+  const workflow = await getWorkflowForPrincipal(input.principal, input.workflowId);
+  if (!workflow || workflow.status !== "active") return false;
+  const payment = await ClientPaymentModel.findOne({ _id: input.paymentId, workflowId: workflow.id, status: "pending" }).exec();
+  if (!payment) return false;
+
+  const now = new Date();
+  payment.status = input.decision;
+  payment.reviewNote = input.reviewNote || (input.decision === "verified" ? "Payment approved by the administrator." : "Payment details were rejected by the administrator.");
+  payment.verifiedAt = input.decision === "verified" ? now : null;
+  if (input.decision === "verified") {
+    payment.receiptNumber = payment.receiptNumber ?? `RCP-${now.getFullYear()}-${randomBytes(3).toString("hex").toUpperCase()}`;
+  }
+  await payment.save();
+
+  if (input.decision === "verified") {
+    const balanceDue = Math.max(0, workflow.financial.balanceDue - payment.amount);
+    const invoiceStatus = balanceDue === 0 ? "paid" : "partially_paid";
+    await WorkflowInstanceModel.updateOne(
+      { _id: workflow.id },
+      {
+        $set: {
+          "financial.balanceDue": balanceDue,
+          "financial.invoiceStatus": invoiceStatus,
+          "financial.paymentStatus": balanceDue === 0 ? "reconciled" : "partially_allocated",
+          "financial.invoices.$[invoice].status": invoiceStatus,
+          lastActivityAt: now,
+        },
+        $push: {
+          activity: {
+            type: "payment_recorded",
+            title: "Payment approved",
+            actorName: input.principal.displayName || input.principal.email,
+            actorUserId: input.principal.id,
+            description: `${payment.currency} ${payment.amount.toLocaleString("en-KE")} approved by the administrator.`,
+            relatedResource: payment.transactionReference,
+            clientVisible: true,
+            createdAt: now,
+          },
+        },
+      },
+      { arrayFilters: [{ "invoice.status": { $in: ["issued", "partially_paid", "overdue"] } }] },
+    ).exec();
+  } else {
+    await WorkflowInstanceModel.updateOne(
+      { _id: workflow.id },
+      {
+        $set: { "financial.paymentStatus": "failed", lastActivityAt: now },
+        $push: {
+          activity: {
+            type: "payment_recorded",
+            title: "Payment needs attention",
+            actorName: input.principal.displayName || input.principal.email,
+            actorUserId: input.principal.id,
+            description: payment.reviewNote,
+            relatedResource: payment.transactionReference,
+            clientVisible: true,
+            createdAt: now,
+          },
+        },
+      },
+    ).exec();
+  }
+
+  await notifyUsers({
+    recipientIds: [workflow.clientUserId],
+    actor: input.principal,
+    type: "engagement_update",
+    title: input.decision === "verified" ? "Payment approved" : "Payment details need attention",
+    description: input.decision === "verified"
+      ? `Your payment of ${payment.currency} ${payment.amount.toLocaleString("en-KE")} has been approved.`
+      : payment.reviewNote,
+    workflowId: workflow.id,
+    tab: "finance",
+  });
+  if (workflow.clientUserId) {
+    await sendClientJourneyEmailToUser({
+      clientUserId: workflow.clientUserId,
+      fallbackName: workflow.clientName,
+      title: input.decision === "verified" ? "Your payment was approved" : "Your payment needs attention",
+      summary: input.decision === "verified"
+        ? `Your payment of ${payment.currency} ${payment.amount.toLocaleString("en-KE")} has been approved by IFTA Consulting.`
+        : payment.reviewNote,
+      actionLabel: "Open payment record",
+      actionPath: `/client/engagements/${workflow.id}?tab=finance`,
+    });
+  }
+  await writeAuditLog({
+    actor: input.principal,
+    action: `payment.${input.decision}`,
+    resourceType: "ClientPayment",
+    resourceId: payment._id.toString(),
+    newValues: { decision: input.decision, reviewNote: payment.reviewNote, receiptNumber: payment.receiptNumber },
+  });
+  return true;
+}
 export async function completeEngagement(input: { principal: Principal; workflowId: string; notes: string }) {
   const workflow = await getWorkflowForPrincipal(input.principal, input.workflowId);
   if (!workflow || workflow.status !== "active" || !isAdministrator(input.principal) || !hasPermission(input.principal, "engagements.complete")) return { ok: false as const, missing: ["Engagement is not available for completion."] };
@@ -621,8 +901,7 @@ export async function completeEngagement(input: { principal: Principal; workflow
     notifyUsers({ recipientIds: recipients, actor: input.principal, type: "engagement_update", title: "Closure summary generated", description: `The closure summary for ${workflow.reference} is ready.`, workflowId: workflow.id, tab: "completion" }),
   ]);
   if (workflow.clientUserId) {
-    const client = await UserModel.findById(workflow.clientUserId).select("email firstName lastName").lean().exec();
-    if (client?.email) await sendClientJourneyEmail({ recipientEmail: client.email, recipientName: `${client.firstName ?? ""} ${client.lastName ?? ""}`.trim() || client.email, title: "Your IFTA engagement is complete", summary, actionLabel: "View final deliverables", actionPath: `/client/engagements/${workflow.id}?tab=deliverables` }).catch(() => undefined);
+    await sendClientJourneyEmailToUser({ clientUserId: workflow.clientUserId, fallbackName: workflow.clientName, title: "Your IFTA engagement is complete", summary, actionLabel: "View final deliverables", actionPath: `/client/engagements/${workflow.id}?tab=deliverables` }).catch(() => undefined);
   }
   await writeAuditLog({ actor: input.principal, action: "engagement.completed", resourceType: "WorkflowInstance", resourceId: workflow.id, newValues: { completedAt: now, summary, closureSummary } });
   return { ok: true as const, missing: [] };

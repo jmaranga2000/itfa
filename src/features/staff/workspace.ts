@@ -115,12 +115,12 @@ const workspaceDetails: Record<StaffAccountRole, Omit<StaffWorkspace, "role" | "
   finance_officer: {
     title: "Finance workspace",
     subtitle: "Invoices, payments and financial reporting",
-    description: "Prepare invoices, record client payments and keep financial records reconciled.",
-    priorities: ["Prepare approved invoices", "Record incoming payments", "Resolve reconciliation differences"],
+    description: "Prepare invoices for approval and monitor client payment submissions.",
+    priorities: ["Prepare invoices for administrator approval", "Track incoming payment submissions", "Resolve finance questions"],
     primaryLinks: [
       { label: "Quotations", href: "/staff/quotations", description: "Prepare and send pricing for client requests." },
-      { label: "Invoices", href: "/staff/invoices", description: "Create, review and issue client invoices." },
-      { label: "Payments", href: "/staff/payments", description: "Record and reconcile client payments." },
+      { label: "Invoices", href: "/staff/invoices", description: "Prepare invoices and track administrator approval." },
+      { label: "Payments", href: "/staff/payments", description: "Monitor payments awaiting administrator approval." },
       { label: "Finance reports", href: "/staff/reports", description: "Review billing and payment summaries." },
     ],
   },
