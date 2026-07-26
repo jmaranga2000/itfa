@@ -876,6 +876,7 @@ export async function getWorkflowForPrincipal(
   principal: Principal,
   workflowId: string,
   includeArchived = false,
+  clientView?: boolean,
 ) {
   await connectToDatabase();
 
@@ -896,9 +897,11 @@ export async function getWorkflowForPrincipal(
     return null;
   }
 
-  const clientView = principal.roleKeys.some((role) => role === "client" || role === "client_representative");
+  const useClientView = typeof clientView === "boolean"
+    ? clientView
+    : principal.roleKeys.some((role) => role === "client" || role === "client_representative");
 
-  return serializeWorkflow(workflow as unknown as RawWorkflowInstance, clientView);
+  return serializeWorkflow(workflow as unknown as RawWorkflowInstance, useClientView);
 }
 
 export async function getWorkflowDashboardData(principal: Principal): Promise<WorkflowDashboardData> {

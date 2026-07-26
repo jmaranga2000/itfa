@@ -376,6 +376,10 @@ export function getCompletionRequirements(
 export async function getEngagementExecutionData(principal: Principal, workflowId: string) {
   const workflow = await getWorkflowForPrincipal(principal, workflowId, true);
   if (!workflow) return null;
+  const fullWorkflow = principal.roleKeys.some((role) => role === "client" || role === "client_representative")
+    ? await getWorkflowForPrincipal(principal, workflowId, true, false)
+    : workflow;
+  if (!fullWorkflow) return null;
   const [documents, storedPayments, conversation] = await Promise.all([
     listEngagementDocumentsForPrincipal(principal, workflowId),
     ClientPaymentModel.find({ workflowId }).sort({ submittedAt: -1 }).lean().exec(),
@@ -404,9 +408,9 @@ export async function getEngagementExecutionData(principal: Principal, workflowI
     conversation,
     messages,
     payments,
-    completionRequirements: getCompletionRequirements(workflow, documents, payments),
+    completionRequirements: getCompletionRequirements(fullWorkflow, documents, payments),
     daysRemaining,
-    health: getEngagementHealth(workflow),
+    health: getEngagementHealth(fullWorkflow),
   } satisfies EngagementExecutionData;
 }
 
