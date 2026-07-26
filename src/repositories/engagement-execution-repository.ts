@@ -344,9 +344,14 @@ export function getCompletionRequirements(
     !task.reviewHistory.some((review) => review.decision === "approved"),
   );
   const reviewsApproved = missingReviews.length === 0;
-  const finalDeliverables = documents.filter((document) =>
+  const releasedFinalDeliverables = documents.filter((document) =>
     document.documentKind === "final_deliverable"
     && (document.deliverableStatus === "released" || (!document.deliverableStatus && document.status === "final")),
+  );
+  const finalDeliverablesPendingRelease = documents.filter((document) =>
+    document.documentKind === "final_deliverable"
+    && document.deliverableStatus !== "draft"
+    && !["released"].includes(document.deliverableStatus),
   );
   const outstandingClientActions = workflow.clientActions.filter((action) =>
     !["approved", "completed"].includes(action.status),
@@ -360,7 +365,7 @@ export function getCompletionRequirements(
   return [
     { key: "tasks", label: "All mandatory tasks completed", complete: tasksComplete, detail: tasksComplete ? `${mandatoryTasks.length} tasks complete` : `${mandatoryTasks.filter((task) => task.status !== "completed").length} tasks remain`, actionLabel: "Open tasks", actionTab: "tasks" },
     { key: "reviews", label: "All required reviews approved", complete: reviewsApproved, detail: reviewsApproved ? "Review gates are clear" : `Pending review for: ${missingReviews.map((task) => task.title).join(", ")}`, actionLabel: "Review tasks", actionTab: "tasks", actionHash: missingReviews.length === 1 ? `task-${missingReviews[0].key}` : undefined, actionTargets: missingReviews.map((task) => ({ label: task.title, hash: `task-${task.key}` })) },
-    { key: "deliverables", label: "Final deliverable uploaded", complete: finalDeliverables.length > 0, detail: finalDeliverables.length > 0 ? `${finalDeliverables.length} final deliverable(s)` : "Upload at least one final deliverable", actionLabel: "Upload deliverable", actionTab: "documents", actionHash: "document-upload" },
+    { key: "deliverables", label: releasedFinalDeliverables.length > 0 ? "Final deliverable released" : finalDeliverablesPendingRelease.length > 0 ? "Final deliverable ready for release" : "Final deliverable uploaded", complete: releasedFinalDeliverables.length > 0, detail: releasedFinalDeliverables.length > 0 ? `${releasedFinalDeliverables.length} final deliverable(s)` : finalDeliverablesPendingRelease.length > 0 ? "Release the approved final deliverable to the client" : "Upload at least one final deliverable", actionLabel: finalDeliverablesPendingRelease.length > 0 ? "Open deliverables" : "Upload deliverable", actionTab: finalDeliverablesPendingRelease.length > 0 ? "deliverables" : "documents", actionHash: finalDeliverablesPendingRelease.length > 0 ? undefined : "document-upload" },
     { key: "client_actions", label: "Client requests resolved", complete: outstandingClientActions.length === 0, detail: outstandingClientActions.length === 0 ? "No client response is outstanding" : `${outstandingClientActions.length} client action(s) remain`, actionLabel: "Open client actions", actionTab: "overview" },
     { key: "invoices", label: "Required invoices issued", complete: !invoiceRequired || issuedInvoices.length > 0, detail: !invoiceRequired ? "No invoice is required" : issuedInvoices.length > 0 ? `${issuedInvoices.length} invoice(s) issued` : "An invoice still needs to be issued", actionLabel: "Open finance", actionTab: "finance" },
     { key: "payments", label: "Submitted payments reviewed", complete: pendingPayments.length === 0, detail: pendingPayments.length === 0 ? "No payment is waiting for review" : `${pendingPayments.length} payment(s) await review`, actionLabel: "Review payments", actionTab: "finance" },
@@ -709,6 +714,28 @@ export async function sendEngagementInvoice(input: { principal: Principal; workf
   }
   const arrayFilters: Array<Record<string, unknown>> = [{ "invoice.invoiceId": input.invoiceId }];
   if (financeTask) arrayFilters.push({ "financeTask.key": financeTask.key });
+  const pushValues: Record<string, unknown> = {
+    activity: {
+      type: "invoice_issued",
+      title: "Invoice approved and issued",
+      actorName: approvedByName,
+      actorUserId: input.principal.id,
+      description: `${invoice.invoiceNumber} was digitally stamped and issued for ${invoice.currency} ${invoice.amount.toLocaleString("en-KE")}.`,
+      relatedResource: invoice.invoiceId,
+      clientVisible: true,
+      createdAt: now,
+    },
+  };
+  if (financeTask) {
+    pushValues["tasks.$[financeTask].reviewHistory"] = {
+      decision: "approved",
+      comments: `${invoice.invoiceNumber} approved and issued.`,
+      reviewerUserId: input.principal.id,
+      reviewerName: approvedByName,
+      reviewedAt: now,
+    };
+  }
+
   const updateResult = await WorkflowInstanceModel.updateOne(
     {
       _id: workflow.id,
@@ -722,18 +749,7 @@ export async function sendEngagementInvoice(input: { principal: Principal; workf
     },
     {
       $set: setValues,
-      $push: {
-        activity: {
-          type: "invoice_issued",
-          title: "Invoice approved and issued",
-          actorName: approvedByName,
-          actorUserId: input.principal.id,
-          description: `${invoice.invoiceNumber} was digitally stamped and issued for ${invoice.currency} ${invoice.amount.toLocaleString("en-KE")}.`,
-          relatedResource: invoice.invoiceId,
-          clientVisible: true,
-          createdAt: now,
-        },
-      },
+      $push: pushValues,
     },
     { arrayFilters },
   ).exec();
