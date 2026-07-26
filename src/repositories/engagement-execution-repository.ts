@@ -58,6 +58,7 @@ export type CompletionRequirement = {
   actionLabel: string;
   actionTab: "overview" | "tasks" | "documents" | "deliverables" | "finance" | "completion";
   actionHash?: string;
+  actionTargets?: Array<{ label: string; hash: string }>;
 };
 
 export type EngagementHealthStatus =
@@ -339,9 +340,10 @@ export function getCompletionRequirements(
   const mandatoryTasks = workflow.tasks.filter((task) => task.status !== "cancelled");
   const tasksComplete = mandatoryTasks.every((task) => task.status === "completed");
   const reviewTasks = mandatoryTasks.filter((task) => task.approvalRequired);
-  const reviewsApproved = reviewTasks.every((task) =>
-    task.reviewHistory.some((review) => review.decision === "approved"),
+  const missingReviews = reviewTasks.filter((task) =>
+    !task.reviewHistory.some((review) => review.decision === "approved"),
   );
+  const reviewsApproved = missingReviews.length === 0;
   const finalDeliverables = documents.filter((document) =>
     document.documentKind === "final_deliverable"
     && (document.deliverableStatus === "released" || (!document.deliverableStatus && document.status === "final")),
@@ -357,7 +359,7 @@ export function getCompletionRequirements(
 
   return [
     { key: "tasks", label: "All mandatory tasks completed", complete: tasksComplete, detail: tasksComplete ? `${mandatoryTasks.length} tasks complete` : `${mandatoryTasks.filter((task) => task.status !== "completed").length} tasks remain`, actionLabel: "Open tasks", actionTab: "tasks" },
-    { key: "reviews", label: "All required reviews approved", complete: reviewsApproved, detail: reviewsApproved ? "Review gates are clear" : `${reviewTasks.filter((task) => !task.reviewHistory.some((review) => review.decision === "approved")).length} reviews remain`, actionLabel: "Review tasks", actionTab: "tasks" },
+    { key: "reviews", label: "All required reviews approved", complete: reviewsApproved, detail: reviewsApproved ? "Review gates are clear" : `Pending review for: ${missingReviews.map((task) => task.title).join(", ")}`, actionLabel: "Review tasks", actionTab: "tasks", actionHash: missingReviews.length === 1 ? `task-${missingReviews[0].key}` : undefined, actionTargets: missingReviews.map((task) => ({ label: task.title, hash: `task-${task.key}` })) },
     { key: "deliverables", label: "Final deliverable uploaded", complete: finalDeliverables.length > 0, detail: finalDeliverables.length > 0 ? `${finalDeliverables.length} final deliverable(s)` : "Upload at least one final deliverable", actionLabel: "Upload deliverable", actionTab: "documents", actionHash: "document-upload" },
     { key: "client_actions", label: "Client requests resolved", complete: outstandingClientActions.length === 0, detail: outstandingClientActions.length === 0 ? "No client response is outstanding" : `${outstandingClientActions.length} client action(s) remain`, actionLabel: "Open client actions", actionTab: "overview" },
     { key: "invoices", label: "Required invoices issued", complete: !invoiceRequired || issuedInvoices.length > 0, detail: !invoiceRequired ? "No invoice is required" : issuedInvoices.length > 0 ? `${issuedInvoices.length} invoice(s) issued` : "An invoice still needs to be issued", actionLabel: "Open finance", actionTab: "finance" },

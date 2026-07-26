@@ -457,7 +457,7 @@ export function EngagementExecutionWorkspace({
                     : `${basePath}?tab=deliverables`;
 
                   return (
-                    <article className="rounded-md border border-border p-4" key={task.key}>
+                    <article id={`task-${task.key}`} className="rounded-md border border-border p-4" key={task.key}>
                       <div className="flex flex-col justify-between gap-3 md:flex-row md:items-start">
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
@@ -785,15 +785,29 @@ export function EngagementExecutionWorkspace({
               <CardContent className="grid gap-3">
                 {missing.length > 0 ? <div className="break-words rounded-md border border-danger/30 bg-danger-soft p-3 text-sm font-semibold text-danger">Completion was blocked: {missing.join(", ")}.</div> : null}
                 {data.completionRequirements.map((requirement) => (
-                  <div className="flex min-w-0 flex-col gap-3 rounded-md border border-border p-3 sm:flex-row sm:items-center sm:justify-between" key={requirement.key}>
+                  <div className="flex min-w-0 flex-col gap-3 rounded-md border border-border p-3 sm:flex-row sm:items-start sm:justify-between" key={requirement.key}>
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="break-words font-semibold text-foreground">{requirement.label}</p>
                         <Badge tone={requirement.complete ? "green" : "gold"}>{requirement.complete ? "Ready" : "Missing"}</Badge>
                       </div>
                       <p className="mt-1 break-words text-sm text-muted-foreground">{requirement.detail}</p>
+                      {requirement.actionTargets && requirement.actionTargets.length > 0 ? (
+                        <div className="mt-2 grid gap-2 sm:grid-cols-1 lg:grid-cols-2">
+                          {requirement.actionTargets.map((target) => (
+                            <Link
+                              key={target.hash}
+                              className={buttonClassName({ variant: "secondary", size: "sm", className: "w-full justify-between" })}
+                              href={`${basePath}?tab=${requirement.actionTab}#${target.hash}`}
+                            >
+                              {target.label}
+                              <ArrowRight aria-hidden="true" className="h-4 w-4" />
+                            </Link>
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
-                    {!requirement.complete && !isClient ? (
+                    {!requirement.complete && !isClient && !requirement.actionTargets ? (
                       <Link className={buttonClassName({ className: "shrink-0", size: "sm", variant: "secondary" })} href={`${basePath}?tab=${requirement.actionTab}${requirement.actionHash ? `#${requirement.actionHash}` : ""}`}>
                         {requirement.actionLabel}
                         <ArrowRight aria-hidden="true" className="h-4 w-4" />
