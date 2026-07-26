@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { reviewEngagementDocumentAction, updateEngagementTaskAction, uploadEngagementDocumentAction } from "@/features/engagement-workspace/actions";
+import { reviewEngagementDeliverableAction } from "@/features/engagements/execution-actions";
 import type { WorkflowTaskStatus } from "@/features/workflows/types";
 import type { EngagementDocumentRecord } from "@/repositories/engagement-workspace-repository";
 import type { WorkflowInstanceRecord } from "@/repositories/workflow-repository";
@@ -132,7 +133,42 @@ export function EngagementWorkspace({
       <Card className="min-w-0">
         <CardHeader><CardTitle>Document exchange</CardTitle><CardDescription>Files received from the client and controlled deliverables prepared by the team.</CardDescription></CardHeader>
         <CardContent className="grid gap-0 p-0">
-          {documents.length ? documents.map((document) => <div className="flex flex-col justify-between gap-3 border-t border-border px-5 py-4 first:border-t-0 sm:flex-row sm:items-center" key={document.id}><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="font-semibold text-foreground">{document.name}</p><Badge tone={statusTone(document.status)}>{document.status.replaceAll("_", " ")}</Badge></div><p className="mt-1 text-xs text-muted-foreground">{document.documentKind.replaceAll("_", " ")} / {sizeLabel(document.size)} / {dateLabel(document.uploadedAt)}</p></div><Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={`${downloadBase}/${document.id}`}><Download className="h-4 w-4" />Download</Link></div>) : <div className="grid justify-items-center gap-2 px-5 py-12 text-center"><FileCheck2 className="h-8 w-8 text-muted-foreground" /><p className="font-semibold text-foreground">No engagement files yet</p><p className="text-sm text-muted-foreground">Client uploads and team deliverables will appear here.</p></div>}
+          {documents.length ? documents.map((document) => (
+            <div className="border-t border-border px-5 py-4 first:border-t-0" key={document.id}>
+              <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-semibold text-foreground">{document.name}</p>
+                    <Badge tone={statusTone(document.status)}>{document.status.replaceAll("_", " ")}</Badge>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">{document.documentKind.replaceAll("_", " ")} / {sizeLabel(document.size)} / {dateLabel(document.uploadedAt)}</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={`${downloadBase}/${document.id}`}><Download className="h-4 w-4" />Download</Link>
+                  {document.documentKind === "final_deliverable" && document.deliverableStatus === "pending_review" ? <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={`#review-${document.id}`}><ShieldCheck className="h-4 w-4" />Review deliverable</Link> : null}
+                </div>
+              </div>
+              {document.documentKind === "final_deliverable" && document.deliverableStatus === "pending_review" ? (
+                <form id={`review-${document.id}`} action={reviewEngagementDeliverableAction} className="mt-4 grid gap-4 border-t border-border pt-4">
+                  <input name="workflowId" type="hidden" value={workflow.id} />
+                  <input name="documentId" type="hidden" value={document.id} />
+                  <input name="returnPath" type="hidden" value={returnPath} />
+                  <div className="grid gap-2">
+                    <Label htmlFor={`deliverable-decision-${document.id}`}>Decision</Label>
+                    <Select id={`deliverable-decision-${document.id}`} name="decision" required>
+                      <option value="approved">Approve deliverable</option>
+                      <option value="changes_requested">Request changes</option>
+                    </Select>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor={`deliverable-comments-${document.id}`}>Review comments</Label>
+                    <Textarea id={`deliverable-comments-${document.id}`} className="min-h-24" name="comments" placeholder="Record the review decision and any instructions..." required />
+                  </div>
+                  <SubmitButton pendingText="Saving review..." size="sm"><ShieldCheck className="h-4 w-4" />Save review</SubmitButton>
+                </form>
+              ) : null}
+            </div>
+          )) : <div className="grid justify-items-center gap-2 px-5 py-12 text-center"><FileCheck2 className="h-8 w-8 text-muted-foreground" /><p className="font-semibold text-foreground">No engagement files yet</p><p className="text-sm text-muted-foreground">Client uploads and team deliverables will appear here.</p></div>}
         </CardContent>
       </Card>
 
