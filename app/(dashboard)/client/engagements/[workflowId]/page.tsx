@@ -35,7 +35,7 @@ export default async function ClientEngagementDetailPage({
       activeTab={workspaceTab(query.tab)}
       data={data}
       portal="client"
-      principal={{ id: principal.id, roleKeys: principal.roleKeys }}
+      principal={{ id: principal.id, roleKeys: principal.roleKeys, permissions: principal.permissions }}
       query={query}
     />
   );

@@ -52,6 +52,7 @@ import {
   sendEngagementMessageAction,
 } from "@/features/engagements/execution-actions";
 import { reviewEngagementDocumentAction, updateEngagementTaskAction, uploadEngagementDocumentAction } from "@/features/engagement-workspace/actions";
+import type { Permission } from "@/features/authorization/permissions";
 import type { AppRole } from "@/features/authorization/roles";
 import type { EngagementExecutionData } from "@/repositories/engagement-execution-repository";
 import type { EngagementTeamCandidate, EngagementTeamRole } from "@/repositories/engagement-management-repository";
@@ -126,6 +127,38 @@ const workspaceErrorCopy: Record<string, { title: string; message: string }> = {
     title: "The file could not be stored",
     message: "The document did not reach secure storage. Check the file and R2 connection, then try again.",
   },
+  "invoice-access": {
+    title: "Invoice is outside your access",
+    message: "This invoice could not be found in an engagement available to your account. Return to Active engagements and open it again.",
+  },
+  "invoice-not_found": {
+    title: "Invoice was not found",
+    message: "The invoice may have been removed or replaced. Refresh the engagement before trying again.",
+  },
+  "invoice-not_pending": {
+    title: "Invoice is no longer awaiting approval",
+    message: "This invoice has already been approved, sent, or otherwise updated. Refresh the Finance section to see its current status.",
+  },
+  "invoice-engagement_inactive": {
+    title: "Engagement is not active",
+    message: "Invoices can only be approved while the engagement is active.",
+  },
+  "invoice-administrator_required": {
+    title: "Administrator approval required",
+    message: "Only an administrator can approve, stamp, and issue an invoice.",
+  },
+  "invoice-permission": {
+    title: "Invoice approval access is disabled",
+    message: "The administrator role does not currently allow invoice approval. Enable Invoice approval under Roles and permissions, then try again.",
+  },
+  "invoice-conflict": {
+    title: "Invoice was updated elsewhere",
+    message: "The invoice changed while this approval was being processed. Refresh the Finance section before taking another action.",
+  },
+  "invoice-processing": {
+    title: "Invoice approval could not finish",
+    message: "The invoice was not issued. Check the company settings and try again; the existing invoice remains unchanged.",
+  },
   "invoice-email": {
     title: "Invoice email was not delivered",
     message: "The invoice was approved, stamped, and saved in the client portal, but Gmail did not accept the delivery. Check the registered client email and SMTP account, then resend from the invoice record.",
@@ -189,7 +222,7 @@ export function EngagementExecutionWorkspace({
   activeTab: EngagementWorkspaceTab;
   data: EngagementExecutionData;
   portal: "admin" | "staff" | "client";
-  principal: { id: string; roleKeys: AppRole[] };
+  principal: { id: string; roleKeys: AppRole[]; permissions: Permission[] };
   query: { error?: string; saved?: string; missing?: string; team?: string; note?: string; replace?: string; kind?: string; reviewed?: string; transitionError?: string; transitioned?: string };
   teamCandidates?: EngagementTeamCandidate[];
 }) {
@@ -206,6 +239,7 @@ export function EngagementExecutionWorkspace({
     : `/${portal}/engagements`;
   const isAdmin = portal === "admin";
   const isClient = portal === "client";
+  const canApproveInvoices = isAdmin && principal.permissions.includes("invoices.approve");
   const isEngagementManager = principal.roleKeys.includes("engagement_manager");
   const assignedToEngagement = workflow.responsibleUserId === principal.id
     || workflow.team.some((member) => member.userId === principal.id)
@@ -669,7 +703,7 @@ export function EngagementExecutionWorkspace({
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={`/api/engagements/${workflow.id}/invoices/${invoice.invoiceId}`} target="_blank"><FileText className="h-4 w-4" />View invoice</Link>
-                        {isAdmin && editable && ["draft", "pending_approval"].includes(invoice.status) ? (
+                        {canApproveInvoices && editable && ["draft", "pending_approval"].includes(invoice.status) ? (
                           <form action={sendEngagementInvoiceAction}>
                             <input name="workflowId" type="hidden" value={workflow.id} />
                             <input name="invoiceId" type="hidden" value={invoice.invoiceId} />
@@ -730,7 +764,7 @@ export function EngagementExecutionWorkspace({
                 </CardContent>
               </Card>
             ) : isAdmin ? (
-              <Card className="h-fit shadow-none"><CardHeader><CardTitle>Administrator approval</CardTitle><CardDescription>Use the action beside each pending invoice or payment. Approval creates the digital stamp before anything is sent to the client.</CardDescription></CardHeader><CardContent><p className="text-sm text-muted-foreground">Pending invoices: {workflow.financial.invoices.filter((invoice) => ["draft", "pending_approval"].includes(invoice.status)).length}<br />Pending payments: {data.payments.filter((payment) => payment.status === "pending").length}</p></CardContent></Card>
+              <Card className="h-fit shadow-none"><CardHeader><CardTitle>Administrator approval</CardTitle><CardDescription>Use the action beside each pending invoice or payment. Approval creates the digital stamp before anything is sent to the client.</CardDescription></CardHeader><CardContent className="grid gap-3"><p className="text-sm text-muted-foreground">Pending invoices: {workflow.financial.invoices.filter((invoice) => ["draft", "pending_approval"].includes(invoice.status)).length}<br />Pending payments: {data.payments.filter((payment) => payment.status === "pending").length}</p>{!canApproveInvoices ? <div className="grid gap-3 rounded-md border border-warning/30 bg-warning/10 p-3"><p className="text-sm font-semibold text-foreground">Invoice approval is disabled for your administrator role.</p><Link className={buttonClassName({ variant: "secondary", size: "sm", className: "w-fit" })} href="/admin/permissions/admin">Review role access</Link></div> : null}</CardContent></Card>
             ) : null}
           </div>
         </MobileSection>

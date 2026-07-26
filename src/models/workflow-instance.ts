@@ -195,6 +195,7 @@ const workflowInternalNoteSchema = new Schema(
   { _id: true },
 );
 
+
 const workflowFinancialStateSchema = new Schema(
   {
     invoiceStatus: { type: String, enum: INVOICE_WORKFLOW_STATUSES, default: "draft" },
@@ -220,6 +221,15 @@ const workflowFinancialStateSchema = new Schema(
           approvedByName: { type: String, default: "" },
           approvedAt: { type: Date, default: null },
           approvalStampId: { type: String, default: "" },
+          approvalStampCompanyName: { type: String, default: "" },
+          approvalStampLegalName: { type: String, default: "" },
+          approvalStampRegistrationNumber: { type: String, default: "" },
+          approvalStampKraPin: { type: String, default: "" },
+          approvalStampAddress: { type: String, default: "" },
+          approvalStampEmail: { type: String, default: "" },
+          approvalStampPhone: { type: String, default: "" },
+          approvalStampWebsite: { type: String, default: "" },
+          approvalStampApproverTitle: { type: String, default: "Authorized Signatory" },
           emailDeliveryStatus: { type: String, enum: ["pending", "sent", "failed"], default: "pending" },
           emailedTo: { type: String, default: "" },
           emailSentAt: { type: Date, default: null },

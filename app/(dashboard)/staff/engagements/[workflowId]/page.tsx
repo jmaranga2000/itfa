@@ -33,7 +33,7 @@ export default async function StaffEngagementDetailPage({
       activeTab={workspaceTab(query.tab)}
       data={data}
       portal="staff"
-      principal={{ id: principal.id, roleKeys: principal.roleKeys }}
+      principal={{ id: principal.id, roleKeys: principal.roleKeys, permissions: principal.permissions }}
       query={query}
     />
   );

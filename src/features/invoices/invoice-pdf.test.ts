@@ -8,6 +8,18 @@ describe("createInvoicePdf", () => {
       clientName: "Example Client",
       engagementReference: "ENG-2026-001",
       serviceName: "Tax advisory",
+      company: {
+        companyName: "IFTA Consulting",
+        legalName: "IFTA Consulting Limited",
+        registrationNumber: "CPR/2026/001",
+        kraPin: "P000000000A",
+        address: "Nairobi, Kenya",
+        email: "office@ifta.example",
+        phone: "+254 700 000 000",
+        website: "https://ifta.example",
+        approverTitle: "Managing Director",
+        timezone: "Africa/Nairobi",
+      },
       invoice: {
         invoiceNumber: "INV-2026-001",
         issueDate: "2026-07-26T08:00:00.000Z",

@@ -201,8 +201,14 @@ export async function sendEngagementInvoiceAction(formData: FormData) {
   const workflowId = String(formData.get("workflowId") ?? "");
   const back = workspacePath(formData, workflowId, "finance");
   const invoiceId = String(formData.get("invoiceId") ?? "");
-  const result = await sendEngagementInvoice({ principal, workflowId, invoiceId });
-  if (!result.ok) redirect(`${back}&error=invoice-send`);
+  let result: Awaited<ReturnType<typeof sendEngagementInvoice>>;
+  try {
+    result = await sendEngagementInvoice({ principal, workflowId, invoiceId });
+  } catch (error) {
+    console.error("Unable to approve and issue engagement invoice.", error);
+    redirect(`${back}&error=invoice-processing`);
+  }
+  if (!result.ok) redirect(`${back}&error=invoice-${result.reason}`);
   refresh(workflowId);
   redirect(result.emailDelivered
     ? `${back}&saved=invoice-approved`

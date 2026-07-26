@@ -5,7 +5,7 @@ import type { Principal } from "@/features/authorization/access-control";
 import { hasPermission } from "@/features/authorization/access-control";
 import { writeAuditLog } from "@/features/audit/audit-service";
 import { sendClientJourneyEmailToUser } from "@/features/engagements/client-journey-email";
-import { createInvoicePdf } from "@/features/invoices/invoice-pdf";
+import { createInvoicePdf, type InvoiceCompanyDetails } from "@/features/invoices/invoice-pdf";
 import type { WorkflowPriority } from "@/features/workflows/types";
 import { connectToDatabase } from "@/lib/db/mongoose";
 import { getServerEnv } from "@/lib/env";
@@ -31,6 +31,7 @@ import {
   listEngagementDocumentsForPrincipal,
   type EngagementDocumentRecord,
 } from "@/repositories/engagement-workspace-repository";
+import { getPlatformSettings } from "@/repositories/platform-settings-repository";
 import {
   getWorkflowForPrincipal,
   type WorkflowInstanceRecord,
@@ -202,6 +203,25 @@ function invoiceApprovalStamp(input: {
     ? createHmac("sha256", secret).update(payload).digest("hex")
     : createHash("sha256").update(payload).digest("hex");
   return `IFTA-${input.approvedAt.getUTCFullYear()}-${digest.slice(0, 16).toUpperCase()}`;
+}
+
+function invoiceCompanyDetails(settings: Awaited<ReturnType<typeof getPlatformSettings>>): InvoiceCompanyDetails {
+  const location = [settings.company.address, settings.company.city, settings.company.country]
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(", ");
+  return {
+    companyName: settings.company.tradingName || settings.company.legalName || "IFTA Consulting",
+    legalName: settings.company.legalName || settings.company.tradingName || "IFTA Consulting",
+    registrationNumber: settings.company.registrationNumber,
+    kraPin: settings.company.kraPin,
+    address: location,
+    email: settings.company.email,
+    phone: settings.company.phone,
+    website: settings.company.website,
+    approverTitle: settings.engagement.signatoryTitle || "Authorized Signatory",
+    timezone: settings.portal.timezone || "Africa/Nairobi",
+  };
 }
 
 function teamMember(workflow: WorkflowInstanceRecord, principal: Principal, role: string) {
@@ -614,13 +634,40 @@ export async function createEngagementInvoice(input: {
   return invoiceId;
 }
 
+export type EngagementInvoiceSendFailure =
+  | "access"
+  | "not_found"
+  | "not_pending"
+  | "engagement_inactive"
+  | "administrator_required"
+  | "permission"
+  | "conflict";
+
 export async function sendEngagementInvoice(input: { principal: Principal; workflowId: string; invoiceId: string }) {
   const workflow = await getWorkflowForPrincipal(input.principal, input.workflowId);
-  const invoice = workflow?.financial.invoices.find((item) => item.invoiceId === input.invoiceId);
-  const approvable = invoice && ["draft", "pending_approval"].includes(invoice.status);
-  if (!workflow || !invoice || !approvable || workflow.status !== "active" || !isAdministrator(input.principal) || !hasPermission(input.principal, "invoices.approve")) {
-    return { ok: false as const, emailDelivered: false };
+  if (!workflow) return { ok: false as const, emailDelivered: false, reason: "access" as const };
+  const invoice = workflow.financial.invoices.find((item) => item.invoiceId === input.invoiceId);
+  if (!invoice) return { ok: false as const, emailDelivered: false, reason: "not_found" as const };
+  if (workflow.status !== "active") return { ok: false as const, emailDelivered: false, reason: "engagement_inactive" as const };
+  if (!isAdministrator(input.principal)) return { ok: false as const, emailDelivered: false, reason: "administrator_required" as const };
+  if (!hasPermission(input.principal, "invoices.approve")) return { ok: false as const, emailDelivered: false, reason: "permission" as const };
+  if (!["draft", "pending_approval"].includes(invoice.status)) {
+    return { ok: false as const, emailDelivered: false, reason: "not_pending" as const };
   }
+
+  const settings = await getPlatformSettings();
+  const company = invoiceCompanyDetails(settings);
+  const stampSnapshot = {
+    companyName: company.companyName,
+    legalName: company.legalName,
+    registrationNumber: company.registrationNumber,
+    kraPin: company.kraPin,
+    address: company.address,
+    email: company.email,
+    phone: company.phone,
+    website: company.website,
+    approverTitle: company.approverTitle,
+  };
   const now = new Date();
   const approvedByName = input.principal.displayName || input.principal.email;
   const approvalStampId = invoiceApprovalStamp({
@@ -638,6 +685,15 @@ export async function sendEngagementInvoice(input: { principal: Principal; workf
     "financial.invoices.$[invoice].approvedByName": approvedByName,
     "financial.invoices.$[invoice].approvedAt": now,
     "financial.invoices.$[invoice].approvalStampId": approvalStampId,
+    "financial.invoices.$[invoice].approvalStampCompanyName": stampSnapshot.companyName,
+    "financial.invoices.$[invoice].approvalStampLegalName": stampSnapshot.legalName,
+    "financial.invoices.$[invoice].approvalStampRegistrationNumber": stampSnapshot.registrationNumber,
+    "financial.invoices.$[invoice].approvalStampKraPin": stampSnapshot.kraPin,
+    "financial.invoices.$[invoice].approvalStampAddress": stampSnapshot.address,
+    "financial.invoices.$[invoice].approvalStampEmail": stampSnapshot.email,
+    "financial.invoices.$[invoice].approvalStampPhone": stampSnapshot.phone,
+    "financial.invoices.$[invoice].approvalStampWebsite": stampSnapshot.website,
+    "financial.invoices.$[invoice].approvalStampApproverTitle": stampSnapshot.approverTitle,
     "financial.invoiceStatus": "issued",
     currentStageName: "Finance",
     nextAction: "Await client payment",
@@ -651,8 +707,17 @@ export async function sendEngagementInvoice(input: { principal: Principal; workf
   }
   const arrayFilters: Array<Record<string, unknown>> = [{ "invoice.invoiceId": input.invoiceId }];
   if (financeTask) arrayFilters.push({ "financeTask.key": financeTask.key });
-  await WorkflowInstanceModel.updateOne(
-    { _id: workflow.id },
+  const updateResult = await WorkflowInstanceModel.updateOne(
+    {
+      _id: workflow.id,
+      status: "active",
+      "financial.invoices": {
+        $elemMatch: {
+          invoiceId: input.invoiceId,
+          status: { $in: ["draft", "pending_approval"] },
+        },
+      },
+    },
     {
       $set: setValues,
       $push: {
@@ -670,6 +735,9 @@ export async function sendEngagementInvoice(input: { principal: Principal; workf
     },
     { arrayFilters },
   ).exec();
+  if (updateResult.modifiedCount === 0) {
+    return { ok: false as const, emailDelivered: false, reason: "conflict" as const };
+  }
 
   await notifyUsers({
     recipientIds: [workflow.clientUserId],
@@ -687,6 +755,7 @@ export async function sendEngagementInvoice(input: { principal: Principal; workf
       clientName: workflow.clientName,
       engagementReference: workflow.reference,
       serviceName: workflow.serviceName,
+      company,
       invoice: {
         ...invoice,
         issueDate: now,
@@ -725,11 +794,16 @@ export async function sendEngagementInvoice(input: { principal: Principal; workf
     action: "invoice.approved_and_issued",
     resourceType: "WorkflowInstance",
     resourceId: workflow.id,
-    newValues: { invoiceId: invoice.invoiceId, approvalStampId, emailedTo: delivery.recipient, emailDelivered: delivery.delivered },
+    newValues: {
+      invoiceId: invoice.invoiceId,
+      approvalStampId,
+      approvalStampDetails: stampSnapshot,
+      emailedTo: delivery.recipient,
+      emailDelivered: delivery.delivered,
+    },
   });
   return { ok: true as const, emailDelivered: delivery.delivered };
 }
-
 export async function reviewEngagementPayment(input: {
   principal: Principal;
   workflowId: string;

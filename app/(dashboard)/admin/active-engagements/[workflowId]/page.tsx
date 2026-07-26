@@ -34,7 +34,7 @@ export default async function AdminActiveEngagementPage({
       activeTab={workspaceTab(query.tab)}
       data={data}
       portal="admin"
-      principal={{ id: principal.id, roleKeys: principal.roleKeys }}
+      principal={{ id: principal.id, roleKeys: principal.roleKeys, permissions: principal.permissions }}
       query={query}
       teamCandidates={candidates}
     />

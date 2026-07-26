@@ -261,6 +261,17 @@ export type WorkflowInstanceRecord = {
       approvedByName: string;
       approvedAt: string | null;
       approvalStampId: string;
+      approvalStampDetails: {
+        companyName: string;
+        legalName: string;
+        registrationNumber: string;
+        kraPin: string;
+        address: string;
+        email: string;
+        phone: string;
+        website: string;
+        approverTitle: string;
+      };
       emailDeliveryStatus: "pending" | "sent" | "failed";
       emailedTo: string;
       emailSentAt: string | null;
@@ -445,6 +456,15 @@ type RawWorkflowInstance = Omit<
       approvedByName?: string;
       approvedAt?: Date | null;
       approvalStampId?: string;
+      approvalStampCompanyName?: string;
+      approvalStampLegalName?: string;
+      approvalStampRegistrationNumber?: string;
+      approvalStampKraPin?: string;
+      approvalStampAddress?: string;
+      approvalStampEmail?: string;
+      approvalStampPhone?: string;
+      approvalStampWebsite?: string;
+      approvalStampApproverTitle?: string;
       emailDeliveryStatus?: "pending" | "sent" | "failed";
       emailedTo?: string;
       emailSentAt?: Date | null;
@@ -743,6 +763,17 @@ function serializeWorkflow(workflow: RawWorkflowInstance, clientView = false): W
         approvedByName: invoice.approvedByName ?? "",
         approvedAt: serializeDate(invoice.approvedAt),
         approvalStampId: invoice.approvalStampId ?? "",
+        approvalStampDetails: {
+          companyName: invoice.approvalStampCompanyName ?? "",
+          legalName: invoice.approvalStampLegalName ?? "",
+          registrationNumber: invoice.approvalStampRegistrationNumber ?? "",
+          kraPin: invoice.approvalStampKraPin ?? "",
+          address: invoice.approvalStampAddress ?? "",
+          email: invoice.approvalStampEmail ?? "",
+          phone: invoice.approvalStampPhone ?? "",
+          website: invoice.approvalStampWebsite ?? "",
+          approverTitle: invoice.approvalStampApproverTitle ?? "Authorized Signatory",
+        },
         emailDeliveryStatus: invoice.emailDeliveryStatus ?? "pending",
         emailedTo: invoice.emailedTo ?? "",
         emailSentAt: serializeDate(invoice.emailSentAt),
