@@ -437,7 +437,10 @@ export function EngagementExecutionWorkspace({
               <CardContent className="grid gap-3">
                 {workflow.tasks.map((task) => {
                   const action = taskNextAction(task.status, task.approvalRequired);
-                  const assignedTask = editable && (isAdmin || task.assignedUserId === principal.id);
+                  const roleAssignments = new Set<string>(principal.roleKeys);
+                  if (principal.roleKeys.includes("consultant")) roleAssignments.add("lead_consultant");
+                  const hasAssignedRole = workflow.team.some((member) => member.userId === principal.id && member.role === task.assignedRole);
+                  const assignedTask = editable && (isAdmin || task.assignedUserId === principal.id || hasAssignedRole);
                   const blockedDependencies = task.dependencies.filter((dependencyKey) => {
                     const dependency = workflow.tasks.find((candidate) => candidate.key === dependencyKey);
                     return dependency && dependency.status !== "completed";

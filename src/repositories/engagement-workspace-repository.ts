@@ -221,8 +221,14 @@ export async function updateEngagementTask(input: {
     || workflow.team.some((member) => member.userId === input.principal.id)
     || workflow.tasks.some((workflowTask) => workflowTask.assignedUserId === input.principal.id)
   );
+  const roleAssignments = new Set<string>(input.principal.roleKeys);
+  if (input.principal.roleKeys.includes("consultant")) roleAssignments.add("lead_consultant");
   const canManageAny = isAdmin(input.principal) || assignedManager;
+  const canUpdateByRole = !task.assignedUserId
+    && roleAssignments.has(task.assignedRole)
+    && workflow.team.some((member) => member.role === task.assignedRole && member.userId === input.principal.id);
   if (task.assignedUserId && task.assignedUserId !== input.principal.id && !canManageAny) return false;
+  if (!task.assignedUserId && !canManageAny && !canUpdateByRole) return false;
   if (input.status === "waiting_for_approval" && task.status !== "in_progress") return false;
   if (input.status === "completed" && (task.approvalRequired || task.status !== "in_progress")) return false;
   if (input.status === "in_progress") {
