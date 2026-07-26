@@ -637,6 +637,9 @@ export function EngagementExecutionWorkspace({
                       <div className="flex flex-wrap gap-2">
                         <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={`${filePath}?preview=1`} target="_blank"><Eye className="h-4 w-4" />Preview</Link>
                         <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={filePath}><Download className="h-4 w-4" />Download</Link>
+                        {reviewer && editable && document.deliverableStatus === "pending_review" ? (
+                          <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={`#review-${document.id}`}><ShieldCheck className="h-4 w-4" />Review deliverable</Link>
+                        ) : null}
                         {!isClient && editable ? <Link className={buttonClassName({ variant: "secondary", size: "sm" })} href={`${basePath}?tab=documents&replace=${document.id}#document-upload`}><RefreshCw className="h-4 w-4" />Replace version</Link> : null}
                       </div>
                     </div>
@@ -651,7 +654,7 @@ export function EngagementExecutionWorkspace({
                     ) : null}
 
                     {reviewer && editable && document.deliverableStatus === "pending_review" ? (
-                      <form action={reviewEngagementDeliverableAction} className="mt-4 grid gap-3 border-t border-border pt-4">
+                      <form id={`review-${document.id}`} action={reviewEngagementDeliverableAction} className="mt-4 grid gap-3 border-t border-border pt-4">
                         <input name="workflowId" type="hidden" value={workflow.id} />
                         <input name="documentId" type="hidden" value={document.id} />
                         <input name="returnPath" type="hidden" value={basePath} />
