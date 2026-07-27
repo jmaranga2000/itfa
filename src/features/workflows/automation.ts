@@ -26,7 +26,7 @@ export async function unlockReadyWorkflowTasks(workflowId: string) {
   }
 
   await WorkflowInstanceModel.updateOne(
-    { _id: workflow._id },
+    { _id: workflow._id, status: "active", archivedAt: null },
     {
       $set: {
         "tasks.$[task].status": "ready",
@@ -93,7 +93,7 @@ export async function markOverdueWorkflowTasks() {
     overdue += overdueTasks.length;
 
     await WorkflowInstanceModel.updateOne(
-      { _id: workflow._id },
+      { _id: workflow._id, status: "active", archivedAt: null },
       {
         $set: {
           "tasks.$[task].status": "overdue",

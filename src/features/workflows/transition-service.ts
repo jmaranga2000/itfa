@@ -192,7 +192,7 @@ export async function transitionWorkflowStage(input: WorkflowTransitionInput) {
   const nextStage = workflow.stages.find((stage) => stage.key === input.nextStageKey);
 
   await WorkflowInstanceModel.updateOne(
-    { _id: workflow.id },
+    { _id: workflow.id, status: "active", archivedAt: null },
     {
       $set: {
         currentStageKey: input.nextStageKey,

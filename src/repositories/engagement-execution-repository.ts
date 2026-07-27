@@ -494,7 +494,7 @@ export async function createEngagementTask(input: {
   const key = `task-${randomUUID()}`;
   const now = new Date();
   await WorkflowInstanceModel.updateOne(
-    { _id: workflow.id, status: "active" },
+    { _id: workflow.id, status: "active", archivedAt: null },
     {
       $push: {
         tasks: {
@@ -546,7 +546,7 @@ export async function reviewEngagementTask(input: {
   const now = new Date();
   const approved = input.decision === "approved";
   await WorkflowInstanceModel.updateOne(
-    { _id: workflow.id, "tasks.key": task.key, status: "active" },
+    { _id: workflow.id, "tasks.key": task.key, status: "active", archivedAt: null },
     {
       $set: {
         "tasks.$.status": approved ? "completed" : "in_progress",
@@ -594,7 +594,7 @@ export async function createClientCollaborationRequest(input: {
   const now = new Date();
   const key = `client-action-${randomUUID()}`;
   await WorkflowInstanceModel.updateOne(
-    { _id: workflow.id, status: "active" },
+    { _id: workflow.id, status: "active", archivedAt: null },
     {
       $push: {
         clientActions: { key, title: input.title, instructions: input.instructions, dueDate: input.dueDate, priority: "medium", assignedClientUserId: workflow.clientUserId, status: "pending" },
@@ -620,7 +620,7 @@ export async function respondToClientCollaborationRequest(input: {
   if (!action) return false;
   const now = new Date();
   await WorkflowInstanceModel.updateOne(
-    { _id: workflow.id, "clientActions.key": action.key },
+    { _id: workflow.id, "clientActions.key": action.key, status: "active", archivedAt: null },
     {
       $set: { "clientActions.$.status": "completed", "clientActions.$.response": input.response, "clientActions.$.respondedAt": now, currentStageName: "Work in Progress", lastActivityAt: now, nextAction: `Review client response: ${action.title}` },
       $push: { activity: { type: "client_response_received", title: "Client Response Received", actorName: input.principal.displayName || input.principal.email, actorUserId: new Types.ObjectId(input.principal.id), description: input.response, relatedResource: action.key, clientVisible: true, createdAt: now } },
@@ -658,7 +658,7 @@ export async function createEngagementInvoice(input: {
     setValues["tasks.$[financeTask].completionNotes"] = `${invoiceNumber} submitted for administrator approval.`;
   }
   await WorkflowInstanceModel.updateOne(
-    { _id: workflow.id, status: "active" },
+    { _id: workflow.id, status: "active", archivedAt: null },
     {
       $push: {
         "financial.invoices": {
@@ -810,6 +810,7 @@ export async function sendEngagementInvoice(input: { principal: Principal; workf
     {
       _id: workflow.id,
       status: "active",
+      archivedAt: null,
       "financial.invoices": {
         $elemMatch: {
           invoiceId: input.invoiceId,
@@ -897,7 +898,7 @@ export async function sendEngagementInvoice(input: { principal: Principal; workf
   try {
     await submitInvoiceToKraEtims({ invoice, workflow, company });
     await WorkflowInstanceModel.updateOne(
-      { _id: workflow.id, status: "active", "financial.invoices.invoiceId": input.invoiceId },
+      { _id: workflow.id, status: "active", archivedAt: null, "financial.invoices.invoiceId": input.invoiceId },
       {
         $set: {
           "financial.invoices.$[invoice].status": "etims_accepted",
@@ -947,7 +948,7 @@ export async function sendEngagementInvoice(input: { principal: Principal; workf
       console.error("Unable to prepare the KRA-approved invoice email.", error);
     }
     await WorkflowInstanceModel.updateOne(
-      { _id: workflow.id },
+      { _id: workflow.id, status: "active", archivedAt: null },
       {
         $set: {
           "financial.invoices.$[invoice].emailDeliveryStatus": delivery.delivered ? "sent" : "failed",
@@ -975,7 +976,7 @@ export async function sendEngagementInvoice(input: { principal: Principal; workf
   } catch (error) {
     console.error("KRA eTIMS submission failed.", error);
     await WorkflowInstanceModel.updateOne(
-      { _id: workflow.id },
+      { _id: workflow.id, status: "active", archivedAt: null },
       {
         $set: {
           "financial.invoices.$[invoice].status": "etims_rejected",
@@ -1025,7 +1026,7 @@ export async function reviewEngagementPayment(input: {
     const balanceDue = Math.max(0, workflow.financial.balanceDue - payment.amount);
     const invoiceStatus = balanceDue === 0 ? "paid" : "partially_paid";
     await WorkflowInstanceModel.updateOne(
-      { _id: workflow.id },
+      { _id: workflow.id, status: "active", archivedAt: null },
       {
         $set: {
           "financial.balanceDue": balanceDue,
@@ -1051,7 +1052,7 @@ export async function reviewEngagementPayment(input: {
     ).exec();
   } else {
     await WorkflowInstanceModel.updateOne(
-      { _id: workflow.id },
+      { _id: workflow.id, status: "active", archivedAt: null },
       {
         $set: { "financial.paymentStatus": "failed", lastActivityAt: now },
         $push: {
@@ -1141,7 +1142,7 @@ export async function completeEngagement(input: { principal: Principal; workflow
   };
   const summary = `${workflow.reference} for ${workflow.clientName} completed with ${completedTasks} completed tasks, ${releasedDeliverables} released deliverables, and ${data.messages.length} messages.`;
   await WorkflowInstanceModel.updateOne(
-    { _id: workflow.id, status: "active" },
+    { _id: workflow.id, status: "active", archivedAt: null },
     {
       $set: {
         status: "completed",

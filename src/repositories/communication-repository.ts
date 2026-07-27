@@ -826,7 +826,7 @@ export async function createConversationMessage(input: CreateMessageInput) {
 
   if (conversation.engagementId) {
     await WorkflowInstanceModel.updateOne(
-      { _id: conversation.engagementId },
+      { _id: conversation.engagementId, status: "active", archivedAt: null },
       {
         $set: { lastActivityAt: now },
         $push: { activity: {

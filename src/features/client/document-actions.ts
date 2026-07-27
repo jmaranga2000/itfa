@@ -99,7 +99,7 @@ export async function uploadClientDocumentAction(formData: FormData) {
       uploadedByUserId: principal.id,
     });
     await WorkflowInstanceModel.updateOne(
-      { _id: workflowId, clientUserId: principal.id },
+      { _id: workflowId, clientUserId: principal.id, status: "active", archivedAt: null },
       {
         $push: {
           documents: {
@@ -119,7 +119,7 @@ export async function uploadClientDocumentAction(formData: FormData) {
       await Promise.all([
         ClientDocumentModel.updateOne({ _id: replaced._id }, { $set: { status: "superseded" } }).exec(),
         WorkflowInstanceModel.updateOne(
-          { _id: workflowId, "documents.documentId": replaced._id.toString() },
+          { _id: workflowId, status: "active", archivedAt: null, "documents.documentId": replaced._id.toString() },
           { $set: { "documents.$.status": "superseded" } },
         ).exec(),
       ]);

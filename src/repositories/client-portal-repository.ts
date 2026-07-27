@@ -349,7 +349,12 @@ export async function createClientPayment(input: {
 }) {
   await connectToDatabase();
   if (!Types.ObjectId.isValid(input.principal.id) || !Types.ObjectId.isValid(input.workflowId)) return null;
-  const workflow = await WorkflowInstanceModel.findOne({ _id: input.workflowId, clientUserId: input.principal.id }).lean().exec();
+  const workflow = await WorkflowInstanceModel.findOne({
+    _id: input.workflowId,
+    clientUserId: input.principal.id,
+    status: "active",
+    archivedAt: null,
+  }).lean().exec();
   if (!workflow) return null;
   if (!["approved", "issued", "partially_paid", "overdue", "etims_accepted"].includes(workflow.financial.invoiceStatus)) return null;
   if (workflow.financial.balanceDue <= 0 || input.amount > workflow.financial.balanceDue) return null;
@@ -368,7 +373,7 @@ export async function createClientPayment(input: {
     status: "pending",
   });
   await WorkflowInstanceModel.updateOne(
-    { _id: input.workflowId },
+    { _id: input.workflowId, status: "active", archivedAt: null },
     { $set: { "financial.paymentStatus": "pending", lastActivityAt: new Date() }, $push: { activity: {
       type: "payment_recorded", title: "Payment submitted for verification", actorName: input.principal.email,
       actorUserId: new Types.ObjectId(input.principal.id), description: `${workflow.financial.currency} ${input.amount}`,

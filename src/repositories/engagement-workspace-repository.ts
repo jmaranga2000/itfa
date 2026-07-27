@@ -251,7 +251,7 @@ export async function updateEngagementTask(input: {
     set["tasks.$[task].completedByUserId"] = new Types.ObjectId(input.principal.id);
   }
   const result = await WorkflowInstanceModel.updateOne(
-    { _id: input.workflowId },
+    { _id: input.workflowId, status: "active", archivedAt: null },
     {
       $set: set,
       $push: { activity: {
@@ -380,7 +380,7 @@ export async function createEngagementDocument(input: {
     }
   }
   await WorkflowInstanceModel.updateOne(
-    { _id: workflow.id },
+    { _id: workflow.id, status: "active", archivedAt: null },
     {
       $push: {
         documents: {
@@ -500,7 +500,7 @@ export async function reviewEngagementDeliverable(input: {
 
   if (workflow.tasks.some((task) => task.key === "final_deliverable")) {
     await WorkflowInstanceModel.updateOne(
-      { _id: workflow.id },
+      { _id: workflow.id, status: "active", archivedAt: null },
       {
         $set: {
           "tasks.$[task].status": approved ? "waiting_for_approval" : "in_progress",
@@ -616,7 +616,7 @@ export async function releaseEngagementDeliverable(input: {
     [`stages.${financeStageIndex}.status`]: "in_progress",
     [`stages.${financeStageIndex}.enteredAt`]: workflow.stages[financeStageIndex].enteredAt ?? now,
   });
-  await WorkflowInstanceModel.updateOne({ _id: workflow.id }, { $set: progressionSet }).exec();
+  await WorkflowInstanceModel.updateOne({ _id: workflow.id, status: "active", archivedAt: null }, { $set: progressionSet }).exec();
   await notifyClientOfReleasedDocument({
     actor: input.principal,
     clientUserId: workflow.clientUserId,
@@ -651,7 +651,7 @@ export async function addEngagementDocumentComment(input: {
   ).exec();
   if (result.matchedCount === 0) return false;
   await WorkflowInstanceModel.updateOne(
-    { _id: input.workflowId },
+    { _id: input.workflowId, status: "active", archivedAt: null },
     { $set: { lastActivityAt: now }, $push: { activity: {
       type: "document_uploaded",
       title: "Document comment added",
