@@ -141,7 +141,7 @@ export function ArchiveDetail({ data }: { data: ArchiveDetailData }) {
           </div>
           <div className="flex flex-wrap gap-2">
             <Link className={buttonClassName({ variant: "secondary" })} href="/admin/archive">
-              Archive
+              Back to archive
             </Link>
             <a
               className={buttonClassName({ variant: "secondary" })}
