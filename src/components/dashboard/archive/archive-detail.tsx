@@ -168,7 +168,7 @@ export function ArchiveDetail({ data }: { data: ArchiveDetailData }) {
                 type="hidden"
                 value="Restore from archive detail page."
               />
-              <input name="restoreType" type="hidden" value="restore_for_viewing" />
+              <input name="restoreType" type="hidden" value="restore_to_active" />
               <button
                 className={buttonClassName()}
                 disabled={!record.restoreEligible}

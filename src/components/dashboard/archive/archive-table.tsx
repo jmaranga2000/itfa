@@ -120,7 +120,7 @@ export function ArchiveTable({
                             type="hidden"
                             value="Restore from archive register."
                           />
-                          <input name="restoreType" type="hidden" value="restore_for_viewing" />
+                          <input name="restoreType" type="hidden" value="restore_to_active" />
                           <button
                             className={buttonClassName({ variant: "secondary", size: "sm" })}
                             disabled={!record.restoreEligible}
