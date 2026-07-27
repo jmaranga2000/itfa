@@ -152,10 +152,14 @@ export function ArchiveDetail({ data }: { data: ArchiveDetailData }) {
               Export Summary
             </a>
             {record.archivePackageFileName ? (
-              <Link className={buttonClassName()} href={`/api/admin/archive/${record.id}/package`}>
+              <a
+                className={buttonClassName()}
+                download={record.archivePackageFileName}
+                href={`/api/admin/archive/${record.id}/package`}
+              >
                 <Download aria-hidden="true" className="h-4 w-4" />
                 Download ZIP ({formatSize(record.archivePackageSize)})
-              </Link>
+              </a>
             ) : null}
             <form action={requestArchiveRestoreAction}>
               {hiddenArchiveId(record.id)}
