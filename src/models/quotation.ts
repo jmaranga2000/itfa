@@ -33,6 +33,7 @@ const quotationSchema = new Schema(
     createdByName: { type: String, required: true },
     sentAt: { type: Date, default: null },
     acceptedAt: { type: Date, default: null },
+    archivedAt: { type: Date, default: null, index: true },
   },
   { collection: "quotations", timestamps: true, optimisticConcurrency: true },
 );

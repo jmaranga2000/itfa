@@ -320,7 +320,7 @@ export async function getClientPayments(principal: Principal) {
   if (!Types.ObjectId.isValid(principal.id)) return { payments: [], invoices: [] };
   const [invoices, payments] = await Promise.all([
     getClientInvoices(principal),
-    ClientPaymentModel.find({ clientUserId: principal.id }).sort({ submittedAt: -1 }).lean().exec(),
+    ClientPaymentModel.find({ clientUserId: principal.id, archivedAt: null }).sort({ submittedAt: -1 }).lean().exec(),
   ]);
   const invoiceById = new Map(invoices.map((invoice) => [invoice.workflowId, invoice]));
   return {

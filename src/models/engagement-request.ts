@@ -66,6 +66,7 @@ const engagementRequestSchema = new Schema(
     submittedAt: { type: Date, default: Date.now, index: true },
     reviewedAt: { type: Date, default: null },
     timeline: { type: [requestTimelineSchema], default: [] },
+    archivedAt: { type: Date, default: null, index: true },
   },
   {
     collection: "engagement_requests",

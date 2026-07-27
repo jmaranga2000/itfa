@@ -13,6 +13,7 @@ const clientPaymentSchema = new Schema(
     verifiedAt: { type: Date, default: null },
     reviewNote: { type: String, default: "" },
     receiptNumber: { type: String, default: null, index: true },
+    archivedAt: { type: Date, default: null, index: true },
   },
   {
     collection: "client_payments",

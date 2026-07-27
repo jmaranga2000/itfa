@@ -274,7 +274,7 @@ export async function getClientQuotationRequest(clientUserId: string, requestId:
 export async function listClientQuotations(clientUserId: string) {
   if (!Types.ObjectId.isValid(clientUserId)) return [];
   await connectToDatabase();
-  const quotations = await QuotationModel.find({ clientUserId }).sort({ createdAt: -1 }).lean().exec();
+  const quotations = await QuotationModel.find({ clientUserId, archivedAt: null }).sort({ createdAt: -1 }).lean().exec();
   return (quotations as unknown as RawQuotation[]).map(serialize);
 }
 

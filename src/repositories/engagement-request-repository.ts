@@ -259,7 +259,7 @@ export async function createEngagementRequestFromCart(input: {
 export async function listClientEngagementRequests(clientUserId: string) {
   await connectToDatabase();
   if (!Types.ObjectId.isValid(clientUserId)) return [];
-  const requests = await EngagementRequestModel.find({ clientUserId: new Types.ObjectId(clientUserId) })
+  const requests = await EngagementRequestModel.find({ clientUserId: new Types.ObjectId(clientUserId), archivedAt: null })
     .sort({ submittedAt: -1 }).lean().exec();
   return (requests as unknown as RawRequest[]).map(serialize);
 }
@@ -267,13 +267,13 @@ export async function listClientEngagementRequests(clientUserId: string) {
 export async function getClientEngagementRequest(clientUserId: string, requestId: string) {
   await connectToDatabase();
   if (!Types.ObjectId.isValid(clientUserId) || !Types.ObjectId.isValid(requestId)) return null;
-  const request = await EngagementRequestModel.findOne({ _id: requestId, clientUserId }).lean().exec();
+  const request = await EngagementRequestModel.findOne({ _id: requestId, clientUserId, archivedAt: null }).lean().exec();
   return request ? serialize(request as unknown as RawRequest) : null;
 }
 
 export async function listEngagementRequestsForAdmin() {
   await connectToDatabase();
-  const requests = await EngagementRequestModel.find({ status: { $ne: "rejected" } }).sort({ submittedAt: -1 }).lean().exec();
+  const requests = await EngagementRequestModel.find({ status: { $ne: "rejected" }, archivedAt: null }).sort({ submittedAt: -1 }).lean().exec();
   return (requests as unknown as RawRequest[]).map(serialize);
 }
 

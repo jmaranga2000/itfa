@@ -17,6 +17,8 @@ import { AuditLogModel } from "@/models/audit-log";
 import { ClientPaymentModel } from "@/models/client-payment";
 import { ClientDocumentModel } from "@/models/client-document";
 import { CommunicationConversationModel } from "@/models/communication-conversation";
+import { EngagementRequestModel } from "@/models/engagement-request";
+import { QuotationModel } from "@/models/quotation";
 import { UserModel } from "@/models/user";
 import { WorkflowInstanceModel } from "@/models/workflow-instance";
 import { WorkflowTemplateModel } from "@/models/workflow-template";
@@ -1461,6 +1463,10 @@ export async function archiveCompletedEngagement(input: { principal: Principal; 
   await Promise.all([
     WorkflowInstanceModel.updateOne({ _id: workflow.id }, { $set: { status: "archived", archivedAt: now, "archive.status": "archived", "archive.archivedAt": now, "completion.archivedAt": now, "completion.archivedByUserId": input.principal.id, "completion.archivedByName": input.principal.displayName || input.principal.email }, $push: { activity: { type: "workflow_archived", title: "Engagement Archived", actorName: input.principal.displayName || input.principal.email, actorUserId: input.principal.id, description: `The ${workflow.status === "active" ? "active" : "completed"} engagement is now read-only and its ZIP package contains ${archivePackage.documentCount} document record(s).`, relatedResource: archive._id.toString(), clientVisible: true, createdAt: now } } }).exec(),
     CommunicationConversationModel.updateMany({ engagementId: workflow.id }, { $set: { archivedAt: now, status: "closed", closedAt: now } }).exec(),
+    ClientPaymentModel.updateMany({ workflowId: workflow.id }, { $set: { archivedAt: now } }).exec(),
+    ClientDocumentModel.updateMany({ workflowId: workflow.id }, { $set: { status: "archived" } }).exec(),
+    EngagementRequestModel.updateMany({ workflowId: workflow.id }, { $set: { archivedAt: now } }).exec(),
+    QuotationModel.updateMany({ requestId: { $in: await EngagementRequestModel.find({ workflowId: workflow.id }).distinct("_id").exec() }, archivedAt: null }, { $set: { archivedAt: now } }).exec(),
   ]);
   await notifyUsers({ recipientIds: [workflow.clientUserId, ...workflow.team.map((member) => member.userId)], actor: input.principal, type: "engagement_update", title: "Engagement archived", description: `${workflow.reference} is now available as a read-only record.`, workflowId: workflow.id, tab: "completion", archiveId: archive._id.toString() });
   await writeAuditLog({ actor: input.principal, action: "engagement.archived", resourceType: "ArchiveRecord", resourceId: archive._id.toString(), newValues: { workflowId: workflow.id, archivedAt: now } });
