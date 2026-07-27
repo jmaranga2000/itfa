@@ -127,7 +127,7 @@ export function ArchiveTable({
                             type="submit"
                           >
                             <RotateCcw aria-hidden="true" className="h-4 w-4" />
-                            Restore
+                            Request Restore
                           </button>
                         </form>
                         <form action={applyArchiveLegalHoldAction}>
@@ -159,7 +159,7 @@ export function ArchiveTable({
                             type="submit"
                           >
                             <Trash2 aria-hidden="true" className="h-4 w-4" />
-                            Delete
+                            Request Deletion
                           </button>
                         </form>
                       </div>

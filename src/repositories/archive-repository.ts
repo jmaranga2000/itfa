@@ -32,7 +32,13 @@ import { ArchiveRecordModel } from "@/models/archive-record";
 import { ArchiveRestoreRequestModel } from "@/models/archive-restore-request";
 import { ArchiveRetentionPolicyModel } from "@/models/archive-retention-policy";
 import { AuditLogModel } from "@/models/audit-log";
+import { ClientDocumentModel } from "@/models/client-document";
+import { ClientPaymentModel } from "@/models/client-payment";
+import { CommunicationConversationModel } from "@/models/communication-conversation";
+import { EngagementRequestModel } from "@/models/engagement-request";
+import { QuotationModel } from "@/models/quotation";
 import { LegalHoldModel } from "@/models/legal-hold";
+import { WorkflowInstanceModel } from "@/models/workflow-instance";
 
 export type ArchiveFilters = {
   search?: string;
@@ -352,6 +358,84 @@ function formatReference(prefix: string) {
     .toString(36)
     .slice(2, 6)
     .toUpperCase()}`;
+}
+
+async function restoreEngagementFromArchive(record: RawArchiveRecord, restoreType: RestoreType, actor: Principal) {
+  if (record.recordType !== "engagement") {
+    return;
+  }
+
+  const workflowId = objectId(record.recordId);
+  if (!workflowId) {
+    return;
+  }
+
+  const workflow = await WorkflowInstanceModel.findById(workflowId).lean().exec();
+  if (!workflow) {
+    return;
+  }
+
+  const restoredStatus = ["restore_to_active", "reopen_engagement"].includes(restoreType)
+    ? "active"
+    : "read_only";
+
+  const updatePayload: Record<string, unknown> = {
+    archivedAt: null,
+    status: restoredStatus,
+    "archive.status": "not_ready",
+    "archive.archivedAt": null,
+    "completion.archivedAt": null,
+    "completion.archivedByUserId": null,
+    "completion.archivedByName": "",
+  };
+
+  const updates: Array<Promise<unknown>> = [
+    WorkflowInstanceModel.updateOne({ _id: workflowId }, { $set: updatePayload }).exec(),
+    ClientPaymentModel.updateMany({ workflowId }, { $unset: { archivedAt: "" } }).exec(),
+    EngagementRequestModel.updateMany({ workflowId, archivedAt: { $ne: null } }, { $unset: { archivedAt: "" } }).exec(),
+    CommunicationConversationModel.updateMany(
+      { engagementId: workflowId, archivedAt: { $ne: null } },
+      { $unset: { archivedAt: "", closedAt: "" }, $set: { status: "open" } },
+    ).exec(),
+  ];
+
+  const requestIds = await EngagementRequestModel.find({ workflowId }).distinct("_id").exec();
+  if (requestIds.length > 0) {
+    updates.push(
+      QuotationModel.updateMany(
+        { requestId: { $in: requestIds }, archivedAt: { $ne: null } },
+        { $unset: { archivedAt: "" } },
+      ).exec(),
+    );
+  }
+
+  const statusByDocument = new Map<string, string>();
+
+  for (const document of workflow.documents ?? []) {
+    if (document.documentId && document.status) {
+      statusByDocument.set(document.documentId, document.status);
+    }
+  }
+
+  for (const [documentId, status] of statusByDocument.entries()) {
+    updates.push(
+      ClientDocumentModel.updateOne(
+        { _id: documentId, workflowId },
+        { $set: { status } },
+      ).exec(),
+    );
+  }
+
+  await Promise.all(updates);
+
+  await writeAuditLog({
+    actor,
+    action: "archive.engagement_restored",
+    resourceType: "ArchiveRecord",
+    resourceId: record._id.toString(),
+    reason: `Archive restore approved with type ${restoreType}.`,
+    newValues: { workflowId: record.recordId, restoreType, restoredStatus },
+  });
 }
 
 function serializeRecord(record: RawArchiveRecord): ArchiveRecordSummary {
@@ -826,10 +910,17 @@ export async function approveArchiveRestore(input: {
           restoredAt: new Date(),
           restoredByUserId: actorId(input.actor),
           restoreReason: input.decisionReason,
+          readOnly: false,
+          restoreEligible: false,
         },
       },
     ).exec(),
   ]);
+
+  const archiveRecord = await ArchiveRecordModel.findById(raw.archiveRecordId).lean().exec();
+  if (archiveRecord) {
+    await restoreEngagementFromArchive(archiveRecord as unknown as RawArchiveRecord, raw.restoreType, input.actor);
+  }
 
   await writeAuditLog({
     actor: input.actor,
