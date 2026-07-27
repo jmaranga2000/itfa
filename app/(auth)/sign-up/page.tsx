@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { SignUpForm } from "@/components/auth/sign-up-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { buttonClassName } from "@/components/ui/button";
 
 export default async function SignUpPage({
   searchParams,
@@ -25,6 +26,12 @@ export default async function SignUpPage({
         ) : null}
 
         <SignUpForm />
+
+        <div className="mt-6 grid gap-3">
+          <Link className={buttonClassName({ variant: "secondary", className: "w-full" })} href="/">
+            Back to homepage
+          </Link>
+        </div>
 
         <p className="mt-5 text-sm leading-6 text-muted-foreground">
           Already have access?{" "}

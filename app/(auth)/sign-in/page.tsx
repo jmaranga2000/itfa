@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { SignInForm } from "@/components/auth/sign-in-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { buttonClassName } from "@/components/ui/button";
 
 export default async function SignInPage({
   searchParams,
@@ -39,6 +40,12 @@ export default async function SignInPage({
         <div className="mt-4 text-right">
           <Link className="text-sm font-semibold text-primary hover:underline" href="/forgot-password">
             Forgot password?
+          </Link>
+        </div>
+
+        <div className="mt-6 grid gap-3">
+          <Link className={buttonClassName({ variant: "secondary", className: "w-full" })} href="/">
+            Back to homepage
           </Link>
         </div>
 
