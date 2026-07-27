@@ -872,6 +872,53 @@ export async function requestArchiveRestore(input: {
   });
 }
 
+export async function restoreArchive(input: {
+  actor: Principal;
+  archiveRecordId: string;
+  restoreReason: string;
+  restoreType: RestoreType;
+}) {
+  await connectToDatabase();
+  assertAnyArchivePermission(input.actor, ["archive.request_restore", "archive.restore", "archive.restore_records"]);
+
+  const id = objectId(input.archiveRecordId);
+  const record = id ? await ArchiveRecordModel.findById(id).lean().exec() : null;
+  const raw = record as unknown as RawArchiveRecord | null;
+
+  if (!id || !raw) {
+    throw new Error("Archive record not found.");
+  }
+
+  if (!canRestoreArchiveRecord(raw.archiveStatus)) {
+    throw new Error("This archive status cannot be restored.");
+  }
+
+  await ArchiveRecordModel.updateOne(
+    { _id: id },
+    {
+      $set: {
+        archiveStatus: "restored",
+        restoredAt: new Date(),
+        restoredByUserId: actorId(input.actor),
+        restoreReason: input.restoreReason,
+        readOnly: false,
+        restoreEligible: false,
+      },
+    },
+  ).exec();
+
+  await restoreEngagementFromArchive(raw, input.restoreType, input.actor);
+
+  await writeAuditLog({
+    actor: input.actor,
+    action: "archive.restore",
+    resourceType: "ArchiveRecord",
+    resourceId: input.archiveRecordId,
+    reason: input.restoreReason,
+    newValues: { restoreType: input.restoreType },
+  });
+}
+
 export async function approveArchiveRestore(input: {
   actor: Principal;
   requestId: string;

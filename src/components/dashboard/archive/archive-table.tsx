@@ -118,7 +118,7 @@ export function ArchiveTable({
                           <input
                             name="restoreReason"
                             type="hidden"
-                            value="Restore requested from archive register."
+                            value="Restore from archive register."
                           />
                           <input name="restoreType" type="hidden" value="restore_for_viewing" />
                           <button
@@ -127,7 +127,7 @@ export function ArchiveTable({
                             type="submit"
                           >
                             <RotateCcw aria-hidden="true" className="h-4 w-4" />
-                            Request Restore
+                            Restore
                           </button>
                         </form>
                         <form action={applyArchiveLegalHoldAction}>

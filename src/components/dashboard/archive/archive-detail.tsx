@@ -166,7 +166,7 @@ export function ArchiveDetail({ data }: { data: ArchiveDetailData }) {
               <input
                 name="restoreReason"
                 type="hidden"
-                value="Restore requested from archive detail page."
+                value="Restore from archive detail page."
               />
               <input name="restoreType" type="hidden" value="restore_for_viewing" />
               <button
@@ -175,7 +175,7 @@ export function ArchiveDetail({ data }: { data: ArchiveDetailData }) {
                 type="submit"
               >
                 <RotateCcw aria-hidden="true" className="h-4 w-4" />
-                Request Restore
+                Restore
               </button>
             </form>
           </div>

@@ -13,6 +13,7 @@ import {
   releaseArchiveLegalHold,
   requestArchiveDeletion,
   requestArchiveRestore,
+  restoreArchive,
 } from "@/repositories/archive-repository";
 
 function parseRestoreType(value: FormDataEntryValue | null): RestoreType {
@@ -39,7 +40,7 @@ export async function requestArchiveRestoreAction(formData: FormData) {
   const restoreReason = String(formData.get("restoreReason") ?? "");
   const restoreType = parseRestoreType(formData.get("restoreType"));
 
-  await requestArchiveRestore({ actor, archiveRecordId, restoreReason, restoreType });
+  await restoreArchive({ actor, archiveRecordId, restoreReason, restoreType });
   revalidateArchive(archiveRecordId);
 }
 
