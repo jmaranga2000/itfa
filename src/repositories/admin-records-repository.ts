@@ -126,7 +126,7 @@ export async function getAdminDocumentsData() {
   await connectToDatabase();
   const [storedDocuments, workflows] = await Promise.all([
     ClientDocumentModel.find({}).sort({ uploadedAt: -1 }).lean().exec(),
-    WorkflowInstanceModel.find({ archivedAt: null })
+    WorkflowInstanceModel.find({})
       .select("reference clientName clientUserId documents")
       .sort({ lastActivityAt: -1 })
       .lean()
@@ -198,7 +198,7 @@ export async function getAdminDocumentsData() {
 
 export async function getAdminInvoicesData() {
   await connectToDatabase();
-  const workflows = (await WorkflowInstanceModel.find({ archivedAt: null })
+  const workflows = (await WorkflowInstanceModel.find({})
     .select("reference clientName clientUserId serviceName financial dueDate lastActivityAt")
     .sort({ lastActivityAt: -1 })
     .lean()
