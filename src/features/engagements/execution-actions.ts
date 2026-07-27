@@ -249,12 +249,14 @@ export async function completeEngagementAction(formData: FormData) {
 export async function archiveCompletedEngagementAction(formData: FormData) {
   const principal = await requireUser();
   const workflowId = String(formData.get("workflowId") ?? "");
+  const back = workspacePath(formData, workflowId, "completion");
   const archiveId = await archiveCompletedEngagement({ principal, workflowId });
-  if (!archiveId) redirect(`${workspacePath(formData, workflowId, "completion")}&error=archive`);
+  if (!archiveId) redirect(`${back}&error=archive`);
   refresh(workflowId);
   revalidatePath("/admin/archive");
   revalidatePath("/admin/completed-engagements");
-  redirect(`/admin/archive/${archiveId}?created=1`);
+  revalidatePath("/admin/active-engagements");
+  redirect("/admin/active-engagements");
 }
 
 export async function createFollowUpEngagementAction(formData: FormData) {

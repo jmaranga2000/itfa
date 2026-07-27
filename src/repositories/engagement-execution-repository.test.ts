@@ -78,7 +78,14 @@ describe("engagement completion requirements", () => {
 
 describe("engagement execution data", () => {
   it("uses full workflow state for client completion requirements", async () => {
-    const principal = { id: "client-user-1", roleKeys: ["client"], permissions: [] } as Principal;
+    const principal = {
+      id: "client-user-1",
+      email: "client@example.com",
+      roleKeys: ["client"],
+      permissions: [],
+      clientOrganizationIds: [],
+      assignedEngagementIds: [],
+    } as Principal;
     const workflowId = "workflow-123";
     const clientWorkflow = {
       id: workflowId,
