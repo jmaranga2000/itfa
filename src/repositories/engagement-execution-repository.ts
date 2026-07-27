@@ -37,6 +37,7 @@ import {
   getWorkflowForPrincipal,
   type WorkflowInstanceRecord,
 } from "@/repositories/workflow-repository";
+import { canArchiveEngagementWorkflow, getEngagementArchiveReason } from "@/repositories/engagement-archive-utils";
 
 export type EngagementPaymentRecord = {
   id: string;
@@ -1344,7 +1345,7 @@ export async function createFollowUpEngagement(input: {
 
 export async function archiveCompletedEngagement(input: { principal: Principal; workflowId: string }) {
   const workflow = await getWorkflowForPrincipal(input.principal, input.workflowId);
-  if (!workflow || workflow.status !== "completed" || !isAdministrator(input.principal) || !hasPermission(input.principal, "engagements.archive")) return null;
+  if (!workflow || !canArchiveEngagementWorkflow(workflow.status) || !isAdministrator(input.principal) || !hasPermission(input.principal, "engagements.archive")) return null;
   await connectToDatabase();
   const data = await getEngagementExecutionData(input.principal, input.workflowId);
   if (!data) return null;
@@ -1381,7 +1382,7 @@ export async function archiveCompletedEngagement(input: { principal: Principal; 
     serviceName: workflow.serviceName,
     originalStatus: workflow.status,
     archiveStatus: "archived",
-    archiveReason: "Engagement completed and archived from the execution workspace.",
+    archiveReason: getEngagementArchiveReason(workflow.status),
     archivedByUserId: input.principal.id,
     archivedByName: input.principal.displayName || input.principal.email,
     archivedAt: now,
@@ -1409,7 +1410,7 @@ export async function archiveCompletedEngagement(input: { principal: Principal; 
     },
   });
   await Promise.all([
-    WorkflowInstanceModel.updateOne({ _id: workflow.id }, { $set: { status: "archived", archivedAt: now, "archive.status": "archived", "archive.archivedAt": now, "completion.archivedAt": now, "completion.archivedByUserId": input.principal.id, "completion.archivedByName": input.principal.displayName || input.principal.email }, $push: { activity: { type: "workflow_archived", title: "Engagement Archived", actorName: input.principal.displayName || input.principal.email, actorUserId: input.principal.id, description: `The completed engagement is now read-only and its ZIP package contains ${archivePackage.documentCount} document record(s).`, relatedResource: archive._id.toString(), clientVisible: true, createdAt: now } } }).exec(),
+    WorkflowInstanceModel.updateOne({ _id: workflow.id }, { $set: { status: "archived", archivedAt: now, "archive.status": "archived", "archive.archivedAt": now, "completion.archivedAt": now, "completion.archivedByUserId": input.principal.id, "completion.archivedByName": input.principal.displayName || input.principal.email }, $push: { activity: { type: "workflow_archived", title: "Engagement Archived", actorName: input.principal.displayName || input.principal.email, actorUserId: input.principal.id, description: `The ${workflow.status === "active" ? "active" : "completed"} engagement is now read-only and its ZIP package contains ${archivePackage.documentCount} document record(s).`, relatedResource: archive._id.toString(), clientVisible: true, createdAt: now } } }).exec(),
     CommunicationConversationModel.updateMany({ engagementId: workflow.id }, { $set: { archivedAt: now, status: "closed", closedAt: now } }).exec(),
   ]);
   await notifyUsers({ recipientIds: [workflow.clientUserId, ...workflow.team.map((member) => member.userId)], actor: input.principal, type: "engagement_update", title: "Engagement archived", description: `${workflow.reference} is now available as a read-only record.`, workflowId: workflow.id, tab: "completion", archiveId: archive._id.toString() });
