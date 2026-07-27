@@ -1399,15 +1399,63 @@ export async function archiveCompletedEngagement(input: { principal: Principal; 
     archivePackageSize: archivePackage.size,
     archivePackageCreatedAt: archivePackage.createdAt,
     snapshot: {
-      workflowHistory: workflow.stages,
-      tasks: workflow.tasks,
-      documents: data.documents,
-      messages: data.messages,
-      finance: [...workflow.financial.invoices, ...data.payments],
-      timeline: workflow.activity,
-      approvals: workflow.approvals,
-      auditRecords,
-      completion: workflow.completion,
+      workflowHistory: workflow.stages.map((stage) => ({
+        stage: stage.name,
+        status: stage.status,
+        duration: `${stage.expectedDurationDays ?? 0} days`,
+        order: String(stage.order ?? 0),
+      })),
+      tasks: workflow.tasks.map((task) => ({
+        task: task.title,
+        status: task.status,
+        priority: task.priority,
+        dueDate: task.dueDate ? new Date(task.dueDate).toISOString() : "",
+      })),
+      documents: data.documents.map((doc) => ({
+        name: doc.name,
+        status: doc.status,
+        documentKind: doc.documentKind ?? "general",
+        uploadedAt: doc.uploadedAt,
+      })),
+      messages: data.messages.map((msg) => ({
+        message: msg.body ?? "",
+        sender: msg.senderName ?? "",
+        date: msg.createdAt ?? "",
+      })),
+      finance: [
+        ...workflow.financial.invoices.map((inv) => ({
+          invoice: inv.invoiceNumber ?? "",
+          status: inv.status,
+          amount: String(inv.amount ?? 0),
+          currency: inv.currency ?? "",
+        })),
+        ...data.payments.map((pmt) => ({
+          payment: pmt.transactionReference ?? "",
+          status: pmt.status,
+          amount: String(pmt.amount ?? 0),
+          currency: pmt.currency ?? "",
+        })),
+      ],
+      timeline: workflow.activity.map((activity) => ({
+        title: activity.title ?? "",
+        date: activity.createdAt ? new Date(activity.createdAt).toISOString() : "",
+        description: activity.description ?? "",
+      })),
+      approvals: workflow.approvals.map((approval) => ({
+        approval: approval.title ?? "",
+        stage: approval.stageKey ?? "",
+        status: approval.status,
+      })),
+      auditRecords: auditRecords.map((rec) => ({
+        action: rec.action ?? "",
+        actor: rec.actorEmail ?? "System",
+        date: rec.createdAt ? new Date(rec.createdAt).toISOString() : "",
+      })),
+      completion: {
+        notes: workflow.completion?.notes ?? "",
+        status: workflow.completion?.summary ?? "",
+        completedAt: workflow.completion?.completedAt ? new Date(workflow.completion.completedAt).toISOString() : "",
+      },
     },
   });
   await Promise.all([
