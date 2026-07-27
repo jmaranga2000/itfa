@@ -251,6 +251,7 @@ export default async function PublicHomePage() {
 
   return (
     <main>
+      
       <Reveal>
       <section className="relative isolate flex min-h-[100svh] overflow-hidden bg-brand-deep text-white">
   <Image
@@ -337,8 +338,6 @@ export default async function PublicHomePage() {
 
 <Reveal delay={0.1}>
 
-  <Reveal>
-
       <section className="border-b border-border bg-card">
         <div className="mx-auto grid max-w-7xl divide-y divide-border px-5 sm:px-6 md:grid-cols-3 md:divide-x md:divide-y-0 lg:px-8">
           {confidencePoints.map((item) => {
@@ -371,8 +370,6 @@ export default async function PublicHomePage() {
 
       <Reveal delay={0.2}>
 
-
-        <Reveal>
 
       <section className="mx-auto max-w-7xl px-5 py-16 sm:px-6 md:py-20 lg:px-8 lg:py-24">
         <div className="grid gap-12 lg:grid-cols-[0.9fr_1.1fr] lg:items-center lg:gap-20">
@@ -443,7 +440,6 @@ export default async function PublicHomePage() {
 
       <Reveal delay={0.3}>
 
-        <Reveal>
 
       <section className="border-y border-border bg-surface-subtle">
         <div className="mx-auto max-w-7xl px-5 py-16 sm:px-6 md:py-20 lg:px-8 lg:py-24">
@@ -537,8 +533,6 @@ export default async function PublicHomePage() {
 
       <Reveal delay={0.4}>
 
-        <Reveal>
-
       <section className="bg-brand-soft text-brand-deep">
         <div className="mx-auto grid max-w-7xl gap-12 px-5 py-16 sm:px-6 md:py-20 lg:grid-cols-[0.95fr_1.05fr] lg:items-center lg:gap-20 lg:px-8 lg:py-24">
           <div>
@@ -626,8 +620,6 @@ export default async function PublicHomePage() {
 
       <Reveal delay={0.5}>
 
-        <Reveal>
-
       <section className="mx-auto max-w-7xl px-5 py-16 sm:px-6 md:py-20 lg:px-8 lg:py-24">
         <div className="grid gap-14 lg:grid-cols-[1.05fr_0.95fr] lg:items-center lg:gap-20">
           <div>
@@ -698,7 +690,6 @@ export default async function PublicHomePage() {
 
       <Reveal delay={0.6}>
 
-        <Reveal>
 
       <section className="border-y border-border bg-card">
         <div className="mx-auto grid max-w-7xl gap-12 px-5 py-16 sm:px-6 md:py-20 lg:grid-cols-[0.9fr_1.1fr] lg:items-center lg:gap-20 lg:px-8 lg:py-24">
@@ -842,8 +833,6 @@ export default async function PublicHomePage() {
 
       <Reveal delay={0.7}>
 
-        <Reveal>
-
       <section className="mx-auto max-w-7xl px-5 py-16 sm:px-6 md:py-20 lg:px-8 lg:py-24">
         <div className="grid gap-12 lg:grid-cols-[0.75fr_1.25fr] lg:gap-20">
           <div>
@@ -899,8 +888,6 @@ export default async function PublicHomePage() {
       </Reveal>
 
       <Reveal delay={0.8}>
-
-        <Reveal>
 
       <section className="relative isolate overflow-hidden bg-brand-deep text-white">
         <Image
