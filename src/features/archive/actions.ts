@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { requireUser } from "@/features/auth/server";
 import {
   RESTORE_TYPES,
@@ -12,7 +13,6 @@ import {
   extendArchiveRetention,
   releaseArchiveLegalHold,
   requestArchiveDeletion,
-  requestArchiveRestore,
   restoreArchive,
 } from "@/repositories/archive-repository";
 
@@ -50,6 +50,7 @@ export async function requestArchiveRestoreAction(formData: FormData) {
 
   const restoredRecord = await restoreArchive({ actor, archiveRecordId, restoreReason, restoreType });
   revalidateArchive(archiveRecordId, restoredRecord?.recordType === "engagement" ? restoredRecord.recordId : undefined);
+  redirect("/admin/archive?restored=1");
 }
 
 export async function approveArchiveRestoreAction(formData: FormData) {
@@ -60,6 +61,7 @@ export async function approveArchiveRestoreAction(formData: FormData) {
 
   const restoredRecord = await approveArchiveRestore({ actor, requestId, decisionReason });
   revalidateArchive(archiveRecordId, restoredRecord?.recordType === "engagement" ? restoredRecord.recordId : undefined);
+  redirect("/admin/archive?restored=1");
 }
 
 export async function applyArchiveLegalHoldAction(formData: FormData) {

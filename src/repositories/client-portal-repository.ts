@@ -82,6 +82,7 @@ export async function getClientDocuments(principal: Principal): Promise<ClientDo
     listWorkflowsForPrincipal(principal),
     ClientDocumentModel.find({
       clientUserId: new Types.ObjectId(principal.id),
+      status: { $ne: "archived" },
       $or: [
         { documentKind: { $in: ["general", "signed_engagement_letter"] } },
         { documentKind: "final_deliverable", $or: [
@@ -139,7 +140,7 @@ export async function getClientDocuments(principal: Principal): Promise<ClientDo
 export async function getClientDocumentFile(principal: Principal, documentId: string) {
   await connectToDatabase();
   if (!Types.ObjectId.isValid(principal.id) || !Types.ObjectId.isValid(documentId)) return null;
-  const document = await ClientDocumentModel.findOne({ _id: documentId, clientUserId: principal.id }).lean().exec();
+  const document = await ClientDocumentModel.findOne({ _id: documentId, clientUserId: principal.id, status: { $ne: "archived" } }).lean().exec();
   if (!document) return null;
   if (document.documentKind === "technical_evidence") return null;
   if (document.documentKind === "draft_deliverable" && !["approved", "final"].includes(document.status)) return null;

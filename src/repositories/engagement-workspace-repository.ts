@@ -148,7 +148,7 @@ async function notifyClientOfReleasedDocument(input: {
 export async function listEngagementDocumentsForPrincipal(principal: Principal, workflowId: string): Promise<EngagementDocumentRecord[]> {
   const workflow = await getWorkflowForPrincipal(principal, workflowId, true);
   if (!workflow || !Types.ObjectId.isValid(workflowId)) return [];
-  const records = await ClientDocumentModel.find({ workflowId: new Types.ObjectId(workflowId) })
+  const records = await ClientDocumentModel.find({ workflowId: new Types.ObjectId(workflowId), status: { $ne: "archived" } })
     .sort({ uploadedAt: -1 })
     .lean()
     .exec() as RawEngagementDocument[];
@@ -347,7 +347,7 @@ export async function createEngagementDocument(input: {
     : "draft";
   const status = isDeliverable && deliverableStatus === "approved" ? "approved" : "pending_review";
   const replaced = input.replacesDocumentId && Types.ObjectId.isValid(input.replacesDocumentId)
-    ? await ClientDocumentModel.findOne({ _id: input.replacesDocumentId, workflowId: input.workflowId }).lean().exec() as RawEngagementDocument | null
+    ? await ClientDocumentModel.findOne({ _id: input.replacesDocumentId, workflowId: input.workflowId, status: { $ne: "archived" } }).lean().exec() as RawEngagementDocument | null
     : null;
   const version = replaced ? (replaced.version ?? 1) + 1 : 1;
   const document = await ClientDocumentModel.create({
@@ -679,7 +679,7 @@ export async function recordEngagementTechnicalReview(input: {
     || (input.principal.roleKeys.includes("reviewer")
       && workflow.team.some((member) => member.role === "reviewer" && member.userId === input.principal.id));
   if (!allowed) return false;
-  const stored = await ClientDocumentModel.findOne({ _id: input.documentId, workflowId: input.workflowId }).lean().exec() as RawEngagementDocument | null;
+  const stored = await ClientDocumentModel.findOne({ _id: input.documentId, workflowId: input.workflowId, status: { $ne: "archived" } }).lean().exec() as RawEngagementDocument | null;
   if (!stored) return false;
 
   const approved = input.decision === "approved";
@@ -841,7 +841,7 @@ export async function recordEngagementTechnicalReview(input: {
 export async function getEngagementDocumentFile(principal: Principal, documentId: string) {
   if (!Types.ObjectId.isValid(documentId)) return null;
   await connectToDatabase();
-  const document = await ClientDocumentModel.findById(documentId).lean().exec() as RawEngagementDocument | null;
+  const document = await ClientDocumentModel.findOne({ _id: documentId, status: { $ne: "archived" } }).lean().exec() as RawEngagementDocument | null;
   if (!document?.workflowId) return null;
   const workflow = await getWorkflowForPrincipal(principal, document.workflowId.toString(), true);
   if (!workflow) return null;

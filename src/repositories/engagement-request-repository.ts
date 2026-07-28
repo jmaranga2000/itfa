@@ -289,7 +289,7 @@ export async function markEngagementRequestViewed(requestId: string) {
   if (!Types.ObjectId.isValid(requestId)) return;
   await connectToDatabase();
   await EngagementRequestModel.updateOne(
-    { _id: requestId, adminViewedAt: null },
+    { _id: requestId, adminViewedAt: null, archivedAt: null },
     { $set: { adminViewedAt: new Date() } },
   ).exec();
 }
@@ -297,14 +297,14 @@ export async function markEngagementRequestViewed(requestId: string) {
 export async function getEngagementRequestForAdmin(requestId: string) {
   await connectToDatabase();
   if (!Types.ObjectId.isValid(requestId)) return null;
-  const request = await EngagementRequestModel.findById(requestId).lean().exec();
+  const request = await EngagementRequestModel.findOne({ _id: requestId, archivedAt: null }).lean().exec();
   return request ? serialize(request as unknown as RawRequest) : null;
 }
 
 export async function engagementRequestExists(requestId: string) {
   if (!Types.ObjectId.isValid(requestId)) return false;
   await connectToDatabase();
-  return Boolean(await EngagementRequestModel.exists({ _id: requestId }));
+  return Boolean(await EngagementRequestModel.exists({ _id: requestId, archivedAt: null }));
 }
 
 function addDays(date: Date, days: number) {
@@ -331,6 +331,7 @@ export async function convertEngagementRequestToWorkflow(
   }
   const request = await EngagementRequestModel.findOne({
     _id: requestId,
+    archivedAt: null,
     status: "approved",
     workflowId: null,
     adminApprovedAt: { $ne: null },

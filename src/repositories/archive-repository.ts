@@ -35,10 +35,15 @@ import { AuditLogModel } from "@/models/audit-log";
 import { ClientDocumentModel } from "@/models/client-document";
 import { ClientPaymentModel } from "@/models/client-payment";
 import { CommunicationConversationModel } from "@/models/communication-conversation";
+import { CommunicationNotificationModel } from "@/models/communication-notification";
+import { EngagementLetterModel } from "@/models/engagement-letter";
 import { EngagementRequestModel } from "@/models/engagement-request";
 import { QuotationModel } from "@/models/quotation";
+import { RequestStaffAssignmentModel } from "@/models/request-staff-assignment";
+import { StaffNoteModel } from "@/models/staff-note";
 import { LegalHoldModel } from "@/models/legal-hold";
 import { WorkflowInstanceModel } from "@/models/workflow-instance";
+import { getEngagementArchiveLinkedState } from "@/repositories/engagement-archive-utils";
 
 export type ArchiveFilters = {
   search?: string;
@@ -361,69 +366,153 @@ function formatReference(prefix: string) {
 }
 
 async function restoreEngagementFromArchive(record: RawArchiveRecord, restoreType: RestoreType, actor: Principal) {
-  if (record.recordType !== "engagement") {
-    return;
-  }
+  if (record.recordType !== "engagement") return;
 
   const workflowId = objectId(record.recordId);
-  if (!workflowId) {
-    return;
-  }
+  if (!workflowId) throw new Error("The archived engagement reference is invalid.");
 
   const workflow = await WorkflowInstanceModel.findById(workflowId).lean().exec();
-  if (!workflow) {
-    return;
-  }
+  if (!workflow) throw new Error("The archived engagement no longer exists.");
 
   const restoredStatus = ["restore_to_active", "reopen_engagement"].includes(restoreType)
     ? "active"
     : "read_only";
-
-  const updatePayload: Record<string, unknown> = {
-    archivedAt: null,
-    status: restoredStatus,
-    "archive.status": "not_ready",
-    "archive.archivedAt": null,
-    "completion.archivedAt": null,
-    "completion.archivedByUserId": null,
-    "completion.archivedByName": "",
-  };
-
+  const now = new Date();
+  const linkedState = getEngagementArchiveLinkedState(record.snapshot);
   const updates: Array<Promise<unknown>> = [
-    WorkflowInstanceModel.updateOne({ _id: workflowId }, { $set: updatePayload }).exec(),
-    ClientPaymentModel.updateMany({ workflowId }, { $unset: { archivedAt: "" } }).exec(),
-    EngagementRequestModel.updateMany({ workflowId, archivedAt: { $ne: null } }, { $unset: { archivedAt: "" } }).exec(),
-    CommunicationConversationModel.updateMany(
-      { engagementId: workflowId, archivedAt: { $ne: null } },
-      { $unset: { archivedAt: "", closedAt: "" }, $set: { status: "open" } },
+    WorkflowInstanceModel.updateOne(
+      { _id: workflowId },
+      {
+        $set: {
+          archivedAt: null,
+          status: restoredStatus,
+          "archive.status": "not_ready",
+          "archive.archivedAt": null,
+          "completion.archivedAt": null,
+          "completion.archivedByUserId": null,
+          "completion.archivedByName": "",
+        },
+        $push: {
+          activity: {
+            type: "workflow_restored",
+            title: "Engagement Restored",
+            actorName: actorName(actor),
+            actorUserId: actorId(actor),
+            description: "The engagement and its linked records were restored to active operations.",
+            relatedResource: record._id.toString(),
+            clientVisible: true,
+            createdAt: now,
+          },
+        },
+      },
     ).exec(),
   ];
 
-  const requestIds = await EngagementRequestModel.find({ workflowId }).distinct("_id").exec();
-  if (requestIds.length > 0) {
-    updates.push(
-      QuotationModel.updateMany(
-        { requestId: { $in: requestIds }, archivedAt: { $ne: null } },
-        { $unset: { archivedAt: "" } },
-      ).exec(),
-    );
-  }
-
-  const statusByDocument = new Map<string, string>();
-
-  for (const document of workflow.documents ?? []) {
-    if (document.documentId && document.status) {
-      statusByDocument.set(document.documentId, document.status);
+  if (linkedState) {
+    for (const document of linkedState.documents) {
+      updates.push(
+        ClientDocumentModel.updateOne(
+          { _id: document.id, workflowId },
+          { $set: { status: document.status } },
+        ).exec(),
+      );
     }
-  }
 
-  for (const [documentId, status] of statusByDocument.entries()) {
+    for (const conversation of linkedState.conversations) {
+      updates.push(
+        CommunicationConversationModel.updateOne(
+          { _id: conversation.id, engagementId: workflowId },
+          {
+            $set: {
+              archivedAt: null,
+              status: conversation.status,
+              closedAt: conversation.closedAt ? new Date(conversation.closedAt) : null,
+            },
+          },
+        ).exec(),
+      );
+    }
+
     updates.push(
-      ClientDocumentModel.updateOne(
-        { _id: documentId, workflowId },
-        { $set: { status } },
+      ClientPaymentModel.updateMany(
+        { _id: { $in: linkedState.payments } },
+        { $set: { archivedAt: null } },
+      ).exec(),
+      EngagementRequestModel.updateMany(
+        { _id: { $in: linkedState.requests } },
+        { $set: { archivedAt: null } },
+      ).exec(),
+      QuotationModel.updateMany(
+        { _id: { $in: linkedState.quotations } },
+        { $set: { archivedAt: null } },
+      ).exec(),
+      StaffNoteModel.updateMany(
+        { _id: { $in: linkedState.staffNotes } },
+        { $set: { archivedAt: null } },
+      ).exec(),
+      CommunicationNotificationModel.updateMany(
+        { _id: { $in: linkedState.notifications } },
+        { $set: { archivedAt: null } },
+      ).exec(),
+      EngagementLetterModel.updateMany(
+        { _id: { $in: linkedState.engagementLetters } },
+        { $set: { archivedAt: null } },
+      ).exec(),
+      RequestStaffAssignmentModel.updateMany(
+        { _id: { $in: linkedState.requestAssignments } },
+        { $set: { archivedAt: null } },
       ).exec(),
     );
+  } else {
+    const archivedAt = record.archivedAt;
+    const archivedAtFilter = archivedAt ? { archivedAt } : { archivedAt: { $ne: null } };
+    const requestIds = await EngagementRequestModel.find({ workflowId }).distinct("_id").exec();
+    const requestIdStrings = requestIds.map((id) => id.toString());
+
+    updates.push(
+      ClientPaymentModel.updateMany(
+        { workflowId, ...archivedAtFilter },
+        { $set: { archivedAt: null } },
+      ).exec(),
+      EngagementRequestModel.updateMany(
+        { workflowId, ...archivedAtFilter },
+        { $set: { archivedAt: null } },
+      ).exec(),
+      CommunicationConversationModel.updateMany(
+        { engagementId: workflowId, ...archivedAtFilter },
+        { $set: { archivedAt: null, status: "open", closedAt: null } },
+      ).exec(),
+      QuotationModel.updateMany(
+        { requestId: { $in: requestIds }, ...archivedAtFilter },
+        { $set: { archivedAt: null } },
+      ).exec(),
+      StaffNoteModel.updateMany(
+        { workflowId, ...archivedAtFilter },
+        { $set: { archivedAt: null } },
+      ).exec(),
+      CommunicationNotificationModel.updateMany(
+        { relatedRecordId: record.recordId, ...archivedAtFilter },
+        { $set: { archivedAt: null } },
+      ).exec(),
+      EngagementLetterModel.updateMany(
+        { workflowId, ...archivedAtFilter },
+        { $set: { archivedAt: null } },
+      ).exec(),
+      RequestStaffAssignmentModel.updateMany(
+        { requestId: { $in: requestIdStrings }, ...archivedAtFilter },
+        { $set: { archivedAt: null } },
+      ).exec(),
+    );
+
+    for (const document of workflow.documents ?? []) {
+      if (!document.documentId || !document.status) continue;
+      updates.push(
+        ClientDocumentModel.updateOne(
+          { _id: document.documentId, workflowId, status: "archived" },
+          { $set: { status: document.status } },
+        ).exec(),
+      );
+    }
   }
 
   await Promise.all(updates);
@@ -434,7 +523,12 @@ async function restoreEngagementFromArchive(record: RawArchiveRecord, restoreTyp
     resourceType: "ArchiveRecord",
     resourceId: record._id.toString(),
     reason: `Archive restore approved with type ${restoreType}.`,
-    newValues: { workflowId: record.recordId, restoreType, restoredStatus },
+    newValues: {
+      workflowId: record.recordId,
+      restoreType,
+      restoredStatus,
+      usedLinkedState: Boolean(linkedState),
+    },
   });
 }
 
@@ -545,7 +639,9 @@ function serializeDeletion(request: RawDeletion): DeletionRequestRecord {
 }
 
 function archiveQuery(filters: ArchiveFilters, principal: Principal) {
-  const query: Record<string, unknown> = {};
+  const query: Record<string, unknown> = filters.status
+    ? {}
+    : { archiveStatus: { $ne: "restored" } };
 
   if (filters.category && filters.category !== "overview") {
     query.recordType = { $in: ARCHIVE_CATEGORY_META[filters.category].recordTypes };
@@ -898,8 +994,10 @@ export async function restoreArchive(input: {
     throw new Error("This archive status cannot be restored.");
   }
 
+  await restoreEngagementFromArchive(raw, input.restoreType, input.actor);
+
   await ArchiveRecordModel.updateOne(
-    { _id: id },
+    { _id: id, archiveStatus: raw.archiveStatus },
     {
       $set: {
         archiveStatus: "restored",
@@ -911,8 +1009,6 @@ export async function restoreArchive(input: {
       },
     },
   ).exec();
-
-  await restoreEngagementFromArchive(raw, input.restoreType, input.actor);
 
   await writeAuditLog({
     actor: input.actor,
@@ -942,9 +1038,19 @@ export async function approveArchiveRestore(input: {
     throw new Error("Restore request not found.");
   }
 
+  const archiveRecord = await ArchiveRecordModel.findById(raw.archiveRecordId).lean().exec();
+  if (!archiveRecord) throw new Error("Archive record not found.");
+
+  const archiveRecordRaw = archiveRecord as unknown as RawArchiveRecord;
+  if (!canRestoreArchiveRecord(archiveRecordRaw.archiveStatus)) {
+    throw new Error("This archive status cannot be restored.");
+  }
+
+  await restoreEngagementFromArchive(archiveRecordRaw, raw.restoreType, input.actor);
+
   await Promise.all([
     ArchiveRestoreRequestModel.updateOne(
-      { _id: id },
+      { _id: id, approvalStatus: "pending" },
       {
         $set: {
           approvalStatus: "approved",
@@ -957,7 +1063,7 @@ export async function approveArchiveRestore(input: {
       },
     ).exec(),
     ArchiveRecordModel.updateOne(
-      { _id: raw.archiveRecordId },
+      { _id: raw.archiveRecordId, archiveStatus: archiveRecordRaw.archiveStatus },
       {
         $set: {
           archiveStatus: "restored",
@@ -970,12 +1076,6 @@ export async function approveArchiveRestore(input: {
       },
     ).exec(),
   ]);
-
-  const archiveRecord = await ArchiveRecordModel.findById(raw.archiveRecordId).lean().exec();
-  if (archiveRecord) {
-    await restoreEngagementFromArchive(archiveRecord as unknown as RawArchiveRecord, raw.restoreType, input.actor);
-  }
-
   await writeAuditLog({
     actor: input.actor,
     action: "archive.restore_approved",
@@ -985,9 +1085,7 @@ export async function approveArchiveRestore(input: {
     newValues: { requestReference: raw.requestReference },
   });
 
-  return archiveRecord
-    ? { recordId: archiveRecord.recordId, recordType: archiveRecord.recordType }
-    : null;
+  return { recordId: archiveRecordRaw.recordId, recordType: archiveRecordRaw.recordType };
 }
 
 export async function applyArchiveLegalHold(input: {

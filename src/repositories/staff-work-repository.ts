@@ -151,6 +151,7 @@ async function listAssignedRequests(principal: Principal): Promise<StaffAssigned
   if (!Types.ObjectId.isValid(principal.id)) return [];
   const assignments = (await RequestStaffAssignmentModel.find({
     staffUserId: new Types.ObjectId(principal.id),
+    archivedAt: null,
   })
     .sort({ assignedAt: -1 })
     .lean()

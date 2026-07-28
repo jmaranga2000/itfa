@@ -44,7 +44,7 @@ export async function getStaffFinanceData(principal: Principal): Promise<StaffFi
     .map((workflowId) => new Types.ObjectId(workflowId));
   const workflowById = new Map(workflows.map((workflow) => [workflow.id, workflow]));
   const storedPayments = workflowIds.length > 0
-    ? await ClientPaymentModel.find({ workflowId: { $in: workflowIds } }).sort({ submittedAt: -1 }).lean().exec()
+    ? await ClientPaymentModel.find({ workflowId: { $in: workflowIds }, archivedAt: null }).sort({ submittedAt: -1 }).lean().exec()
     : [];
 
   const payments = (storedPayments as unknown as RawPayment[]).map((payment): StaffPaymentRecord => {

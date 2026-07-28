@@ -17,8 +17,12 @@ import { AuditLogModel } from "@/models/audit-log";
 import { ClientPaymentModel } from "@/models/client-payment";
 import { ClientDocumentModel } from "@/models/client-document";
 import { CommunicationConversationModel } from "@/models/communication-conversation";
+import { CommunicationNotificationModel } from "@/models/communication-notification";
+import { EngagementLetterModel } from "@/models/engagement-letter";
 import { EngagementRequestModel } from "@/models/engagement-request";
 import { QuotationModel } from "@/models/quotation";
+import { RequestStaffAssignmentModel } from "@/models/request-staff-assignment";
+import { StaffNoteModel } from "@/models/staff-note";
 import { UserModel } from "@/models/user";
 import { WorkflowInstanceModel } from "@/models/workflow-instance";
 import { WorkflowTemplateModel } from "@/models/workflow-template";
@@ -39,7 +43,11 @@ import {
   getWorkflowForPrincipal,
   type WorkflowInstanceRecord,
 } from "@/repositories/workflow-repository";
-import { canArchiveEngagementWorkflow, getEngagementArchiveReason } from "@/repositories/engagement-archive-utils";
+import {
+  canArchiveEngagementWorkflow,
+  getEngagementArchiveReason,
+  type EngagementArchiveLinkedState,
+} from "@/repositories/engagement-archive-utils";
 
 export type EngagementPaymentRecord = {
   id: string;
@@ -135,7 +143,7 @@ async function createEngagementArchivePackage(input: {
 }) {
   const configuration = getR2Configuration();
   const client = getR2Client();
-  const storedDocuments = await ClientDocumentModel.find({ workflowId: input.workflow.id })
+  const storedDocuments = await ClientDocumentModel.find({ workflowId: input.workflow.id, status: { $ne: "archived" } })
     .select("name storageKey contentType size version documentKind uploadedAt")
     .sort({ uploadedAt: 1 })
     .lean()
@@ -448,7 +456,7 @@ export async function getEngagementExecutionData(principal: Principal, workflowI
   if (!fullWorkflow) return null;
   const [documents, storedPayments, conversation] = await Promise.all([
     listEngagementDocumentsForPrincipal(principal, workflowId),
-    ClientPaymentModel.find({ workflowId }).sort({ submittedAt: -1 }).lean().exec(),
+    ClientPaymentModel.find({ workflowId, archivedAt: null }).sort({ submittedAt: -1 }).lean().exec(),
     getOrCreateEngagementConversation(principal, workflow),
   ]);
   const payments = (storedPayments as unknown as RawPayment[]).map((payment): EngagementPaymentRecord => ({
@@ -1018,7 +1026,7 @@ export async function reviewEngagementPayment(input: {
   if (!isAdministrator(input.principal) || !hasPermission(input.principal, "payments.reconcile") || !Types.ObjectId.isValid(input.paymentId)) return false;
   const workflow = await getWorkflowForPrincipal(input.principal, input.workflowId);
   if (!workflow || workflow.status !== "active") return false;
-  const payment = await ClientPaymentModel.findOne({ _id: input.paymentId, workflowId: workflow.id, status: "pending" }).exec();
+  const payment = await ClientPaymentModel.findOne({ _id: input.paymentId, workflowId: workflow.id, status: "pending", archivedAt: null }).exec();
   if (!payment) return false;
 
   const now = new Date();
@@ -1352,15 +1360,83 @@ export async function createFollowUpEngagement(input: {
   return workflow._id.toString();
 }
 
+async function buildEngagementArchiveLinkedState(workflowId: string): Promise<EngagementArchiveLinkedState> {
+  const requestIds = await EngagementRequestModel.find({ workflowId }).distinct("_id").exec();
+  const requestIdStrings = requestIds.map((id) => id.toString());
+  const [
+    documents,
+    conversations,
+    payments,
+    requests,
+    quotations,
+    staffNotes,
+    notifications,
+    engagementLetters,
+    requestAssignments,
+  ] = await Promise.all([
+    ClientDocumentModel.find({ workflowId, status: { $ne: "archived" } })
+      .select("_id status")
+      .lean()
+      .exec(),
+    CommunicationConversationModel.find({ engagementId: workflowId, archivedAt: null })
+      .select("_id status closedAt")
+      .lean()
+      .exec(),
+    ClientPaymentModel.find({ workflowId, archivedAt: null }).select("_id").lean().exec(),
+    EngagementRequestModel.find({ _id: { $in: requestIds }, archivedAt: null })
+      .select("_id")
+      .lean()
+      .exec(),
+    QuotationModel.find({ requestId: { $in: requestIds }, archivedAt: null })
+      .select("_id")
+      .lean()
+      .exec(),
+    StaffNoteModel.find({ workflowId, archivedAt: null }).select("_id").lean().exec(),
+    CommunicationNotificationModel.find({ relatedRecordId: workflowId, archivedAt: null })
+      .select("_id")
+      .lean()
+      .exec(),
+    EngagementLetterModel.find({ workflowId, archivedAt: null }).select("_id").lean().exec(),
+    RequestStaffAssignmentModel.find({ requestId: { $in: requestIdStrings }, archivedAt: null })
+      .select("_id")
+      .lean()
+      .exec(),
+  ]);
+
+  return {
+    documents: documents.map((document) => ({
+      id: document._id.toString(),
+      status: document.status,
+    })),
+    conversations: conversations.map((conversation) => ({
+      id: conversation._id.toString(),
+      status: conversation.status,
+      closedAt: conversation.closedAt ? new Date(conversation.closedAt).toISOString() : null,
+    })),
+    payments: payments.map((payment) => payment._id.toString()),
+    requests: requests.map((request) => request._id.toString()),
+    quotations: quotations.map((quotation) => quotation._id.toString()),
+    staffNotes: staffNotes.map((note) => note._id.toString()),
+    notifications: notifications.map((notification) => notification._id.toString()),
+    engagementLetters: engagementLetters.map((letter) => letter._id.toString()),
+    requestAssignments: requestAssignments.map((assignment) => assignment._id.toString()),
+  };
+}
+
 export async function archiveCompletedEngagement(input: { principal: Principal; workflowId: string }) {
   const workflow = await getWorkflowForPrincipal(input.principal, input.workflowId);
   if (!workflow || !canArchiveEngagementWorkflow(workflow.status) || !isAdministrator(input.principal) || !hasPermission(input.principal, "engagements.archive")) return null;
   await connectToDatabase();
   const data = await getEngagementExecutionData(input.principal, input.workflowId);
   if (!data) return null;
-  const [existing, auditRecords] = await Promise.all([
-    ArchiveRecordModel.findOne({ recordId: workflow.id, recordType: "engagement" }).lean().exec(),
+  const [existing, auditRecords, linkedState] = await Promise.all([
+    ArchiveRecordModel.findOne({
+      recordId: workflow.id,
+      recordType: "engagement",
+      archiveStatus: { $ne: "restored" },
+    }).lean().exec(),
     AuditLogModel.find({ resourceId: workflow.id }).sort({ createdAt: 1 }).lean().exec(),
+    buildEngagementArchiveLinkedState(workflow.id),
   ]);
   if (existing) return existing._id.toString();
   const now = new Date();
@@ -1407,6 +1483,7 @@ export async function archiveCompletedEngagement(input: { principal: Principal; 
     archivePackageSize: archivePackage.size,
     archivePackageCreatedAt: archivePackage.createdAt,
     snapshot: {
+      linkedState,
       workflowHistory: workflow.stages.map((stage) => ({
         stage: stage.name,
         status: stage.status,
@@ -1468,13 +1545,44 @@ export async function archiveCompletedEngagement(input: { principal: Principal; 
   });
   await Promise.all([
     WorkflowInstanceModel.updateOne({ _id: workflow.id }, { $set: { status: "archived", archivedAt: now, "archive.status": "archived", "archive.archivedAt": now, "completion.archivedAt": now, "completion.archivedByUserId": input.principal.id, "completion.archivedByName": input.principal.displayName || input.principal.email }, $push: { activity: { type: "workflow_archived", title: "Engagement Archived", actorName: input.principal.displayName || input.principal.email, actorUserId: input.principal.id, description: `The ${workflow.status === "active" ? "active" : "completed"} engagement is now read-only and its ZIP package contains ${archivePackage.documentCount} document record(s).`, relatedResource: archive._id.toString(), clientVisible: true, createdAt: now } } }).exec(),
-    CommunicationConversationModel.updateMany({ engagementId: workflow.id }, { $set: { archivedAt: now, status: "closed", closedAt: now } }).exec(),
-    ClientPaymentModel.updateMany({ workflowId: workflow.id }, { $set: { archivedAt: now } }).exec(),
-    ClientDocumentModel.updateMany({ workflowId: workflow.id }, { $set: { status: "archived" } }).exec(),
-    EngagementRequestModel.updateMany({ workflowId: workflow.id }, { $set: { archivedAt: now } }).exec(),
-    QuotationModel.updateMany({ requestId: { $in: await EngagementRequestModel.find({ workflowId: workflow.id }).distinct("_id").exec() }, archivedAt: null }, { $set: { archivedAt: now } }).exec(),
+    CommunicationConversationModel.updateMany(
+      { _id: { $in: linkedState.conversations.map((item) => item.id) } },
+      { $set: { archivedAt: now, status: "closed", closedAt: now } },
+    ).exec(),
+    ClientPaymentModel.updateMany(
+      { _id: { $in: linkedState.payments } },
+      { $set: { archivedAt: now } },
+    ).exec(),
+    ClientDocumentModel.updateMany(
+      { _id: { $in: linkedState.documents.map((item) => item.id) } },
+      { $set: { status: "archived" } },
+    ).exec(),
+    EngagementRequestModel.updateMany(
+      { _id: { $in: linkedState.requests } },
+      { $set: { archivedAt: now } },
+    ).exec(),
+    QuotationModel.updateMany(
+      { _id: { $in: linkedState.quotations } },
+      { $set: { archivedAt: now } },
+    ).exec(),
+    StaffNoteModel.updateMany(
+      { _id: { $in: linkedState.staffNotes } },
+      { $set: { archivedAt: now } },
+    ).exec(),
+    CommunicationNotificationModel.updateMany(
+      { _id: { $in: linkedState.notifications } },
+      { $set: { archivedAt: now } },
+    ).exec(),
+    EngagementLetterModel.updateMany(
+      { _id: { $in: linkedState.engagementLetters } },
+      { $set: { archivedAt: now } },
+    ).exec(),
+    RequestStaffAssignmentModel.updateMany(
+      { _id: { $in: linkedState.requestAssignments } },
+      { $set: { archivedAt: now } },
+    ).exec(),
   ]);
   await notifyUsers({ recipientIds: [workflow.clientUserId, ...workflow.team.map((member) => member.userId)], actor: input.principal, type: "engagement_update", title: "Engagement archived", description: `${workflow.reference} is now available as a read-only record.`, workflowId: workflow.id, tab: "completion", archiveId: archive._id.toString() });
-  await writeAuditLog({ actor: input.principal, action: "engagement.archived", resourceType: "ArchiveRecord", resourceId: archive._id.toString(), newValues: { workflowId: workflow.id, archivedAt: now } });
+  await writeAuditLog({ actor: input.principal, action: "engagement.archived", resourceType: "ArchiveRecord", resourceId: archive._id.toString(), newValues: { workflowId: workflow.id, archivedAt: now, linkedState } });
   return archive._id.toString();
 }

@@ -54,11 +54,11 @@ async function notifyClient(input: {
 export async function unlockClientKycIfReady(requestId: string, actor: Principal) {
   if (!Types.ObjectId.isValid(requestId)) return { unlocked: false as const, reason: "invalid" as const };
   await connectToDatabase();
-  const request = await EngagementRequestModel.findById(requestId).exec();
+  const request = await EngagementRequestModel.findOne({ _id: requestId, archivedAt: null }).exec();
   if (!request || !request.adminApprovedAt || request.status !== "approved") {
     return { unlocked: false as const, reason: "approval" as const, request: request ?? null };
   }
-  const assignment = await RequestStaffAssignmentModel.findOne({ requestId }).lean().exec();
+  const assignment = await RequestStaffAssignmentModel.findOne({ requestId, archivedAt: null }).lean().exec();
   if (!assignment) return { unlocked: false as const, reason: "assignment" as const, request };
   if (request.kycUnlockedAt) return { unlocked: false as const, reason: "already" as const, request };
 
@@ -101,6 +101,7 @@ export async function approveEngagementRequest(requestId: string, actor: Princip
   const now = new Date();
   const request = await EngagementRequestModel.findOne({
     _id: requestId,
+    archivedAt: null,
     status: { $in: ["admin_review", "approved"] },
   }).exec();
   if (!request) return false;
@@ -141,7 +142,7 @@ export async function approveEngagementRequest(requestId: string, actor: Princip
 export async function notifyClientOfStaffAssignment(requestId: string, actor: Principal, staffName: string) {
   if (!Types.ObjectId.isValid(requestId)) return;
   await connectToDatabase();
-  const request = await EngagementRequestModel.findById(requestId).exec();
+  const request = await EngagementRequestModel.findOne({ _id: requestId, archivedAt: null }).exec();
   if (!request) return;
   const readiness = await unlockClientKycIfReady(requestId, actor);
   if (!readiness.unlocked && readiness.reason === "already") {
@@ -170,11 +171,12 @@ export async function getClientKycAccess(clientUserId: string): Promise<ClientKy
   await connectToDatabase();
   const request = await EngagementRequestModel.findOne({
     clientUserId,
+    archivedAt: null,
     kycUnlockedAt: { $ne: null },
     status: { $in: ["approved", "converted"] },
   }).sort({ kycUnlockedAt: -1 }).lean().exec();
   if (!request?.kycUnlockedAt || !request.adminApprovedAt) return null;
-  const assignment = await RequestStaffAssignmentModel.findOne({ requestId: request._id.toString() }).lean().exec();
+  const assignment = await RequestStaffAssignmentModel.findOne({ requestId: request._id.toString(), archivedAt: null }).lean().exec();
   if (!assignment) return null;
   return {
     requestId: request._id.toString(),
@@ -239,12 +241,14 @@ export async function canStaffAccessKycSubmission(submissionId: string, staffUse
   if (assignedEngagement) return true;
   const requestIds = await EngagementRequestModel.find({
     clientUserId: submission.userId,
+    archivedAt: null,
     kycUnlockedAt: { $ne: null },
     status: { $in: ["approved", "converted"] },
   }).distinct("_id").exec();
   return Boolean(await RequestStaffAssignmentModel.exists({
     requestId: { $in: requestIds.map((requestId) => requestId.toString()) },
     staffUserId: new Types.ObjectId(staffUserId),
+    archivedAt: null,
   }));
 }
 
@@ -259,6 +263,7 @@ export async function approveClientKycSubmission(submissionId: string, actor: Pr
   }
   const requests = await EngagementRequestModel.find({
     clientUserId: submission.userId,
+    archivedAt: null,
     status: { $in: ["approved", "converted"] },
     adminApprovedAt: { $ne: null },
     kycUnlockedAt: { $ne: null },

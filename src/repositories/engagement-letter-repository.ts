@@ -245,7 +245,7 @@ async function publishedLetterTemplate() {
 export async function ensureEngagementLetterForRequest(requestId: string, actor: Principal) {
   if (!Types.ObjectId.isValid(requestId)) return null;
   await connectToDatabase();
-  const existing = await EngagementLetterModel.findOne({ requestId, status: { $ne: "void" } }).lean().exec();
+  const existing = await EngagementLetterModel.findOne({ requestId, status: { $ne: "void" }, archivedAt: null }).lean().exec();
   if (existing) return { letter: serialize(existing as unknown as RawLetter), created: false };
 
   const [request, settings, templateResult] = await Promise.all([
@@ -360,7 +360,7 @@ export async function ensureEngagementLetterForRequest(requestId: string, actor:
 
 export async function listAdminEngagementLetters() {
   await connectToDatabase();
-  const records = await EngagementLetterModel.find({ status: { $ne: "void" } })
+  const records = await EngagementLetterModel.find({ status: { $ne: "void" }, archivedAt: null })
     .sort({ updatedAt: -1 }).limit(100).lean().exec();
   return records.map((record) => serialize(record as unknown as RawLetter));
 }
@@ -370,6 +370,7 @@ export async function listClientEngagementLetters(clientUserId: string) {
   await connectToDatabase();
   const records = await EngagementLetterModel.find({
     clientUserId,
+    archivedAt: null,
     status: { $in: ["awaiting_signatures", "partially_signed", "completed"] },
   }).sort({ updatedAt: -1 }).lean().exec();
   return records.map((record) => serialize(record as unknown as RawLetter));
@@ -378,7 +379,7 @@ export async function listClientEngagementLetters(clientUserId: string) {
 export async function getAdminEngagementLetter(letterId: string) {
   if (!Types.ObjectId.isValid(letterId)) return null;
   await connectToDatabase();
-  const record = await EngagementLetterModel.findById(letterId).lean().exec();
+  const record = await EngagementLetterModel.findOne({ _id: letterId, archivedAt: null }).lean().exec();
   return record ? serialize(record as unknown as RawLetter) : null;
 }
 
@@ -388,6 +389,7 @@ export async function getClientEngagementLetter(letterId: string, clientUserId: 
   const record = await EngagementLetterModel.findOne({
     _id: letterId,
     clientUserId,
+    archivedAt: null,
     status: { $in: ["awaiting_signatures", "partially_signed", "completed"] },
   }).lean().exec();
   return record ? serialize(record as unknown as RawLetter) : null;
@@ -396,7 +398,7 @@ export async function getClientEngagementLetter(letterId: string, clientUserId: 
 export async function getEngagementLetterForRequest(requestId: string) {
   if (!Types.ObjectId.isValid(requestId)) return null;
   await connectToDatabase();
-  const record = await EngagementLetterModel.findOne({ requestId, status: { $ne: "void" } }).lean().exec();
+  const record = await EngagementLetterModel.findOne({ requestId, status: { $ne: "void" }, archivedAt: null }).lean().exec();
   return record ? serialize(record as unknown as RawLetter) : null;
 }
 
@@ -412,7 +414,7 @@ export async function updateEngagementLetterDraft(input: {
 }) {
   if (!Types.ObjectId.isValid(input.letterId)) return null;
   await connectToDatabase();
-  const record = await EngagementLetterModel.findOne({ _id: input.letterId, status: "draft" }).exec();
+  const record = await EngagementLetterModel.findOne({ _id: input.letterId, status: "draft", archivedAt: null }).exec();
   if (!record) return null;
   const previousHash = record.contentHash;
   record.subject = input.subject;
@@ -444,7 +446,7 @@ export async function sendEngagementLetter(
   await connectToDatabase();
   const now = new Date();
   const record = await EngagementLetterModel.findOneAndUpdate(
-    { _id: letterId, status: "draft" },
+    { _id: letterId, status: "draft", archivedAt: null },
     { $set: { status: "awaiting_signatures", sentAt: now } },
     { returnDocument: "after", runValidators: true },
   ).exec();
@@ -500,6 +502,7 @@ export async function signEngagementLetter(input: {
   if (!settings.engagement.allowTypedSignatures) return { ok: false as const, reason: "disabled" };
   const record = await EngagementLetterModel.findOne({
     _id: input.letterId,
+    archivedAt: null,
     status: { $in: ["awaiting_signatures", "partially_signed"] },
   }).exec();
   if (!record) return { ok: false as const, reason: "unavailable" };
@@ -607,6 +610,7 @@ export async function recordUploadedSignedEngagementLetter(input: {
   const record = await EngagementLetterModel.findOne({
     _id: input.letterId,
     clientUserId: input.principal.id,
+    archivedAt: null,
     status: { $in: ["awaiting_signatures", "partially_signed"] },
   }).exec();
   if (!record) return { ok: false as const, reason: "unavailable" as const };
@@ -699,14 +703,14 @@ export async function recordUploadedSignedEngagementLetter(input: {
 export async function engagementLetterIsCompleteForRequest(requestId: string) {
   if (!Types.ObjectId.isValid(requestId)) return false;
   await connectToDatabase();
-  return Boolean(await EngagementLetterModel.exists({ requestId, status: "completed" }));
+  return Boolean(await EngagementLetterModel.exists({ requestId, status: "completed", archivedAt: null }));
 }
 
 export async function linkEngagementLetterToWorkflow(requestId: string, workflowId: string) {
   if (!Types.ObjectId.isValid(requestId) || !Types.ObjectId.isValid(workflowId)) return;
   await connectToDatabase();
   await EngagementLetterModel.updateOne(
-    { requestId, status: "completed" },
+    { requestId, status: "completed", archivedAt: null },
     { $set: { workflowId: new Types.ObjectId(workflowId) } },
   ).exec();
 }

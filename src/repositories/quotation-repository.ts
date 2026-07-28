@@ -131,7 +131,7 @@ export async function getQuotationEditorData(principal: Principal, requestId: st
   const request = await getEngagementRequestForAdmin(requestId);
   if (!request || request.requestType !== "quotation") return null;
   await connectToDatabase();
-  const existing = await QuotationModel.findOne({ requestId }).lean().exec();
+  const existing = await QuotationModel.findOne({ requestId, archivedAt: null }).lean().exec();
   return {
     request,
     quotation: existing ? serialize(existing as unknown as RawQuotation) : null,
@@ -159,7 +159,7 @@ export async function saveAndSendQuotation(input: {
   if (!isQuotationManager(input.principal)) throw new AuthorizationError("Quotation access is restricted to administrators and finance staff.");
   if (!Types.ObjectId.isValid(input.requestId) || !Types.ObjectId.isValid(input.principal.id)) return null;
   await connectToDatabase();
-  const request = await EngagementRequestModel.findOne({ _id: input.requestId, requestType: "quotation", status: { $nin: ["converted", "rejected"] } }).exec();
+  const request = await EngagementRequestModel.findOne({ _id: input.requestId, requestType: "quotation", status: { $nin: ["converted", "rejected"] }, archivedAt: null }).exec();
   if (!request || input.lines.length === 0) return null;
   const registeredClient = (await UserModel.findOne({
     _id: request.clientUserId,
@@ -186,9 +186,9 @@ export async function saveAndSendQuotation(input: {
   const total = Math.round((subtotal + taxAmount) * 100) / 100;
   const issueDate = new Date();
   const validUntil = new Date(issueDate.getTime() + Math.min(90, Math.max(1, input.validDays)) * 86_400_000);
-  const existing = await QuotationModel.findOne({ requestId: request._id }).lean().exec();
+  const existing = await QuotationModel.findOne({ requestId: request._id, archivedAt: null }).lean().exec();
   const quotation = await QuotationModel.findOneAndUpdate(
-    { requestId: request._id },
+    { requestId: request._id, archivedAt: null },
     {
       $set: {
         clientUserId: request.clientUserId,
@@ -258,7 +258,7 @@ export async function saveAndSendQuotation(input: {
 export async function getClientQuotation(clientUserId: string, quotationId: string) {
   if (!Types.ObjectId.isValid(clientUserId) || !Types.ObjectId.isValid(quotationId)) return null;
   await connectToDatabase();
-  const quotation = await QuotationModel.findOne({ _id: quotationId, clientUserId }).lean().exec();
+  const quotation = await QuotationModel.findOne({ _id: quotationId, clientUserId, archivedAt: null }).lean().exec();
   return quotation ? serialize(quotation as unknown as RawQuotation) : null;
 }
 
@@ -267,7 +267,7 @@ export async function getClientQuotationRequest(clientUserId: string, requestId:
   const request = await getEngagementRequestForAdmin(requestId);
   if (!request || request.clientUserId !== clientUserId || request.requestType !== "quotation") return null;
   await connectToDatabase();
-  const quotation = await QuotationModel.findOne({ requestId, clientUserId }).lean().exec();
+  const quotation = await QuotationModel.findOne({ requestId, clientUserId, archivedAt: null }).lean().exec();
   return { request, quotation: quotation ? serialize(quotation as unknown as RawQuotation) : null };
 }
 
@@ -281,12 +281,12 @@ export async function listClientQuotations(clientUserId: string) {
 export async function acceptQuotationForClientByRequest(requestId: string, principal: Principal) {
   if (!Types.ObjectId.isValid(requestId) || !Types.ObjectId.isValid(principal.id)) return false;
   await connectToDatabase();
-  const quotation = await QuotationModel.findOne({ requestId, clientUserId: principal.id, status: "sent", validUntil: { $gte: new Date() } }).exec();
+  const quotation = await QuotationModel.findOne({ requestId, clientUserId: principal.id, status: "sent", validUntil: { $gte: new Date() }, archivedAt: null }).exec();
   if (!quotation) return false;
   quotation.status = "accepted";
   quotation.acceptedAt = new Date();
   await quotation.save();
-  const request = await EngagementRequestModel.findOne({ _id: requestId, clientUserId: principal.id }).exec();
+  const request = await EngagementRequestModel.findOne({ _id: requestId, clientUserId: principal.id, archivedAt: null }).exec();
   if (request) {
     request.status = "approved";
     request.timeline.push({ at: new Date(), title: "Quotation accepted", detail: `${quotation.number} was accepted. The engagement can now be created.`, clientVisible: true });

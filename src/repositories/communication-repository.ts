@@ -733,7 +733,7 @@ export async function createConversationMessage(input: CreateMessageInput) {
   const now = new Date();
   const attachmentId = toObjectId(input.attachmentDocumentId ?? null);
   const attachment = attachmentId && conversation.engagementId
-    ? await ClientDocumentModel.findOne({ _id: attachmentId, workflowId: conversation.engagementId }).lean().exec()
+    ? await ClientDocumentModel.findOne({ _id: attachmentId, workflowId: conversation.engagementId, status: { $ne: "archived" } }).lean().exec()
     : null;
   const extension = attachment?.name.split(".").pop()?.toLowerCase();
   const attachmentType = extension === "jpeg" ? "jpg" : extension === "doc" ? "docx" : extension;
@@ -872,7 +872,7 @@ export async function createDirectClientConversation(input: CreateDirectConversa
   }
 
   if (!isAdminPrincipal(input.sender)) {
-    const assignedRequestIds = (await RequestStaffAssignmentModel.find({ staffUserId: senderId })
+    const assignedRequestIds = (await RequestStaffAssignmentModel.find({ staffUserId: senderId, archivedAt: null })
       .distinct("requestId")
       .exec()) as string[];
     const [workflowAccess, requestAccess] = await Promise.all([

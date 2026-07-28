@@ -6,6 +6,7 @@ const requestStaffAssignmentSchema = new Schema(
     staffUserId: { type: Schema.Types.ObjectId, required: true, index: true },
     assignedByUserId: { type: Schema.Types.ObjectId, required: true, index: true },
     assignedAt: { type: Date, required: true, default: Date.now, index: true },
+    archivedAt: { type: Date, default: null, index: true },
   },
   {
     collection: "request_staff_assignments",

@@ -20,9 +20,10 @@ export async function getClientCalendarEvents(principal: Principal): Promise<Cli
   await connectToDatabase();
   const [workflows, quotations, letters] = await Promise.all([
     listWorkflowsForPrincipal(principal),
-    QuotationModel.find({ clientUserId: principal.id, status: "sent" }).select("number validUntil total currency").lean().exec(),
+    QuotationModel.find({ clientUserId: principal.id, status: "sent", archivedAt: null }).select("number validUntil total currency").lean().exec(),
     EngagementLetterModel.find({
       clientUserId: principal.id,
+      archivedAt: null,
       status: { $in: ["awaiting_signatures", "partially_signed"] },
     }).select("reference subject expiresAt").lean().exec(),
   ]);

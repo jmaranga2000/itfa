@@ -45,7 +45,7 @@ export async function listStaffWorkloadForAdmin() {
     .filter((member) => Types.ObjectId.isValid(member.id))
     .map((member) => new Types.ObjectId(member.id));
   const assignments = (await RequestStaffAssignmentModel.aggregate([
-    { $match: { staffUserId: { $in: staffIds } } },
+    { $match: { staffUserId: { $in: staffIds }, archivedAt: null } },
     { $group: { _id: "$staffUserId", count: { $sum: 1 } } },
   ]).exec()) as Array<{ _id: Types.ObjectId; count: number }>;
   const counts = new Map(
@@ -78,7 +78,7 @@ export async function getRequestStaffAssignment(
   requestId: string,
 ): Promise<RequestStaffAssignmentRecord | null> {
   await connectToDatabase();
-  const assignment = await RequestStaffAssignmentModel.findOne({ requestId }).lean().exec();
+  const assignment = await RequestStaffAssignmentModel.findOne({ requestId, archivedAt: null }).lean().exec();
   if (!assignment) return null;
 
   const staff = await UserModel.findById(assignment.staffUserId)
@@ -117,7 +117,7 @@ export async function assignStaffToRequest(
 
   const actorId = Types.ObjectId.isValid(actor.id) ? new Types.ObjectId(actor.id) : null;
   if (!actorId) return false;
-  const previous = await RequestStaffAssignmentModel.findOne({ requestId }).lean().exec();
+  const previous = await RequestStaffAssignmentModel.findOne({ requestId, archivedAt: null }).lean().exec();
   const assignedAt = new Date();
 
   await RequestStaffAssignmentModel.updateOne(

@@ -63,6 +63,7 @@ const engagementLetterSchema = new Schema(
     signedCopyFilename: { type: String, default: null },
     signedCopyUploadedAt: { type: Date, default: null },
     voidedAt: { type: Date, default: null },
+    archivedAt: { type: Date, default: null, index: true },
   },
   { collection: "engagement_letters", timestamps: true, optimisticConcurrency: true },
 );
