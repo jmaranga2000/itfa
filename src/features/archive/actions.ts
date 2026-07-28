@@ -28,6 +28,8 @@ function parseRestoreType(value: FormDataEntryValue | null): RestoreType {
 
 function revalidateArchive(archiveRecordId?: string) {
   revalidatePath("/admin/archive");
+  revalidatePath("/admin/active-engagements");
+  revalidatePath("/admin/completed-engagements");
 
   if (archiveRecordId) {
     revalidatePath(`/admin/archive/${archiveRecordId}`);
