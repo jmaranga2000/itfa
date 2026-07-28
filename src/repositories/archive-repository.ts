@@ -872,12 +872,17 @@ export async function requestArchiveRestore(input: {
   });
 }
 
+export type ArchiveRestoreResult = {
+  recordId: string;
+  recordType: string;
+} | null;
+
 export async function restoreArchive(input: {
   actor: Principal;
   archiveRecordId: string;
   restoreReason: string;
   restoreType: RestoreType;
-}) {
+}): Promise<ArchiveRestoreResult> {
   await connectToDatabase();
   assertAnyArchivePermission(input.actor, ["archive.request_restore", "archive.restore", "archive.restore_records"]);
 
@@ -917,13 +922,15 @@ export async function restoreArchive(input: {
     reason: input.restoreReason,
     newValues: { restoreType: input.restoreType },
   });
+
+  return { recordId: raw.recordId, recordType: raw.recordType };
 }
 
 export async function approveArchiveRestore(input: {
   actor: Principal;
   requestId: string;
   decisionReason: string;
-}) {
+}): Promise<ArchiveRestoreResult> {
   await connectToDatabase();
   assertAnyArchivePermission(input.actor, ["archive.approve_restore", "archive.restore_records", "archive.restore"]);
 
@@ -977,6 +984,10 @@ export async function approveArchiveRestore(input: {
     reason: input.decisionReason,
     newValues: { requestReference: raw.requestReference },
   });
+
+  return archiveRecord
+    ? { recordId: archiveRecord.recordId, recordType: archiveRecord.recordType }
+    : null;
 }
 
 export async function applyArchiveLegalHold(input: {

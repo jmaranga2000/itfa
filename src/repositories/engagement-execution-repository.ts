@@ -463,9 +463,15 @@ export async function getEngagementExecutionData(principal: Principal, workflowI
     verifiedAt: payment.verifiedAt?.toISOString() ?? null,
     reviewNote: payment.reviewNote ?? "",
   }));
-  const messages = conversation
-    ? await listMessagesForConversation(principal, conversation.id, 100, workflow.status === "archived")
-    : [];
+  let messages: CommunicationMessage[] = [];
+  if (conversation) {
+    try {
+      messages = await listMessagesForConversation(principal, conversation.id, 100, workflow.status === "archived");
+    } catch (error) {
+      console.error("Unable to load engagement messages:", error);
+      messages = [];
+    }
+  }
   const due = workflow.dueDate ? new Date(workflow.dueDate).getTime() : null;
   const daysRemaining = due === null ? null : Math.ceil((due - Date.now()) / 86_400_000);
   return {

@@ -26,13 +26,19 @@ function parseRestoreType(value: FormDataEntryValue | null): RestoreType {
   return "restore_for_viewing";
 }
 
-function revalidateArchive(archiveRecordId?: string) {
+function revalidateArchive(archiveRecordId?: string, restoredRecordId?: string) {
   revalidatePath("/admin/archive");
   revalidatePath("/admin/active-engagements");
   revalidatePath("/admin/completed-engagements");
 
   if (archiveRecordId) {
     revalidatePath(`/admin/archive/${archiveRecordId}`);
+  }
+
+  if (restoredRecordId) {
+    revalidatePath(`/admin/active-engagements/${restoredRecordId}`);
+    revalidatePath(`/staff/engagements/${restoredRecordId}`);
+    revalidatePath(`/client/engagements/${restoredRecordId}`);
   }
 }
 
@@ -42,8 +48,8 @@ export async function requestArchiveRestoreAction(formData: FormData) {
   const restoreReason = String(formData.get("restoreReason") ?? "");
   const restoreType = parseRestoreType(formData.get("restoreType"));
 
-  await restoreArchive({ actor, archiveRecordId, restoreReason, restoreType });
-  revalidateArchive(archiveRecordId);
+  const restoredRecord = await restoreArchive({ actor, archiveRecordId, restoreReason, restoreType });
+  revalidateArchive(archiveRecordId, restoredRecord?.recordType === "engagement" ? restoredRecord.recordId : undefined);
 }
 
 export async function approveArchiveRestoreAction(formData: FormData) {
@@ -52,8 +58,8 @@ export async function approveArchiveRestoreAction(formData: FormData) {
   const archiveRecordId = String(formData.get("archiveRecordId") ?? "");
   const decisionReason = String(formData.get("decisionReason") ?? "");
 
-  await approveArchiveRestore({ actor, requestId, decisionReason });
-  revalidateArchive(archiveRecordId);
+  const restoredRecord = await approveArchiveRestore({ actor, requestId, decisionReason });
+  revalidateArchive(archiveRecordId, restoredRecord?.recordType === "engagement" ? restoredRecord.recordId : undefined);
 }
 
 export async function applyArchiveLegalHoldAction(formData: FormData) {

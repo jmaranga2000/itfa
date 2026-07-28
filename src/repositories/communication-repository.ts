@@ -458,28 +458,28 @@ export async function getOrCreateEngagementConversation(
     tasks?: Array<{ assignedUserId: string | null }>;
   },
 ) {
-  await connectToDatabase();
-  if (!Types.ObjectId.isValid(workflow.id)) return null;
-  const viewOnlyEngagementManager = principal.roleKeys.includes("engagement_manager")
-    && !principal.roleKeys.some((role) => role === "admin" || role === "super_admin")
-    && workflow.clientUserId !== principal.id
-    && workflow.responsibleUserId !== principal.id
-    && !workflow.team.some((member) => member.userId === principal.id)
-    && !workflow.tasks?.some((task) => task.assignedUserId === principal.id);
-  if (viewOnlyEngagementManager) return null;
-  const existing = await CommunicationConversationModel.findOne({
-    engagementId: new Types.ObjectId(workflow.id),
-    ...(workflow.status === "archived" ? {} : { archivedAt: null }),
-  }).lean().exec();
-  if (["archived", "read_only"].includes(workflow.status)) {
-    return existing ? serializeConversation(existing as RawConversation) : null;
-  }
+  try {
+    await connectToDatabase();
+    if (!Types.ObjectId.isValid(workflow.id)) return null;
+    const viewOnlyEngagementManager = principal.roleKeys.includes("engagement_manager")
+      && !principal.roleKeys.some((role) => role === "admin" || role === "super_admin")
+      && workflow.clientUserId !== principal.id
+      && workflow.responsibleUserId !== principal.id
+      && !workflow.team.some((member) => member.userId === principal.id)
+      && !workflow.tasks?.some((task) => task.assignedUserId === principal.id);
+    if (viewOnlyEngagementManager) return null;
+    const existing = await CommunicationConversationModel.findOne({
+      engagementId: new Types.ObjectId(workflow.id),
+    }).lean().exec();
+    if (["archived", "read_only"].includes(workflow.status)) {
+      return existing ? serializeConversation(existing as RawConversation) : null;
+    }
 
-  const participantIds = [...new Set([
-    workflow.clientUserId,
-    ...workflow.team.map((member) => member.userId),
-    principal.id,
-  ].filter((value): value is string => typeof value === "string" && Types.ObjectId.isValid(value)))];
+    const participantIds = [...new Set([
+      workflow.clientUserId,
+      ...workflow.team.map((member) => member.userId),
+      principal.id,
+    ].filter((value): value is string => typeof value === "string" && Types.ObjectId.isValid(value)))];
   const users = await UserModel.find({ _id: { $in: participantIds }, status: { $ne: "archived" } })
     .select("email firstName lastName roleKeys")
     .lean()
@@ -501,7 +501,17 @@ export async function getOrCreateEngagementConversation(
   if (existing) {
     const synchronized = await CommunicationConversationModel.findByIdAndUpdate(
       existing._id,
-      { $set: { title: `${workflow.reference} - ${workflow.clientName}`, participants } },
+      {
+        $set: {
+          title: `${workflow.reference} - ${workflow.clientName}`,
+          participants,
+          status: "open",
+        },
+        $unset: {
+          archivedAt: "",
+          closedAt: "",
+        },
+      },
       { new: true },
     ).lean().exec();
     return synchronized ? serializeConversation(synchronized as RawConversation) : null;
@@ -520,6 +530,10 @@ export async function getOrCreateEngagementConversation(
     archivedAt: null,
   });
   return serializeConversation(conversation.toObject() as unknown as RawConversation);
+  } catch (error) {
+    console.error("Unable to create or load engagement conversation:", error);
+    return null;
+  }
 }
 
 export async function listMessagesForConversation(
