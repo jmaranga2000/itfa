@@ -164,6 +164,7 @@ export const adminNavItems: DashboardNavItem[] = [
     defaultOpen: false,
     children: [
       { label: "Invoices", href: "/admin/invoices", icon: "invoice", symbol: "I" },
+      { label: "KRA eTIMS activity", href: "/admin/finance/etims", icon: "activity", symbol: "ET" },
       { label: "Quotations", href: "/admin/quotations", icon: "money", symbol: "Q" },
       { label: "Payments", href: "/admin/payments", icon: "creditCard", symbol: "P" },
       { label: "Reports", href: "/admin/reports", icon: "reports", symbol: "R" },

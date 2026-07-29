@@ -210,9 +210,7 @@ export async function sendEngagementInvoiceAction(formData: FormData) {
   }
   if (!result.ok) redirect(`${back}&error=invoice-${result.reason}`);
   refresh(workflowId);
-  redirect(result.emailDelivered
-    ? `${back}&saved=invoice-approved`
-    : `${back}&saved=invoice-approved&error=invoice-email`);
+  redirect(`${back}&saved=invoice-queued`);
 }
 
 export async function reviewEngagementPaymentAction(formData: FormData) {

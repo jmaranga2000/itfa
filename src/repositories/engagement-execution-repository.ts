@@ -1,15 +1,12 @@
-import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { Types } from "mongoose";
 import type { Principal } from "@/features/authorization/access-control";
 import { hasPermission } from "@/features/authorization/access-control";
 import { writeAuditLog } from "@/features/audit/audit-service";
 import { sendClientJourneyEmailToUser } from "@/features/engagements/client-journey-email";
-import { createInvoicePdf, type InvoiceCompanyDetails } from "@/features/invoices/invoice-pdf";
 import type { WorkflowPriority } from "@/features/workflows/types";
 import { connectToDatabase } from "@/lib/db/mongoose";
-import { getServerEnv } from "@/lib/env";
-import type { EmailDeliveryResult } from "@/lib/email/smtp";
 import { getR2Client, getR2Configuration } from "@/lib/r2";
 import { createZipBuffer, type ZipEntry } from "@/lib/zip";
 import { ArchiveRecordModel } from "@/models/archive-record";
@@ -20,6 +17,7 @@ import { CommunicationConversationModel } from "@/models/communication-conversat
 import { CommunicationNotificationModel } from "@/models/communication-notification";
 import { EngagementLetterModel } from "@/models/engagement-letter";
 import { EngagementRequestModel } from "@/models/engagement-request";
+import { FiscalInvoiceModel } from "@/models/fiscal-invoice";
 import { QuotationModel } from "@/models/quotation";
 import { RequestStaffAssignmentModel } from "@/models/request-staff-assignment";
 import { StaffNoteModel } from "@/models/staff-note";
@@ -37,8 +35,11 @@ import {
   listEngagementDocumentsForPrincipal,
   type EngagementDocumentRecord,
 } from "@/repositories/engagement-workspace-repository";
-import { getPlatformSettings } from "@/repositories/platform-settings-repository";
-import { getIntegrationConnection } from "@/repositories/integration-repository";
+import {
+  approveFiscalInvoice,
+  ensureFiscalInvoiceForEmbeddedInvoice,
+  getFiscalInvoiceIdByEmbeddedInvoiceId,
+} from "@/repositories/fiscal-invoice-repository";
 import {
   getWorkflowForPrincipal,
   type WorkflowInstanceRecord,
@@ -202,96 +203,6 @@ async function activeAdministratorIds(excludeUserId?: string) {
   return administrators
     .map((administrator) => administrator._id.toString())
     .filter((userId) => userId !== excludeUserId);
-}
-
-function invoiceApprovalStamp(input: {
-  invoiceId: string;
-  workflowId: string;
-  administratorId: string;
-  approvedAt: Date;
-}) {
-  const payload = `${input.invoiceId}:${input.workflowId}:${input.administratorId}:${input.approvedAt.toISOString()}`;
-  const secret = getServerEnv().ENCRYPTION_KEY?.trim();
-  const digest = secret
-    ? createHmac("sha256", secret).update(payload).digest("hex")
-    : createHash("sha256").update(payload).digest("hex");
-  return `IFTA-${input.approvedAt.getUTCFullYear()}-${digest.slice(0, 16).toUpperCase()}`;
-}
-
-function invoiceCompanyDetails(settings: Awaited<ReturnType<typeof getPlatformSettings>>): InvoiceCompanyDetails {
-  const location = [settings.company.address, settings.company.city, settings.company.country]
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .join(", ");
-  return {
-    companyName: settings.company.tradingName || settings.company.legalName || "IFTA Consulting",
-    legalName: settings.company.legalName || settings.company.tradingName || "IFTA Consulting",
-    registrationNumber: settings.company.registrationNumber,
-    kraPin: settings.company.kraPin,
-    address: location,
-    email: settings.company.email,
-    phone: settings.company.phone,
-    website: settings.company.website,
-    approverTitle: settings.engagement.signatoryTitle || "Authorized Signatory",
-    timezone: settings.portal.timezone || "Africa/Nairobi",
-  };
-}
-
-async function isKraEtimsEnabled() {
-  const connection = await getIntegrationConnection("kra_etims");
-  return Boolean(connection && connection.enabled && connection.configured && connection.status !== "failed");
-}
-
-async function submitInvoiceToKraEtims(input: {
-  invoice: {
-    invoiceId: string;
-    invoiceNumber: string;
-    issueDate: Date | string | null;
-    dueDate: Date | string | null;
-    amount: number;
-    currency: string;
-    notes: string;
-  };
-  workflow: WorkflowInstanceRecord;
-  company: InvoiceCompanyDetails;
-}) {
-  const env = getServerEnv();
-  if (!env.KRA_ETIMS_API_URL?.trim() || !env.KRA_ETIMS_API_TOKEN?.trim()) {
-    throw new Error("KRA eTIMS is not configured.");
-  }
-
-  const response = await fetch(env.KRA_ETIMS_API_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.KRA_ETIMS_API_TOKEN}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      invoice: {
-        invoiceId: input.invoice.invoiceId,
-        invoiceNumber: input.invoice.invoiceNumber,
-        issueDate: input.invoice.issueDate,
-        dueDate: input.invoice.dueDate,
-        amount: input.invoice.amount,
-        currency: input.invoice.currency,
-        notes: input.invoice.notes,
-      },
-      workflow: {
-        reference: input.workflow.reference,
-        clientName: input.workflow.clientName,
-        serviceName: input.workflow.serviceName,
-      },
-      company: input.company,
-    }),
-    signal: AbortSignal.timeout(15_000),
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`KRA eTIMS submission failed with status ${response.status}: ${body}`);
-  }
-
-  return await response.text();
 }
 
 function teamMember(workflow: WorkflowInstanceRecord, principal: Principal, role: string) {
@@ -657,7 +568,7 @@ export async function createEngagementInvoice(input: {
   const assignedFinanceOfficer = workflow
     && input.principal.roleKeys.includes("finance_officer")
     && teamMember(workflow, input.principal, "finance_officer");
-  if (!workflow || workflow.status !== "active" || !assignedFinanceOfficer || !hasPermission(input.principal, "invoices.create")) return null;
+  if (!workflow || !workflow.clientUserId || workflow.status !== "active" || !assignedFinanceOfficer || !hasPermission(input.principal, "invoices.create")) return null;
   const now = new Date();
   const invoiceId = randomUUID();
   const invoiceNumber = `INV-${now.getFullYear()}-${randomBytes(3).toString("hex").toUpperCase()}`;
@@ -673,7 +584,7 @@ export async function createEngagementInvoice(input: {
     setValues["tasks.$[financeTask].status"] = "waiting_for_approval";
     setValues["tasks.$[financeTask].completionNotes"] = `${invoiceNumber} submitted for administrator approval.`;
   }
-  await WorkflowInstanceModel.updateOne(
+  const workflowUpdate = await WorkflowInstanceModel.updateOne(
     { _id: workflow.id, status: "active", archivedAt: null },
     {
       $push: {
@@ -705,6 +616,41 @@ export async function createEngagementInvoice(input: {
     },
     financeTask ? { arrayFilters: [{ "financeTask.key": financeTask.key }] } : undefined,
   ).exec();
+  if (workflowUpdate.modifiedCount === 0) return null;
+  let fiscalInvoiceId: string | null = null;
+  try {
+    fiscalInvoiceId = await ensureFiscalInvoiceForEmbeddedInvoice({
+      principal: input.principal,
+      workflowId: workflow.id,
+      engagementReference: workflow.reference,
+      clientUserId: workflow.clientUserId,
+      clientName: workflow.clientName,
+      serviceName: workflow.serviceName,
+      invoiceId,
+      invoiceNumber,
+      issueDate: now,
+      dueDate: input.dueDate,
+      amount: input.amount,
+      currency: workflow.financial.currency,
+      notes: input.notes,
+    });
+  } catch (error) {
+    console.error("Unable to create the dedicated fiscal invoice record.", error);
+  }
+  if (!fiscalInvoiceId) {
+    await WorkflowInstanceModel.updateOne(
+      { _id: workflow.id },
+      {
+        $pull: { "financial.invoices": { invoiceId } },
+        $set: {
+          "financial.invoiceStatus": "draft",
+          nextAction: "Finance must prepare the invoice again",
+          lastActivityAt: new Date(),
+        },
+      },
+    ).exec();
+    return null;
+  }
   const administrators = await activeAdministratorIds(input.principal.id);
   await notifyUsers({
     recipientIds: administrators,
@@ -732,289 +678,69 @@ export type EngagementInvoiceSendFailure =
   | "engagement_inactive"
   | "administrator_required"
   | "permission"
+  | "maker_checker"
+  | "validation"
   | "conflict";
 
 export async function sendEngagementInvoice(input: { principal: Principal; workflowId: string; invoiceId: string }) {
   const workflow = await getWorkflowForPrincipal(input.principal, input.workflowId);
-  if (!workflow) return { ok: false as const, emailDelivered: false, reason: "access" as const };
+  if (!workflow) return { ok: false as const, emailDelivered: false, reason: "access" as const, errors: [] as string[] };
   const invoice = workflow.financial.invoices.find((item) => item.invoiceId === input.invoiceId);
-  if (!invoice) return { ok: false as const, emailDelivered: false, reason: "not_found" as const };
-  if (workflow.status !== "active") return { ok: false as const, emailDelivered: false, reason: "engagement_inactive" as const };
-  if (!isAdministrator(input.principal)) return { ok: false as const, emailDelivered: false, reason: "administrator_required" as const };
-  if (!hasPermission(input.principal, "invoices.approve")) return { ok: false as const, emailDelivered: false, reason: "permission" as const };
+  if (!invoice) return { ok: false as const, emailDelivered: false, reason: "not_found" as const, errors: [] as string[] };
+  if (workflow.status !== "active") {
+    return { ok: false as const, emailDelivered: false, reason: "engagement_inactive" as const, errors: [] as string[] };
+  }
+  if (!isAdministrator(input.principal)) {
+    return { ok: false as const, emailDelivered: false, reason: "administrator_required" as const, errors: [] as string[] };
+  }
+  if (!hasPermission(input.principal, "invoice.approve")) {
+    return { ok: false as const, emailDelivered: false, reason: "permission" as const, errors: [] as string[] };
+  }
   if (!["draft", "pending_approval"].includes(invoice.status)) {
-    return { ok: false as const, emailDelivered: false, reason: "not_pending" as const };
+    return { ok: false as const, emailDelivered: false, reason: "not_pending" as const, errors: [] as string[] };
   }
 
-  const settings = await getPlatformSettings();
-  const company = invoiceCompanyDetails(settings);
-  const stampSnapshot = {
-    companyName: company.companyName,
-    legalName: company.legalName,
-    registrationNumber: company.registrationNumber,
-    kraPin: company.kraPin,
-    address: company.address,
-    email: company.email,
-    phone: company.phone,
-    website: company.website,
-    approverTitle: company.approverTitle,
-  };
-  const now = new Date();
-  const approvedByName = input.principal.displayName || input.principal.email;
-  const approvalStampId = invoiceApprovalStamp({
-    invoiceId: invoice.invoiceId,
-    workflowId: workflow.id,
-    administratorId: input.principal.id,
-    approvedAt: now,
-  });
-  const kraEtimsEnabled = await isKraEtimsEnabled();
-  const invoiceStatus = kraEtimsEnabled ? "pending_etims_submission" : "issued";
-  const workflowStatus = kraEtimsEnabled ? "pending_etims_submission" : "issued";
-  const financeTask = workflow.tasks.find((task) => task.key === "approve_invoice" || (task.stageKey === "finance" && task.assignedRole === "finance_officer"));
-  const setValues: Record<string, unknown> = {
-    "financial.invoices.$[invoice].status": invoiceStatus,
-    "financial.invoices.$[invoice].issueDate": now,
-    "financial.invoices.$[invoice].approvedByUserId": input.principal.id,
-    "financial.invoices.$[invoice].approvedByName": approvedByName,
-    "financial.invoices.$[invoice].approvedAt": now,
-    "financial.invoices.$[invoice].approvalStampId": approvalStampId,
-    "financial.invoices.$[invoice].approvalStampCompanyName": stampSnapshot.companyName,
-    "financial.invoices.$[invoice].approvalStampLegalName": stampSnapshot.legalName,
-    "financial.invoices.$[invoice].approvalStampRegistrationNumber": stampSnapshot.registrationNumber,
-    "financial.invoices.$[invoice].approvalStampKraPin": stampSnapshot.kraPin,
-    "financial.invoices.$[invoice].approvalStampAddress": stampSnapshot.address,
-    "financial.invoices.$[invoice].approvalStampEmail": stampSnapshot.email,
-    "financial.invoices.$[invoice].approvalStampPhone": stampSnapshot.phone,
-    "financial.invoices.$[invoice].approvalStampWebsite": stampSnapshot.website,
-    "financial.invoices.$[invoice].approvalStampApproverTitle": stampSnapshot.approverTitle,
-    "financial.invoiceStatus": workflowStatus,
-    currentStageName: "Finance",
-    nextAction: kraEtimsEnabled ? "Submit invoice to KRA eTIMS for acceptance" : "Await client payment",
-    lastActivityAt: now,
-  };
-  if (financeTask) {
-    setValues["tasks.$[financeTask].status"] = "completed";
-    setValues["tasks.$[financeTask].completedAt"] = now;
-    setValues["tasks.$[financeTask].completedByUserId"] = input.principal.id;
-    setValues["tasks.$[financeTask].completionNotes"] = `${invoice.invoiceNumber} approved, digitally stamped, and issued.`;
-  }
-  const arrayFilters: Array<Record<string, unknown>> = [{ "invoice.invoiceId": input.invoiceId }];
-  if (financeTask) arrayFilters.push({ "financeTask.key": financeTask.key });
-  const pushValues: Record<string, unknown> = {
-    activity: {
-      type: "invoice_issued",
-      title: "Invoice approved and issued",
-      actorName: approvedByName,
-      actorUserId: input.principal.id,
-      description: `${invoice.invoiceNumber} was digitally stamped and issued for ${invoice.currency} ${invoice.amount.toLocaleString("en-KE")}.`,
-      relatedResource: invoice.invoiceId,
-      clientVisible: true,
-      createdAt: now,
-    },
-  };
-  if (financeTask) {
-    pushValues["tasks.$[financeTask].reviewHistory"] = {
-      decision: "approved",
-      comments: `${invoice.invoiceNumber} approved and issued.`,
-      reviewerUserId: input.principal.id,
-      reviewerName: approvedByName,
-      reviewedAt: now,
-    };
-  }
-
-  const updateResult = await WorkflowInstanceModel.updateOne(
-    {
-      _id: workflow.id,
-      status: "active",
-      archivedAt: null,
-      "financial.invoices": {
-        $elemMatch: {
-          invoiceId: input.invoiceId,
-          status: { $in: ["draft", "pending_approval"] },
-        },
-      },
-    },
-    {
-      $set: setValues,
-      $push: pushValues,
-    },
-    { arrayFilters },
-  ).exec();
-  if (updateResult.modifiedCount === 0) {
-    return { ok: false as const, emailDelivered: false, reason: "conflict" as const };
-  }
-
-  if (!kraEtimsEnabled) {
-    await notifyUsers({
-      recipientIds: [workflow.clientUserId],
-      actor: input.principal,
-      type: "invoice_generated",
-      title: "Invoice approved and ready",
-      description: `${invoice.invoiceNumber} is available in your engagement workspace.`,
+  let fiscalInvoiceId = await getFiscalInvoiceIdByEmbeddedInvoiceId(invoice.invoiceId);
+  if (!fiscalInvoiceId && workflow.clientUserId) {
+    fiscalInvoiceId = await ensureFiscalInvoiceForEmbeddedInvoice({
+      principal: input.principal,
       workflowId: workflow.id,
-      tab: "finance",
+      engagementReference: workflow.reference,
+      clientUserId: workflow.clientUserId,
+      clientName: workflow.clientName,
+      serviceName: workflow.serviceName,
+      invoiceId: invoice.invoiceId,
+      invoiceNumber: invoice.invoiceNumber,
+      issueDate: new Date(invoice.issueDate ?? Date.now()),
+      dueDate: new Date(invoice.dueDate ?? Date.now()),
+      amount: invoice.amount,
+      currency: invoice.currency,
+      notes: invoice.notes,
     });
-
-    let delivery: EmailDeliveryResult = { delivered: false, recipient: "", reason: "The invoice email could not be prepared." };
-    try {
-      const pdf = await createInvoicePdf({
-        clientName: workflow.clientName,
-        engagementReference: workflow.reference,
-        serviceName: workflow.serviceName,
-        company,
-        invoice: {
-          ...invoice,
-          issueDate: now,
-          status: "issued",
-          approvedByName,
-          approvedAt: now,
-          approvalStampId,
-        },
-      });
-      delivery = await sendClientJourneyEmailToUser({
-        clientUserId: workflow.clientUserId ?? "",
-        fallbackName: workflow.clientName,
-        title: "Your IFTA invoice is ready",
-        summary: `${invoice.invoiceNumber} for ${invoice.currency} ${invoice.amount.toLocaleString("en-KE")} has been approved and is attached to this email.`,
-        actionLabel: "Open finance",
-        actionPath: `/client/engagements/${workflow.id}?tab=finance`,
-        attachments: [{ filename: `${invoice.invoiceNumber}.pdf`, content: pdf, contentType: "application/pdf" }],
-      });
-    } catch (error) {
-      console.error("Unable to prepare the approved invoice email.", error);
-    }
-    await WorkflowInstanceModel.updateOne(
-      { _id: workflow.id },
-      {
-        $set: {
-          "financial.invoices.$[invoice].emailDeliveryStatus": delivery.delivered ? "sent" : "failed",
-          "financial.invoices.$[invoice].emailedTo": delivery.recipient,
-          "financial.invoices.$[invoice].emailSentAt": delivery.delivered ? new Date() : null,
-          "financial.invoices.$[invoice].emailDeliveryError": delivery.delivered ? "" : delivery.reason ?? "Email delivery failed.",
-        },
-      },
-      { arrayFilters: [{ "invoice.invoiceId": input.invoiceId }] },
-    ).exec();
-    await writeAuditLog({
-      actor: input.principal,
-      action: "invoice.approved_and_issued",
-      resourceType: "WorkflowInstance",
-      resourceId: workflow.id,
-      newValues: {
-        invoiceId: invoice.invoiceId,
-        approvalStampId,
-        approvalStampDetails: stampSnapshot,
-        emailedTo: delivery.recipient,
-        emailDelivered: delivery.delivered,
-      },
-    });
-    return { ok: true as const, emailDelivered: delivery.delivered };
+  }
+  if (!fiscalInvoiceId) {
+    return { ok: false as const, emailDelivered: false, reason: "not_found" as const, errors: ["The fiscal invoice record could not be prepared."] };
   }
 
-  try {
-    await submitInvoiceToKraEtims({ invoice, workflow, company });
-    await WorkflowInstanceModel.updateOne(
-      { _id: workflow.id, status: "active", archivedAt: null, "financial.invoices.invoiceId": input.invoiceId },
-      {
-        $set: {
-          "financial.invoices.$[invoice].status": "etims_accepted",
-          "financial.invoiceStatus": "etims_accepted",
-          "financial.invoices.$[invoice].sentAt": now,
-          "financial.invoices.$[invoice].emailDeliveryStatus": "pending",
-        },
-      },
-      { arrayFilters: [{ "invoice.invoiceId": input.invoiceId }] },
-    ).exec();
-    await notifyUsers({
-      recipientIds: [workflow.clientUserId],
-      actor: input.principal,
-      type: "invoice_generated",
-      title: "Invoice approved and ready",
-      description: `${invoice.invoiceNumber} was accepted by KRA eTIMS and is available in your engagement workspace.`,
-      workflowId: workflow.id,
-      tab: "finance",
-    });
-
-    let delivery: EmailDeliveryResult = { delivered: false, recipient: "", reason: "The invoice email could not be prepared." };
-    try {
-      const pdf = await createInvoicePdf({
-        clientName: workflow.clientName,
-        engagementReference: workflow.reference,
-        serviceName: workflow.serviceName,
-        company,
-        invoice: {
-          ...invoice,
-          issueDate: now,
-          status: "etims_accepted",
-          approvedByName,
-          approvedAt: now,
-          approvalStampId,
-        },
-      });
-      delivery = await sendClientJourneyEmailToUser({
-        clientUserId: workflow.clientUserId ?? "",
-        fallbackName: workflow.clientName,
-        title: "Your KRA-approved invoice is ready",
-        summary: `${invoice.invoiceNumber} for ${invoice.currency} ${invoice.amount.toLocaleString("en-KE")} has been accepted by KRA eTIMS and is attached to this email.`,
-        actionLabel: "Open finance",
-        actionPath: `/client/engagements/${workflow.id}?tab=finance`,
-        attachments: [{ filename: `${invoice.invoiceNumber}.pdf`, content: pdf, contentType: "application/pdf" }],
-      });
-    } catch (error) {
-      console.error("Unable to prepare the KRA-approved invoice email.", error);
-    }
-    await WorkflowInstanceModel.updateOne(
-      { _id: workflow.id, status: "active", archivedAt: null },
-      {
-        $set: {
-          "financial.invoices.$[invoice].emailDeliveryStatus": delivery.delivered ? "sent" : "failed",
-          "financial.invoices.$[invoice].emailedTo": delivery.recipient,
-          "financial.invoices.$[invoice].emailSentAt": delivery.delivered ? new Date() : null,
-          "financial.invoices.$[invoice].emailDeliveryError": delivery.delivered ? "" : delivery.reason ?? "Email delivery failed.",
-        },
-      },
-      { arrayFilters: [{ "invoice.invoiceId": input.invoiceId }] },
-    ).exec();
-    await writeAuditLog({
-      actor: input.principal,
-      action: "invoice.etims_accepted",
-      resourceType: "WorkflowInstance",
-      resourceId: workflow.id,
-      newValues: {
-        invoiceId: invoice.invoiceId,
-        approvalStampId,
-        approvalStampDetails: stampSnapshot,
-        emailedTo: delivery.recipient,
-        emailDelivered: delivery.delivered,
-      },
-    });
-    return { ok: true as const, emailDelivered: delivery.delivered };
-  } catch (error) {
-    console.error("KRA eTIMS submission failed.", error);
-    await WorkflowInstanceModel.updateOne(
-      { _id: workflow.id, status: "active", archivedAt: null },
-      {
-        $set: {
-          "financial.invoices.$[invoice].status": "etims_rejected",
-          "financial.invoiceStatus": "etims_rejected",
-          "financial.invoices.$[invoice].emailDeliveryStatus": "failed",
-          "financial.invoices.$[invoice].emailDeliveryError": error instanceof Error ? error.message : String(error),
-        },
-      },
-      { arrayFilters: [{ "invoice.invoiceId": input.invoiceId }] },
-    ).exec();
-    await writeAuditLog({
-      actor: input.principal,
-      action: "invoice.etims_rejected",
-      resourceType: "WorkflowInstance",
-      resourceId: workflow.id,
-      newValues: {
-        invoiceId: invoice.invoiceId,
-        error: error instanceof Error ? error.message : String(error),
-      },
-    });
-    return { ok: false as const, emailDelivered: false, reason: "conflict" as const };
+  const approval = await approveFiscalInvoice(input.principal, fiscalInvoiceId);
+  if (!approval.ok) {
+    const reason: EngagementInvoiceSendFailure = approval.reason === "maker_checker"
+      ? "maker_checker"
+      : approval.reason === "validation"
+        ? "validation"
+        : approval.reason === "not_pending"
+          ? "not_pending"
+          : approval.reason === "not_found"
+            ? "not_found"
+            : "conflict";
+    return { ok: false as const, emailDelivered: false, reason, errors: approval.errors };
   }
+  return {
+    ok: true as const,
+    emailDelivered: false,
+    queued: true as const,
+    fiscalInvoiceId: approval.invoiceId,
+  };
 }
 export async function reviewEngagementPayment(input: {
   principal: Principal;
@@ -1064,9 +790,13 @@ export async function reviewEngagementPayment(input: {
           },
         },
       },
-      { arrayFilters: [{ "invoice.status": { $in: ["issued", "partially_paid", "overdue"] } }] },
+      { arrayFilters: [{ "invoice.status": { $in: ["issued", "etims_accepted", "partially_paid", "overdue"] } }] },
     ).exec();
-  } else {
+    await FiscalInvoiceModel.findOneAndUpdate(
+      { workflowId: workflow.id, archivedAt: null, "etims.status": "ACCEPTED" },
+      { $set: { balanceDue } },
+      { sort: { issueDate: -1 } },
+    ).exec();  } else {
     await WorkflowInstanceModel.updateOne(
       { _id: workflow.id, status: "active", archivedAt: null },
       {

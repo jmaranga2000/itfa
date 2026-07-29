@@ -1,9 +1,8 @@
-import { StaffFinance } from "@/components/dashboard/staff/staff-operational-pages";
+import { FiscalInvoiceRegister } from "@/components/dashboard/finance/fiscal-invoice-register";
 import { requireStaffRoute } from "@/features/staff/server";
-import { getStaffFinanceData } from "@/repositories/staff-finance-repository";
+import { listFiscalInvoices } from "@/repositories/fiscal-invoice-repository";
 
-export default async function StaffInvoicesPage({ searchParams }: { searchParams: Promise<{ updated?: string; error?: string }> }) {
-  const [{ principal }, query] = await Promise.all([requireStaffRoute("invoices"), searchParams]);
-  const data = await getStaffFinanceData(principal);
-  return <StaffFinance error={query.error} mode="invoices" updated={query.updated} workflows={data.workflows} />;
+export default async function StaffInvoicesPage() {
+  const { principal } = await requireStaffRoute("invoices");
+  return <FiscalInvoiceRegister invoices={await listFiscalInvoices(principal)} portal="staff" />;
 }

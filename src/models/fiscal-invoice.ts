@@ -1,0 +1,141 @@
+import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
+import {
+  ETIMS_FISCAL_STATUSES,
+  FISCAL_INVOICE_STATUSES,
+  INVOICE_ADJUSTMENT_STATUSES,
+  LEGACY_ETIMS_MIGRATION_STATUSES,
+} from "@/features/etims/types";
+
+const fiscalLineSchema = new Schema(
+  {
+    lineId: { type: String, required: true },
+    serviceId: { type: String, default: null },
+    serviceMappingId: { type: Schema.Types.ObjectId, default: null },
+    description: { type: String, required: true, trim: true },
+    quantity: { type: Number, required: true, min: 0.000001 },
+    quantityUnitCode: { type: String, required: true, trim: true },
+    unitPrice: { type: Number, required: true, min: 0 },
+    discountAmount: { type: Number, default: 0, min: 0 },
+    taxableAmount: { type: Number, required: true, min: 0 },
+    taxTypeCode: { type: String, required: true, trim: true },
+    taxRate: { type: Number, required: true, min: 0 },
+    taxAmount: { type: Number, required: true, min: 0 },
+    totalAmount: { type: Number, required: true, min: 0 },
+  },
+  { _id: false },
+);
+
+const fiscalResultSchema = new Schema(
+  {
+    provider: { type: String, default: "" },
+    environment: { type: String, enum: ["SANDBOX", "PRODUCTION"], default: "SANDBOX" },
+    status: { type: String, enum: ETIMS_FISCAL_STATUSES, default: "NOT_SUBMITTED" },
+    traderInvoiceNumber: { type: String, default: "" },
+    kraInvoiceNumber: { type: String, default: "" },
+    originalKraInvoiceNumber: { type: String, default: "" },
+    controlUnitId: { type: String, default: "" },
+    receiptNumber: { type: String, default: "" },
+    receiptSignature: { type: String, default: "" },
+    internalData: { type: String, default: "" },
+    qrData: { type: String, default: "" },
+    responseCode: { type: String, default: "" },
+    responseMessage: { type: String, default: "" },
+    requestId: { type: String, default: "" },
+    idempotencyKey: { type: String, default: "" },
+    payloadHash: { type: String, default: "" },
+    submittedAt: { type: Date, default: null },
+    acceptedAt: { type: Date, default: null },
+    rejectedAt: { type: Date, default: null },
+    lastAttemptAt: { type: Date, default: null },
+    attemptCount: { type: Number, default: 0 },
+    connectorResponse: { type: Schema.Types.Mixed, default: {} },
+  },
+  { _id: false },
+);
+
+const fiscalInvoiceSchema = new Schema(
+  {
+    invoiceId: { type: String, required: true, unique: true, immutable: true, index: true },
+    invoiceNumber: { type: String, required: true, unique: true, immutable: true, index: true },
+    traderInvoiceNumber: { type: String, default: "", index: true },
+    workflowId: { type: Schema.Types.ObjectId, required: true, immutable: true, index: true },
+    engagementReference: { type: String, required: true, immutable: true, index: true },
+    clientUserId: { type: Schema.Types.ObjectId, required: true, immutable: true, index: true },
+    clientName: { type: String, required: true, trim: true },
+    clientEmail: { type: String, required: true, lowercase: true, trim: true },
+    clientKraPin: { type: String, default: "", uppercase: true, trim: true },
+    clientAddress: { type: String, default: "", trim: true },
+    serviceId: { type: String, default: null, index: true },
+    serviceName: { type: String, required: true, trim: true },
+    status: { type: String, enum: FISCAL_INVOICE_STATUSES, default: "DRAFT", index: true },
+    issueDate: { type: Date, required: true },
+    supplyDate: { type: Date, default: null },
+    dueDate: { type: Date, required: true },
+    currency: { type: String, required: true, uppercase: true, trim: true },
+    paymentMethod: { type: String, default: "BANK_TRANSFER", trim: true },
+    paymentTerms: { type: String, default: "", trim: true },
+    lines: { type: [fiscalLineSchema], default: [] },
+    subtotal: { type: Number, required: true, min: 0 },
+    taxAmount: { type: Number, required: true, min: 0 },
+    totalAmount: { type: Number, required: true, min: 0 },
+    balanceDue: { type: Number, required: true, min: 0 },
+    internalNotes: { type: String, default: "" },
+    createdByUserId: { type: Schema.Types.ObjectId, required: true, index: true },
+    createdByName: { type: String, required: true },
+    submittedAt: { type: Date, default: null },
+    returnedAt: { type: Date, default: null },
+    returnedByUserId: { type: Schema.Types.ObjectId, default: null },
+    returnReason: { type: String, default: "" },
+    rejectedAt: { type: Date, default: null },
+    rejectedByUserId: { type: Schema.Types.ObjectId, default: null },
+    rejectionReason: { type: String, default: "" },
+    approvedAt: { type: Date, default: null },
+    approvedByUserId: { type: Schema.Types.ObjectId, default: null },
+    approvedByName: { type: String, default: "" },
+    approvalStampId: { type: String, default: "" },
+    lockedAt: { type: Date, default: null },
+    snapshot: { type: Schema.Types.Mixed, default: null },
+    payloadVersion: { type: Number, default: 1 },
+    payloadHash: { type: String, default: "", index: true },
+    etims: { type: fiscalResultSchema, default: () => ({}) },
+    finalPdfStorageKey: { type: String, default: "" },
+    finalPdfFileName: { type: String, default: "" },
+    finalPdfGeneratedAt: { type: Date, default: null },
+    portalPublishedAt: { type: Date, default: null },
+    emailDeliveryStatus: {
+      type: String,
+      enum: ["NOT_QUEUED", "PENDING", "SENT", "FAILED"],
+      default: "NOT_QUEUED",
+    },
+    emailedTo: { type: String, default: "" },
+    emailSentAt: { type: Date, default: null },
+    emailDeliveryError: { type: String, default: "" },
+    adjustmentStatus: { type: String, enum: INVOICE_ADJUSTMENT_STATUSES, default: "NONE", index: true },
+    adjustmentNoteId: { type: Schema.Types.ObjectId, default: null },
+    adjustmentType: { type: String, enum: ["CREDIT_NOTE", "DEBIT_NOTE"], default: null },
+    adjustmentReservedAt: { type: Date, default: null },
+    adjustmentAcceptedAt: { type: Date, default: null },
+    netAmount: { type: Number, required: true, min: 0 },
+    migrationStatus: {
+      type: String,
+      enum: LEGACY_ETIMS_MIGRATION_STATUSES,
+      default: "NOT_REQUIRED",
+      index: true,
+    },
+    archivedAt: { type: Date, default: null, index: true },
+  },
+  {
+    collection: "fiscal_invoices",
+    timestamps: true,
+    optimisticConcurrency: true,
+  },
+);
+
+fiscalInvoiceSchema.index({ clientUserId: 1, status: 1, issueDate: -1 });
+fiscalInvoiceSchema.index({ workflowId: 1, status: 1, createdAt: -1 });
+fiscalInvoiceSchema.index({ "etims.kraInvoiceNumber": 1 }, { sparse: true });
+
+export type FiscalInvoiceDocument = InferSchemaType<typeof fiscalInvoiceSchema>;
+export const FiscalInvoiceModel =
+  (mongoose.models.FiscalInvoice as Model<FiscalInvoiceDocument> | undefined)
+  ?? mongoose.model<FiscalInvoiceDocument>("FiscalInvoice", fiscalInvoiceSchema);

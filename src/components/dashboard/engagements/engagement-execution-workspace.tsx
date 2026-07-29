@@ -156,6 +156,14 @@ const workspaceErrorCopy: Record<string, { title: string; message: string }> = {
     title: "Invoice approval access is disabled",
     message: "The administrator role does not currently allow invoice approval. Enable Invoice approval under Roles and permissions, then try again.",
   },
+  "invoice-maker_checker": {
+    title: "A different administrator must approve this invoice",
+    message: "The person who prepared this invoice cannot approve it. Ask another administrator to review and approve it.",
+  },
+  "invoice-validation": {
+    title: "Invoice is not ready for eTIMS",
+    message: "Complete the company eTIMS settings and service tax mapping, then review the client and invoice details before trying again.",
+  },
   "invoice-conflict": {
     title: "Invoice was updated elsewhere",
     message: "The invoice changed while this approval was being processed. Refresh the Finance section before taking another action.",
@@ -382,7 +390,7 @@ export function EngagementExecutionWorkspace({
         })}
       </nav>
 
-      {query.saved ? <p className="rounded-md border border-success/30 bg-success-soft px-4 py-3 text-sm font-semibold text-success">Saved successfully. The engagement workspace and relevant notifications were updated.</p> : null}
+      {query.saved ? <p className="rounded-md border border-success/30 bg-success-soft px-4 py-3 text-sm font-semibold text-success">{query.saved === "invoice-queued" ? "Invoice approved and safely queued for KRA eTIMS. The client will receive it only after KRA accepts it." : "Saved successfully. The engagement workspace and relevant notifications were updated."}</p> : null}
       {query.error ? <ActionErrorPopup message={workspaceErrorCopy[query.error]?.message ?? "Check the information and your assigned role, then try again. Your existing engagement data has not been changed."} title={workspaceErrorCopy[query.error]?.title} /> : null}
       {query.team === "saved" ? <p className="rounded-md border border-success/30 bg-success-soft px-4 py-3 text-sm font-semibold text-success">The complete engagement team was saved and notified.</p> : null}
       {query.reviewed ? <p className="rounded-md border border-success/30 bg-success-soft px-4 py-3 text-sm font-semibold text-success">Your deliverable decision was saved and the engagement team was notified.</p> : null}
