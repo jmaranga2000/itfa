@@ -358,6 +358,12 @@ export function getCompletionRequirements(
   ];
 }
 
+function executionDateString(value: unknown) {
+  if (!value) return "";
+  const date = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
+}
+
 export async function getEngagementExecutionData(principal: Principal, workflowId: string) {
   const workflow = await getWorkflowForPrincipal(principal, workflowId, true);
   if (!workflow) return null;
@@ -365,11 +371,21 @@ export async function getEngagementExecutionData(principal: Principal, workflowI
     ? await getWorkflowForPrincipal(principal, workflowId, true, false)
     : workflow;
   if (!fullWorkflow) return null;
-  const [documents, storedPayments, conversation] = await Promise.all([
+  const [documentsResult, paymentsResult, conversationResult] = await Promise.allSettled([
     listEngagementDocumentsForPrincipal(principal, workflowId),
     ClientPaymentModel.find({ workflowId, archivedAt: null }).sort({ submittedAt: -1 }).lean().exec(),
     getOrCreateEngagementConversation(principal, workflow),
   ]);
+  const documents = documentsResult.status === "fulfilled" ? documentsResult.value : [];
+  const storedPayments = paymentsResult.status === "fulfilled" ? paymentsResult.value : [];
+  const conversation = conversationResult.status === "fulfilled" ? conversationResult.value : null;
+  if (documentsResult.status === "rejected" || paymentsResult.status === "rejected") {
+    console.error("Unable to fully load restored engagement records", {
+      workflowId,
+      documentsError: documentsResult.status === "rejected" ? documentsResult.reason : undefined,
+      paymentsError: paymentsResult.status === "rejected" ? paymentsResult.reason : undefined,
+    });
+  }
   const payments = (storedPayments as unknown as RawPayment[]).map((payment): EngagementPaymentRecord => ({
     id: payment._id.toString(),
     amount: payment.amount,
@@ -378,8 +394,8 @@ export async function getEngagementExecutionData(principal: Principal, workflowI
     transactionReference: payment.transactionReference,
     receiptNumber: payment.receiptNumber ?? null,
     status: payment.status,
-    submittedAt: payment.submittedAt.toISOString(),
-    verifiedAt: payment.verifiedAt?.toISOString() ?? null,
+    submittedAt: executionDateString(payment.submittedAt),
+    verifiedAt: executionDateString(payment.verifiedAt) || null,
     reviewNote: payment.reviewNote ?? "",
   }));
   let messages: CommunicationMessage[] = [];

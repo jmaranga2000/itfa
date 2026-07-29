@@ -81,6 +81,18 @@ function isAdmin(principal: Principal) {
   return principal.roleKeys.some((role) => role === "admin" || role === "super_admin");
 }
 
+function idString(value: unknown) {
+  return value && typeof (value as { toString?: unknown }).toString === "function"
+    ? (value as { toString: () => string }).toString()
+    : "";
+}
+
+function dateString(value: unknown) {
+  if (!value) return "";
+  const date = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
+}
+
 async function activeAdministratorIds(excludeUserId?: string) {
   const administrators = await UserModel.find({
     status: "active",
@@ -160,7 +172,7 @@ export async function listEngagementDocumentsForPrincipal(principal: Principal, 
     || workflow.tasks.some((task) => task.assignedUserId === principal.id);
   const visibleRecords = isClient(principal)
     ? records.filter((record) => {
-        const uploadedByClient = record.uploadedByUserId.toString() === principal.id;
+        const uploadedByClient = idString(record.uploadedByUserId) === principal.id;
         if (record.documentKind === "final_deliverable") {
           return record.deliverableStatus === "released" || (!record.deliverableStatus && record.status === "final");
         }
@@ -170,7 +182,7 @@ export async function listEngagementDocumentsForPrincipal(principal: Principal, 
           || clientVisibleDocumentIds.has(record._id.toString());
       })
     : isAdmin(principal) || assignedStaff ? records : [];
-  const uploaderIds = [...new Set(visibleRecords.map((record) => record.uploadedByUserId.toString()))];
+  const uploaderIds = [...new Set(visibleRecords.map((record) => idString(record.uploadedByUserId)).filter(Boolean))];
   const uploaders = uploaderIds.length > 0
     ? await UserModel.find({ _id: { $in: uploaderIds } }).select("firstName lastName email").lean().exec()
     : [];
@@ -186,22 +198,22 @@ export async function listEngagementDocumentsForPrincipal(principal: Principal, 
     contentType: record.contentType,
     size: record.size,
     direction: record.direction,
-    uploadedAt: record.uploadedAt.toISOString(),
-    uploadedByUserId: record.uploadedByUserId.toString(),
-    uploadedByName: uploaderNames.get(record.uploadedByUserId.toString()) ?? "Portal user",
+    uploadedAt: dateString(record.uploadedAt),
+    uploadedByUserId: idString(record.uploadedByUserId),
+    uploadedByName: uploaderNames.get(idString(record.uploadedByUserId)) ?? "Portal user",
     version: record.version ?? 1,
     replacesDocumentId: record.replacesDocumentId?.toString() ?? null,
     deliverableStatus: record.deliverableStatus ?? (record.documentKind === "final_deliverable" && record.status === "final" ? "released" : "draft"),
-    preparedByName: record.preparedByName ?? uploaderNames.get(record.uploadedByUserId.toString()) ?? "Portal user",
+    preparedByName: record.preparedByName ?? uploaderNames.get(idString(record.uploadedByUserId)) ?? "Portal user",
     reviewedByName: record.reviewedByName ?? "",
-    reviewedAt: record.reviewedAt?.toISOString() ?? null,
+    reviewedAt: dateString(record.reviewedAt) || null,
     releasedByName: record.releasedByName ?? "",
-    releasedAt: record.releasedAt?.toISOString() ?? null,
+    releasedAt: dateString(record.releasedAt) || null,
     comments: (record.comments ?? []).map((comment) => ({
       body: comment.body,
-      authorUserId: comment.authorUserId.toString(),
+      authorUserId: idString(comment.authorUserId),
       authorName: comment.authorName,
-      createdAt: comment.createdAt.toISOString(),
+      createdAt: dateString(comment.createdAt),
     })),
   }));
 }

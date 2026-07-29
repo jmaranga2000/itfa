@@ -500,7 +500,11 @@ function serializeDate(value: Date | string | null | undefined) {
     return null;
   }
 
-  return typeof value === "string" ? value : value.toISOString();
+  if (typeof value === "string") {
+    return value;
+  }
+
+  return Number.isNaN(value.getTime()) ? null : value.toISOString();
 }
 
 function objectId(value: string | null | undefined) {
@@ -644,6 +648,19 @@ function serializeTemplate(template: RawWorkflowTemplate): WorkflowTemplateRecor
 }
 
 function serializeWorkflow(workflow: RawWorkflowInstance, clientView = false): WorkflowInstanceRecord {
+  const financial = workflow.financial ?? {
+    invoiceStatus: "draft" as InvoiceWorkflowStatus,
+    paymentStatus: "pending" as PaymentWorkflowStatus,
+    balanceDue: 0,
+    currency: "KES",
+    invoices: [],
+  };
+  const archive = workflow.archive ?? {
+    status: "not_ready",
+    retentionUntil: null,
+    archivedAt: null,
+    legalHoldReason: "",
+  };
   const stages = (workflow.stages ?? [])
     .filter((stage) => !clientView || stage.clientVisible)
     .map((stage) => ({
@@ -665,7 +682,7 @@ function serializeWorkflow(workflow: RawWorkflowInstance, clientView = false): W
       reviewHistory: (task.reviewHistory ?? []).map((review) => ({
         decision: review.decision,
         comments: review.comments,
-        reviewerUserId: review.reviewerUserId.toString(),
+        reviewerUserId: review.reviewerUserId?.toString() ?? "",
         reviewerName: review.reviewerName,
         reviewedAt: serializeDate(review.reviewedAt) ?? "",
       })),
@@ -676,7 +693,7 @@ function serializeWorkflow(workflow: RawWorkflowInstance, clientView = false): W
     approvals: workflow.approvals,
     clientActions: workflow.clientActions,
     documents: workflow.documents,
-    financial: workflow.financial,
+    financial,
   });
 
   return {
@@ -741,11 +758,11 @@ function serializeWorkflow(workflow: RawWorkflowInstance, clientView = false): W
         uploadedAt: serializeDate(document.uploadedAt) ?? new Date().toISOString(),
       })),
     financial: {
-      invoiceStatus: workflow.financial.invoiceStatus,
-      paymentStatus: workflow.financial.paymentStatus,
-      balanceDue: workflow.financial.balanceDue,
-      currency: workflow.financial.currency,
-      invoices: (workflow.financial.invoices ?? [])
+      invoiceStatus: financial.invoiceStatus,
+      paymentStatus: financial.paymentStatus,
+      balanceDue: financial.balanceDue,
+      currency: financial.currency,
+      invoices: (financial.invoices ?? [])
         .filter((invoice) => !clientView || ["etims_accepted", "issued", "partially_paid", "paid", "overdue"].includes(invoice.status))
         .map((invoice) => ({
         invoiceId: invoice.invoiceId,
@@ -780,7 +797,7 @@ function serializeWorkflow(workflow: RawWorkflowInstance, clientView = false): W
         emailDeliveryError: invoice.emailDeliveryError ?? "",
       })),
     },
-    completionChecklist: clientView ? [] : workflow.completionChecklist,
+    completionChecklist: clientView ? [] : (workflow.completionChecklist ?? []),
     completion: {
       notes: clientView ? "" : workflow.completion?.notes ?? "",
       summary: workflow.completion?.summary ?? "",
@@ -806,9 +823,9 @@ function serializeWorkflow(workflow: RawWorkflowInstance, clientView = false): W
         : null,
     },
     archive: {
-      ...workflow.archive,
-      retentionUntil: serializeDate(workflow.archive.retentionUntil),
-      archivedAt: serializeDate(workflow.archive.archivedAt),
+      ...archive,
+      retentionUntil: serializeDate(archive.retentionUntil),
+      archivedAt: serializeDate(archive.archivedAt),
     },
     activity: (workflow.activity ?? [])
       .filter((activity) => !clientView || activity.clientVisible)
@@ -816,9 +833,9 @@ function serializeWorkflow(workflow: RawWorkflowInstance, clientView = false): W
     internalNotes: clientView
       ? []
       : (workflow.internalNotes ?? []).map((note) => ({
-          id: note._id?.toString() ?? `${note.createdByUserId}-${note.createdAt?.toISOString() ?? "note"}`,
+          id: note._id?.toString() ?? `${note.createdByUserId?.toString() ?? "system"}-${serializeDate(note.createdAt) ?? "note"}`,
           body: note.body,
-          createdByUserId: note.createdByUserId.toString(),
+          createdByUserId: note.createdByUserId?.toString() ?? "",
           createdByName: note.createdByName,
           createdAt: serializeDate(note.createdAt) ?? "",
         })),
